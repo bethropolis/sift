@@ -1,6 +1,12 @@
 # Dir-Dumper
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/bethropolis/dir-dumper)](https://goreportcard.com/report/github.com/bethropolis/dir-dumper)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/bethropolis/dir-dumper)](https://github.com/bethropolis/dir-dumper/releases/latest)
+[![GitHub license](https://img.shields.io/github/license/bethropolis/dir-dumper)](https://github.com/bethropolis/dir-dumper/blob/main/LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/bethropolis/dir-dumper.svg)](https://pkg.go.dev/github.com/bethropolis/dir-dumper)
+[![GitHub stars](https://img.shields.io/github/stars/bethropolis/dir-dumper?style=social)](https://github.com/bethropolis/dir-dumper/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/bethropolis/dir-dumper)](https://github.com/bethropolis/dir-dumper/issues)
+[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/doc/go1.21)
 
 `dir-dumper` is a command-line tool written in Go that recursively traverses a directory, reads the content of non-ignored files, and prints them to standard output or a specified file. It respects `.gitignore` rules, hidden file conventions, and provides various filtering and formatting options.
 
@@ -33,10 +39,11 @@ The primary goal is to easily aggregate the content of a project's codebase or c
 If you have Go (1.21+) installed and configured:
 
 ```bash
-go install github.com/bethropolis/dir-dumper@latest
+go install github.com/bethropolis/dir-dumper/cmd/dir-dumper@latest
 ```
 
-This will download the source code, compile it, and place the `dir-dumper` binary in your `$GOPATH/bin` directory (usually `$HOME/go/bin`). Ensure this directory is in your system's `PATH`.
+> [!NOTE]
+> This will download the source code, compile it, and place the `dir-dumper` binary in your `$GOPATH/bin` directory (usually `$HOME/go/bin`). Ensure this directory is in your system's `PATH`.
 
 ### From Source
 
@@ -61,8 +68,8 @@ This will download the source code, compile it, and place the `dir-dumper` binar
 ```bash
 dir-dumper [flags]
 ```
-
-By default, `dir-dumper` scans the current directory (`.`) and prints the content of non-ignored files to standard output.
+> [!NOTE]
+> By default, `dir-dumper` scans the current directory (`.`) and prints the content of non-ignored files to standard output.
 
 <details>
 <summary>Examples</summary>
@@ -176,6 +183,9 @@ Flags:
 go build -o dir-dumper ./cmd/dir-dumper/
 ```
 
+### Pre-built Binaries (Optional)
+
+Pre-built binaries for Linux, macOS, and Windows are available on the [Releases](https://github.com/bethropolis/dir-dumper/releases) page.
 
 ## Contributing
 
@@ -183,4 +193,4 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE). 
+This project is licensed under the [MIT License](LICENSE).
