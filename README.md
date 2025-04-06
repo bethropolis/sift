@@ -1,12 +1,13 @@
 # Dir-Dumper
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/bethropolis/dir-dumper)](https://goreportcard.com/report/github.com/bethropolis/dir-dumper)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/bethropolis/dir-dumper)](https://github.com/bethropolis/dir-dumper/releases/latest)
-[![GitHub license](https://img.shields.io/github/license/bethropolis/dir-dumper)](https://github.com/bethropolis/dir-dumper/blob/main/LICENSE)
-[![Go Reference](https://pkg.go.dev/badge/github.com/bethropolis/dir-dumper.svg)](https://pkg.go.dev/github.com/bethropolis/dir-dumper)
-[![GitHub stars](https://img.shields.io/github/stars/bethropolis/dir-dumper?style=social)](https://github.com/bethropolis/dir-dumper/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/bethropolis/dir-dumper)](https://github.com/bethropolis/dir-dumper/issues)
-[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/doc/go1.21)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=89b4fa)](https://github.com/bethropolis/dir-dumper/releases/latest)
+[![GitHub license](https://img.shields.io/github/license/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=cba6f7)](https://github.com/bethropolis/dir-dumper/blob/main/LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/bethropolis/dir-dumper.svg)](https://pkg.go.dev/github.com/bethropolis/dir-dumper/cmd/dir-dumper) 
+[![GitHub stars](https://img.shields.io/github/stars/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=f9e2af)](https://github.com/bethropolis/dir-dumper/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=f38ba8)](https://github.com/bethropolis/dir-dumper/issues)
+[![Go Version](https://img.shields.io/badge/Go-1.21+-a6e3a1?style=flat-square&logo=go&labelColor=1e1e2e)](https://golang.org/doc/go1.21)
+
 
 `dir-dumper` is a command-line tool written in Go that recursively traverses a directory, reads the content of non-ignored files, and prints them to standard output or a specified file. It respects `.gitignore` rules, hidden file conventions, and provides various filtering and formatting options.
 
