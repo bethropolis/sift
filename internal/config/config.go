@@ -48,7 +48,7 @@ type Config struct {
 // New creates a new Config with values from command-line flags
 func New() *Config {
 	c := &Config{
-		Version: "1.0.0", // Update this when releasing new versions
+		Version: "1.0.4",
 	}
 
 	// Parse command-line flags

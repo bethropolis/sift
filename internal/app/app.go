@@ -6,14 +6,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/bethropolis/dir-dumper/internal/config"
 	"github.com/bethropolis/dir-dumper/internal/ignore"
 	"github.com/bethropolis/dir-dumper/internal/logger"
 	"github.com/bethropolis/dir-dumper/internal/printer"
+	"github.com/bethropolis/dir-dumper/internal/setup"
+	"github.com/bethropolis/dir-dumper/internal/summary"
 	"github.com/bethropolis/dir-dumper/internal/walker"
 	"github.com/fatih/color"
 )
@@ -135,54 +135,25 @@ func (a *App) Run() {
 		os.Exit(1)
 	}
 
-	// --- Parse custom ignore patterns ---
-	var customPatterns []string
-	if a.cfg.CustomIgnore != "" {
-		customPatterns = strings.Split(a.cfg.CustomIgnore, ",")
-		for i, pattern := range customPatterns {
-			customPatterns[i] = strings.TrimSpace(pattern) // Trim whitespace
-		}
-		infoLog("Using custom ignore patterns: %v", customPatterns)
+	// Configure the walker using the setup package
+	walkerConfig := setup.WalkerConfig{
+		RootDir:       absRootDir,
+		Concurrent:    a.cfg.Concurrent,
+		MaxWorkers:    a.cfg.MaxWorkers,
+		MaxFileSizeMB: a.cfg.MaxFileSizeMB,
+		Extensions:    a.cfg.Extensions,
+		IgnoreHidden:  a.cfg.IgnoreHidden,
+		IgnoreGit:     a.cfg.IgnoreGit,
+		CustomIgnore:  a.cfg.CustomIgnore,
+		ShowProgress:  a.cfg.ShowProgress,
+		Timeout:       ctx,
+		Quiet:         a.cfg.Quiet,
+		Logger:        a.log,
 	}
 
-	// --- Parse file extensions ---
-	var fileExtensions map[string]struct{}
-	if a.cfg.Extensions != "" {
-		fileExtensions = make(map[string]struct{})
-		extList := strings.Split(a.cfg.Extensions, ",")
-		var addedExts []string
-		for _, ext := range extList {
-			cleanExt := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(ext, ".")))
-			if cleanExt != "" {
-				fileExtensions[cleanExt] = struct{}{}
-				addedExts = append(addedExts, "."+cleanExt)
-			}
-		}
-		infoLog("Filtering enabled. Only including extensions: %s", strings.Join(addedExts, ", "))
-	} else {
-		infoLog("No extension filtering (including all file types).")
-	}
-
-	// Print effective settings
-	if a.cfg.IgnoreHidden {
-		infoLog("Ignoring hidden files/directories (starting with '.').")
-	} else {
-		infoLog("Including hidden files/directories.")
-	}
-
-	// --- Initialize ignore matcher ---
-	ignoreOptions := []ignore.Option{
-		ignore.WithLogger(a.log),
-		ignore.WithHiddenIgnore(a.cfg.IgnoreHidden),
-		ignore.WithGitIgnore(a.cfg.IgnoreGit),
-	}
-	if len(customPatterns) > 0 {
-		ignoreOptions = append(ignoreOptions, ignore.WithCustomRules(customPatterns))
-	}
-
-	matcher, err := ignore.New(absRootDir, ignoreOptions...)
+	matcher, walkOptions, err := setup.ConfigureWalker(walkerConfig, infoLog)
 	if err != nil {
-		a.log.Error("Error initializing ignore rules: %v", err)
+		a.log.Error("%v", err)
 		os.Exit(1)
 	}
 
@@ -202,72 +173,6 @@ func (a *App) Run() {
 		p.WithMarkdown(true)
 		// Disable colors in Markdown mode regardless of other settings
 		p.WithColors(false)
-	}
-
-	// --- Set up walk options ---
-	var walkOptions []walker.Option
-
-	// Add the options correctly
-	walkOptions = append(walkOptions,
-		walker.WithLogger(a.log),
-		walker.WithConcurrency(a.cfg.Concurrent),
-		walker.WithMaxWorkers(a.cfg.MaxWorkers),
-	)
-
-	// Add progress option if enabled
-	if a.cfg.ShowProgress {
-		a.log.Debug("Progress display enabled")
-
-		// Create a progress handler
-		walkOptions = append(walkOptions, walker.WithProgress(func(stats walker.ProgressStats) {
-			// Only print to stderr to avoid interfering with regular output
-			if !a.cfg.Quiet {
-				var statusLine string
-
-				if stats.CurrentFilePath != "" {
-					// Truncate the path if it's too long
-					path := stats.CurrentFilePath
-					if len(path) > 40 {
-						path = "..." + path[len(path)-37:]
-					}
-
-					statusLine = fmt.Sprintf("\rProcessing: %-40s | Files: %d/%d | Dirs: %d",
-						path,
-						stats.ProcessedFiles,
-						stats.TotalFiles,
-						stats.TotalDirs)
-				} else {
-					statusLine = fmt.Sprintf("\rScanning... | Files: %d/%d | Dirs: %d",
-						stats.ProcessedFiles,
-						stats.TotalFiles,
-						stats.TotalDirs)
-				}
-
-				// Print with carriage return to overwrite previous line
-				fmt.Fprint(os.Stderr, statusLine)
-			}
-		}))
-	}
-
-	// Add extension filtering if specified
-	if len(fileExtensions) > 0 {
-		var extList []string
-		for ext := range fileExtensions {
-			extList = append(extList, ext)
-		}
-		walkOptions = append(walkOptions, walker.WithExtensions(extList))
-	}
-
-	// Convert MB to bytes for MaxFileSize if specified
-	if a.cfg.MaxFileSizeMB > 0 {
-		maxSizeBytes := a.cfg.MaxFileSizeMB * 1024 * 1024
-		walkOptions = append(walkOptions, walker.WithMaxFileSize(maxSizeBytes))
-		infoLog("Ignoring files larger than %d MB.", a.cfg.MaxFileSizeMB)
-	}
-
-	// Add walk context option if timeout is specified
-	if a.cfg.Timeout > 0 {
-		walkOptions = append(walkOptions, walker.WithContext(ctx))
 	}
 
 	// --- Define walk function ---
@@ -300,7 +205,7 @@ func (a *App) Run() {
 		infoLog("Using concurrent processing with %d workers.", a.cfg.MaxWorkers)
 	}
 
-	skippedItems, err := walker.Walk(absRootDir, matcher, printFunc, walkOptions...)
+	skippedItems, err := a.walkDirectory(absRootDir, matcher, printFunc, walkOptions)
 
 	// --- Handle walk errors ---
 	if err != nil {
@@ -309,38 +214,23 @@ func (a *App) Run() {
 	}
 
 	// --- Show results summary ---
-	infoLog("Found and processed %d files.", p.GetCount())
+	summary.DisplayResults(a.log, p.GetCount(), time.Since(startTime), a.cfg.Quiet)
 
 	// Finalize the printer (important for JSON output to close the array)
 	p.Finalize()
 
-	duration := time.Since(startTime)
-	infoLog("Scan complete in %v.", duration.Round(time.Millisecond))
-
 	// --- Show Skipped Items (if requested) ---
 	if a.cfg.ShowSkipped {
-		infoLog("--- Skipped Items (%d) ---", len(skippedItems))
-		if len(skippedItems) > 0 {
-			// Sort for consistent output
-			sort.Slice(skippedItems, func(i, j int) bool {
-				return skippedItems[i].Path < skippedItems[j].Path
-			})
-			for _, item := range skippedItems {
-				typeStr := "FILE"
-				if item.IsDir {
-					typeStr = "DIR " // Add space for alignment
-				}
-				// Print to stderr
-				fmt.Fprintf(os.Stderr, "Skipped %s: %-.*s [%s]\n",
-					typeStr,
-					50, // Max width for path column
-					item.Path,
-					item.Reason,
-				)
-			}
-		} else {
-			infoLog("No items were skipped.")
-		}
-		infoLog("--- End Skipped Items ---")
+		summary.DisplaySkippedItems(a.log, skippedItems, os.Stderr, a.cfg.Quiet)
 	}
+}
+
+// walkDirectory is a helper method that performs the actual directory walk
+func (a *App) walkDirectory(
+	rootDir string,
+	matcher *ignore.IgnoreMatcher,
+	walkFn walker.WalkFunc,
+	options []walker.Option,
+) ([]walker.SkippedItem, error) {
+	return walker.Walk(rootDir, matcher, walkFn, options...)
 }
