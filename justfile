@@ -48,6 +48,10 @@ run:
 pick:
   go run {{ pkg }} pick .
 
+# Preview the current directory with an instruction prompt
+prompt:
+  go run {{ pkg }} dump . --prompt "Review this codebase for race conditions."
+
 # Scan the current directory as XML with token counts
 run-xml:
   go run {{ pkg }} dump . --style xml

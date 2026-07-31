@@ -17,6 +17,7 @@ type Profile struct {
 	TokenizeModel string   `toml:"tokenize_model"`
 	Budget        int      `toml:"budget"`
 	Mode          string   `toml:"compress_mode"`
+	Prompt        string   `toml:"prompt"`
 	SecretScan    *bool    `toml:"secret_scan"`
 	ForceSecrets  *bool    `toml:"force_secrets"`
 	IgnoreHidden  *bool    `toml:"ignore_hidden"`
@@ -124,6 +125,9 @@ func overlay(dst, src Profile) Profile {
 	if src.Mode != "" {
 		dst.Mode = src.Mode
 	}
+	if src.Prompt != "" {
+		dst.Prompt = src.Prompt
+	}
 	if src.SecretScan != nil {
 		dst.SecretScan = src.SecretScan
 	}
@@ -156,6 +160,9 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	}
 	if p.Mode != "" && !fs.Changed("mode") {
 		c.Mode = p.Mode
+	}
+	if p.Prompt != "" && !fs.Changed("prompt") {
+		c.Prompt = p.Prompt
 	}
 	if p.SecretScan != nil && !fs.Changed("secrets") {
 		c.SecretScan = *p.SecretScan

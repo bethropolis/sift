@@ -24,6 +24,15 @@ git-relevance ranking so the most important context fits in a model's window.
     *   Git-relevance ranking: modified files score highest, then recent diffs, then recent commits.
     *   One-click `--clipboard` copy to paste into a chat.
 *   **Profiles:** Reusable TOML profiles in `.dirdumper.toml` or `$XDG_CONFIG_HOME/dir-dumper/config.toml`.
+*   **Interactive Picker (`pick`):** A foldable, dual-pane tree TUI with:
+    *   3-state checkboxes (`[x]`/`[-]`/`[ ]`) and directory toggling (`Space`).
+    *   Per-file/folder compression modes — `FULL`/`SIGS`/`SKIP` — cycled with `m`.
+    *   Live token tallies per folder and a budget bar in the footer.
+    *   A right-hand preview pane with secret warning badges.
+    *   `s` smart auto-select by git relevance, `/` fuzzy filter, `y` clipboard copy.
+    *   Nerd Font glyphs by default, plain ASCII with `--no-nerd-fonts`.
+*   **Prompt Directives:** `--prompt` (or `-p`) prepends a task/instructions
+    section to any output format, so the document arrives with its mission.
 *   **Subcommands:** `dump`, `pick` (interactive TUI), `diff [ref]`, and `watch`.
 *   **Filtering:** extension filters, custom ignore patterns, hidden/git handling, binary skipping, size limits.
 *   **Concurrency, progress, timeouts, and colored output.**
@@ -78,6 +87,12 @@ dumper diff
 
 # Pick files interactively (requires a TTY).
 dumper pick
+
+# Attach a task prompt to the dump.
+dumper dump --prompt "Review this codebase for race conditions."
+
+# Use the picker without Nerd Font glyphs.
+dumper pick --no-nerd-fonts
 ```
 
 ### Flags
@@ -92,6 +107,8 @@ dumper pick
 -budget int                 Maximum token budget (0 = no limit)
 -tokenize-model string      Tokenizer model encoding (default: cl100k_base)
 -mode string                Compression mode: full, signatures
+-prompt, -p string          Task/instruction directives prepended to the output
+-no-nerd-fonts              Use plain ASCII glyphs in the interactive picker
 -secrets                    Scan output for secrets and redact them (default true)
 -force-secrets              Include secrets instead of redacting
 -binary                     Include binary files (default: skipped)
@@ -125,6 +142,7 @@ secrets = true
 [profiles.rust-strict]
 extensions = ["rs"]
 mode = "signatures"
+prompt = "Review this Rust codebase for unsafe usage."
 ```
 
 ```bash

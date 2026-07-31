@@ -41,6 +41,8 @@ type Config struct {
 	Style          string
 	JSONOutput     bool
 	MarkdownOutput bool
+	// NoNerdFonts forces ASCII glyphs in the interactive picker.
+	NoNerdFonts bool
 
 	// Profile selection
 	Profile string
@@ -49,6 +51,8 @@ type Config struct {
 	Budget        int
 	TokenizeModel string
 	Mode          string
+	// Prompt is an optional task/directive section prepended to the output.
+	Prompt string
 
 	// Safety
 	SecretScan   bool
@@ -119,10 +123,12 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 
 	// Output style, profiles, and LLM context settings
 	fs.StringVar(&c.Style, "style", c.Style, "Output style: plain, markdown, json, xml")
+	fs.BoolVar(&c.NoNerdFonts, "no-nerd-fonts", c.NoNerdFonts, "Use plain ASCII glyphs in the interactive picker")
 	fs.StringVar(&c.Profile, "profile", c.Profile, "Config profile to use (see config.toml)")
 	fs.IntVar(&c.Budget, "budget", c.Budget, "Maximum token budget (0 = no limit)")
 	fs.StringVar(&c.TokenizeModel, "tokenize-model", c.TokenizeModel, "Tokenizer model encoding (default: cl100k_base)")
 	fs.StringVar(&c.Mode, "mode", c.Mode, "Compression mode: full, signatures")
+	fs.StringVarP(&c.Prompt, "prompt", "p", c.Prompt, "Task/instruction directives prepended to the output")
 	fs.BoolVar(&c.SecretScan, "secrets", c.SecretScan, "Scan output for secrets and redact them")
 	fs.BoolVar(&c.ForceSecrets, "force-secrets", c.ForceSecrets, "Include secrets in output instead of redacting")
 	fs.BoolVar(&c.Clipboard, "clipboard", c.Clipboard, "Copy the rendered output to the system clipboard")

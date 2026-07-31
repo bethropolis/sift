@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/mattn/go-isatty"
@@ -46,17 +45,34 @@ func runPick(cmd *cobra.Command, args []string) error {
 	application := app.New(cfg)
 	defer application.Close()
 
-	files, skipped, err := application.Collect()
+	// CollectPicker keeps both full and signature-only content so the TUI can
+	// offer per-file modes and live token tallies.
+	files, skipped, err := application.CollectPicker()
 	if err != nil {
 		return err
 	}
 
 	items := make([]tui.Item, len(files))
 	for i, f := range files {
-		items[i] = tui.Item{Path: filepath.ToSlash(f.Path), Tokens: f.Tokens}
+		items[i] = tui.Item{
+			Path:        f.Path,
+			Content:     f.Content,
+			SigContent:  f.SigContent,
+			TokensFull:  f.TokensFull,
+			TokensSig:   f.TokensSig,
+			SecretCount: f.SecretCount,
+			RankScore:   f.RankScore,
+		}
 	}
 
-	selected, err := tui.Run(items)
+	selected, err := tui.Run(items, tui.Options{
+		Budget:  cfg.Budget,
+		Style:   cfg.EffectiveStyle(),
+		UseNerd: !cfg.NoNerdFonts,
+		OnCopy: func(sel []tui.Selection) error {
+			return copySelection(application, files, sel)
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("dumper pick: %w", err)
 	}
@@ -64,16 +80,51 @@ func runPick(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("dumper pick: no files selected")
 	}
 
-	keep := make(map[string]bool, len(selected))
-	for _, p := range selected {
-		keep[filepath.ToSlash(p)] = true
-	}
-	chosen := make([]format.FileEntry, 0, len(selected))
+	chosen := applySelection(files, selected)
+	return application.RenderFinal(chosen, skipped, time.Since(start), nil)
+}
+
+// applySelection maps the TUI's per-file modes onto the collected entries. A
+// file in FULL mode keeps its raw content; SIGS uses the signature summary;
+// SKIP entries are dropped.
+func applySelection(files []format.FileEntry, selected []tui.Selection) []format.FileEntry {
+	byPath := make(map[string]format.FileEntry, len(files))
 	for _, f := range files {
-		if keep[filepath.ToSlash(f.Path)] {
-			chosen = append(chosen, f)
-		}
+		byPath[f.Path] = f
 	}
 
-	return application.Render(chosen, skipped, time.Since(start), nil)
+	chosen := make([]format.FileEntry, 0, len(selected))
+	for _, sel := range selected {
+		f, ok := byPath[sel.Path]
+		if !ok {
+			continue
+		}
+		switch sel.Mode {
+		case tui.ModeSignatures:
+			if f.SigContent != nil {
+				f.Content = f.SigContent
+				f.Tokens = f.TokensSig
+				f.IsCompressed = true
+			} else {
+				f.Tokens = f.TokensFull
+			}
+		case tui.ModeSkip:
+			continue
+		default: // ModeFull
+			f.Tokens = f.TokensFull
+			f.IsCompressed = false
+		}
+		chosen = append(chosen, f)
+	}
+	return chosen
+}
+
+// copySelection renders the current selection to the system clipboard without
+// touching the picker's output destination.
+func copySelection(application *app.App, files []format.FileEntry, selected []tui.Selection) error {
+	chosen := applySelection(files, selected)
+	if len(chosen) == 0 {
+		return fmt.Errorf("nothing selected")
+	}
+	return application.RenderToClipboard(chosen)
 }

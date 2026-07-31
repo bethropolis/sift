@@ -52,7 +52,7 @@ func TestRegisterFlagsBindsValues(t *testing.T) {
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	RegisterFlags(c, fs)
 
-	if err := fs.Parse([]string{"--style", "xml", "--verbose", "--budget", "1000"}); err != nil {
+	if err := fs.Parse([]string{"--style", "xml", "--verbose", "--budget", "1000", "--prompt", "review", "--no-nerd-fonts"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -64,6 +64,12 @@ func TestRegisterFlagsBindsValues(t *testing.T) {
 	}
 	if c.Budget != 1000 {
 		t.Errorf("Budget = %d, want 1000", c.Budget)
+	}
+	if c.Prompt != "review" {
+		t.Errorf("Prompt = %q, want review", c.Prompt)
+	}
+	if !c.NoNerdFonts {
+		t.Error("NoNerdFonts = false, want true")
 	}
 }
 

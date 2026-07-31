@@ -26,6 +26,14 @@ type FileEntry struct {
 	Tokens       int
 	IsCompressed bool
 	Language     string
+
+	// Picker-only fields, populated by CollectPicker for the interactive TUI.
+	// SigContent is the signature-only (tree-sitter) rendering of Content.
+	SigContent  []byte
+	TokensFull  int
+	TokensSig   int
+	SecretCount int
+	RankScore   float64
 }
 
 // Document is the complete set of data handed to a Renderer.
@@ -33,6 +41,9 @@ type Document struct {
 	DirectoryTree string
 	Files         []FileEntry
 	TotalTokens   int
+	// Instructions is an optional task/directive section emitted before the
+	// repository body when set (--prompt).
+	Instructions string
 }
 
 // Renderer renders a Document to w.

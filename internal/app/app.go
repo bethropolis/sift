@@ -157,6 +157,19 @@ func (a *App) Run() error {
 // collected file entries ordered by git relevance. The token budget is
 // deliberately not applied here so callers can curate the selection first.
 func (a *App) Collect() ([]format.FileEntry, []walker.SkippedItem, error) {
+	return a.collect(false)
+}
+
+// CollectPicker walks the directory for the interactive picker. Unlike
+// Collect it keeps both the full and signature-only content and token counts
+// per file (plus secret counts and git rank scores) so the TUI can show live
+// previews, token tallies, and smart auto-selection. No global compression
+// mode is applied; callers pick the active view per file.
+func (a *App) CollectPicker() ([]format.FileEntry, []walker.SkippedItem, error) {
+	return a.collect(true)
+}
+
+func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, error) {
 	// Handle timeout if specified
 	var ctx context.Context
 	var cancel context.CancelFunc
@@ -220,9 +233,11 @@ func (a *App) Collect() ([]format.FileEntry, []walker.SkippedItem, error) {
 		scanner = secrets.New()
 	}
 
-	// --- Create the signature compressor (signatures mode only) ---
+	// --- Create the signature compressor. The picker needs it for every file
+	// so it can offer per-file FULL/SIGS modes; dump/diff/watch only compress
+	// when the global mode requests signatures. ---
 	var compressor *compress.Compressor
-	if a.cfg.Mode == "signatures" {
+	if picker || a.cfg.Mode == "signatures" {
 		compressor = compress.New()
 		a.log.Debug("Compression mode: signatures (tree-sitter)")
 	}
@@ -255,33 +270,59 @@ func (a *App) Collect() ([]format.FileEntry, []walker.SkippedItem, error) {
 		}
 
 		// Redact secrets before the content is stored for rendering.
+		var detections []secrets.Detection
 		if scanner != nil {
-			redacted, detections := scanner.Redact(content)
+			var redacted []byte
+			redacted, detections = scanner.Redact(content)
 			for _, d := range detections {
 				a.log.Warn("Redacted %s in %s", d.RuleName, relativePath)
 			}
 			content = redacted
 		}
 
-		entry := format.FileEntry{Path: relativePath}
-		if compressor != nil {
-			if lang, ok := compressor.LanguageForPath(relativePath); ok {
-				var compressed string
-				var didCompress bool
-				compressed, didCompress = compressor.Compress(content, lang)
-				content = []byte(compressed)
-				entry.IsCompressed = didCompress
-				entry.Language = lang.String()
+		entry := format.FileEntry{
+			Path:        relativePath,
+			Content:     content,
+			Tokens:      -1,
+			SecretCount: len(detections),
+		}
+
+		if picker {
+			// Keep both full and signature-only variants plus their token
+			// counts so the TUI can switch modes without re-reading files.
+			// The active view is decided per file by the picker's Mode; the
+			// entry's Tokens/IsCompressed are recomputed at selection time.
+			entry.TokensFull = a.countTokens(tokenizer, entry.Content, relativePath)
+			if compressor != nil {
+				if lang, ok := compressor.LanguageForPath(relativePath); ok {
+					compressed, didCompress := compressor.Compress(entry.Content, lang)
+					if didCompress {
+						entry.SigContent = []byte(compressed)
+						entry.Language = lang.String()
+					}
+				}
 			}
-		}
+			if entry.SigContent != nil {
+				entry.TokensSig = a.countTokens(tokenizer, entry.SigContent, relativePath)
+			} else {
+				entry.TokensSig = entry.TokensFull
+			}
+		} else {
+			if compressor != nil {
+				if lang, ok := compressor.LanguageForPath(relativePath); ok {
+					var compressed string
+					var didCompress bool
+					compressed, didCompress = compressor.Compress(content, lang)
+					content = []byte(compressed)
+					entry.IsCompressed = didCompress
+					entry.Language = lang.String()
+				}
+			}
 
-		tokens, err := tokenizer.Count(content)
-		if err != nil {
-			a.log.Warn("Failed to count tokens for %s: %v", relativePath, err)
+			entry.Tokens = a.countTokens(tokenizer, content, relativePath)
+			entry.TokensFull = entry.Tokens
+			entry.TokensSig = entry.Tokens
 		}
-
-		entry.Content = content
-		entry.Tokens = tokens
 
 		filesMu.Lock()
 		files = append(files, entry)
@@ -306,18 +347,76 @@ func (a *App) Collect() ([]format.FileEntry, []walker.SkippedItem, error) {
 			paths[i] = f.Path
 		}
 		scores := g.Score(absRootDir, paths)
+		for i := range files {
+			files[i].RankScore = scores[files[i].Path]
+		}
 		sort.SliceStable(files, func(i, j int) bool {
 			return scores[files[i].Path] > scores[files[j].Path]
 		})
+	} else if picker {
+		for i := range files {
+			files[i].RankScore = rank.ScoreBaseline
+		}
 	}
 
 	return files, skippedItems, err
+}
+
+// countTokens counts tokens for content, logging a warning on failure and
+// returning 0 so a counting error never aborts the scan.
+func (a *App) countTokens(tokenizer *tokenize.Tokenizer, content []byte, path string) int {
+	tokens, err := tokenizer.Count(content)
+	if err != nil {
+		a.log.Warn("Failed to count tokens for %s: %v", path, err)
+		return 0
+	}
+	return tokens
 }
 
 // Render applies the token budget to files and writes the rendered document.
 // A non-nil runErr from Collect is reported but rendering still happens so the
 // output stays well-formed (e.g. valid JSON on timeout).
 func (a *App) Render(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) error {
+	return a.render(files, skippedItems, duration, runErr, true)
+}
+
+// RenderFinal renders exactly the given files without re-applying the token
+// budget. It is used by the interactive picker, whose TUI owns budget
+// accounting (including smart auto-selection); nothing is dropped afterwards.
+func (a *App) RenderFinal(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) error {
+	return a.render(files, skippedItems, duration, runErr, false)
+}
+
+// RenderToClipboard renders the given files and copies the result to the
+// system clipboard, without writing to the configured output destination. It
+// backs the picker's live copy action.
+func (a *App) RenderToClipboard(files []format.FileEntry) error {
+	renderer, err := format.NewRenderer(format.ParseStyle(a.cfg.EffectiveStyle()), a.cfg.UseColors)
+	if err != nil {
+		return err
+	}
+
+	total := 0
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		total += f.Tokens
+		paths = append(paths, f.Path)
+	}
+	doc := &format.Document{
+		DirectoryTree: format.BuildTree(paths),
+		Files:         files,
+		TotalTokens:   total,
+		Instructions:  a.cfg.Prompt,
+	}
+
+	var buf bytes.Buffer
+	if err := renderer.Render(doc, &buf); err != nil {
+		return err
+	}
+	return clipboard.Copy(buf.Bytes())
+}
+
+func (a *App) render(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool) error {
 	// --- Create the renderer ---
 	renderer, err := format.NewRenderer(format.ParseStyle(a.cfg.EffectiveStyle()), a.cfg.UseColors)
 	if err != nil {
@@ -326,15 +425,21 @@ func (a *App) Render(files []format.FileEntry, skippedItems []walker.SkippedItem
 	a.log.Debug("Output style: %s", a.cfg.EffectiveStyle())
 
 	// Apply the token budget, keeping the highest-priority files.
-	if a.cfg.Budget > 0 {
-		a.infoLog("Applying token budget: %d", a.cfg.Budget)
-	}
 	var usedTokens int
-	files, usedTokens = tokenize.FitToBudget(files, a.cfg.Budget)
-	tokenTotal := int64(usedTokens)
-	if a.cfg.Budget > 0 && len(files) == 0 {
-		a.log.Warn("Token budget %d is too small for any file.", a.cfg.Budget)
+	if applyBudget && a.cfg.Budget > 0 {
+		a.infoLog("Applying token budget: %d", a.cfg.Budget)
+		var kept []format.FileEntry
+		kept, usedTokens = tokenize.FitToBudget(files, a.cfg.Budget)
+		files = kept
+		if len(files) == 0 {
+			a.log.Warn("Token budget %d is too small for any file.", a.cfg.Budget)
+		}
+	} else {
+		for _, f := range files {
+			usedTokens += f.Tokens
+		}
 	}
+	tokenTotal := int64(usedTokens)
 
 	paths := make([]string, 0, len(files))
 	for _, f := range files {
@@ -344,6 +449,7 @@ func (a *App) Render(files []format.FileEntry, skippedItems []walker.SkippedItem
 		DirectoryTree: format.BuildTree(paths),
 		Files:         files,
 		TotalTokens:   int(tokenTotal),
+		Instructions:  a.cfg.Prompt,
 	}
 
 	// --- Render output ---

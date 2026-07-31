@@ -14,15 +14,18 @@ type JSONFileEntry struct {
 	Tokens  int    `json:"tokens,omitempty"`
 }
 
+// jsonDoc is the JSON document used when instructions are present.
+type jsonDoc struct {
+	Instructions string          `json:"instructions,omitempty"`
+	Files        []JSONFileEntry `json:"files"`
+}
+
 type jsonRenderer struct{}
 
-// Render writes a JSON array of file entries, or an empty array if there are none.
+// Render writes a JSON document. Without instructions the output is a plain
+// array of file entries for backward compatibility; with instructions it is
+// wrapped in an object that also carries the task directives.
 func (r *jsonRenderer) Render(doc *Document, w io.Writer) error {
-	if len(doc.Files) == 0 {
-		fmt.Fprint(w, "[]\n")
-		return nil
-	}
-
 	entries := make([]JSONFileEntry, 0, len(doc.Files))
 	for _, f := range doc.Files {
 		entries = append(entries, JSONFileEntry{
@@ -32,7 +35,20 @@ func (r *jsonRenderer) Render(doc *Document, w io.Writer) error {
 		})
 	}
 
-	data, err := json.MarshalIndent(entries, "", "  ")
+	if doc.Instructions == "" {
+		if len(entries) == 0 {
+			fmt.Fprint(w, "[]\n")
+			return nil
+		}
+		data, err := json.MarshalIndent(entries, "", "  ")
+		if err != nil {
+			return fmt.Errorf("format: marshal json: %w", err)
+		}
+		fmt.Fprintf(w, "%s\n", data)
+		return nil
+	}
+
+	data, err := json.MarshalIndent(jsonDoc{Instructions: doc.Instructions, Files: entries}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("format: marshal json: %w", err)
 	}

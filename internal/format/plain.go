@@ -11,6 +11,15 @@ type plainRenderer struct {
 
 // Render writes each file's path followed by its content.
 func (r *plainRenderer) Render(doc *Document, w io.Writer) error {
+	if doc.Instructions != "" {
+		if r.useColors {
+			fmt.Fprintf(w, "\033[1;36m# Instructions\033[0m\n")
+		} else {
+			fmt.Fprintf(w, "# Instructions\n")
+		}
+		fmt.Fprintf(w, "%s\n\n", doc.Instructions)
+	}
+
 	for _, f := range doc.Files {
 		if r.useColors {
 			fmt.Fprintf(w, "\033[1;36m%s\033[0m\n", f.Path)
@@ -26,6 +35,10 @@ type markdownRenderer struct{}
 
 // Render writes the directory tree followed by a fenced block per file.
 func (r *markdownRenderer) Render(doc *Document, w io.Writer) error {
+	if doc.Instructions != "" {
+		fmt.Fprintf(w, "## Task / Instructions\n\n%s\n\n", doc.Instructions)
+	}
+
 	if doc.DirectoryTree != "" {
 		fmt.Fprintf(w, "```\n%s```\n\n", doc.DirectoryTree)
 	}

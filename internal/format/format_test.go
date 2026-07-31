@@ -100,6 +100,35 @@ func TestRenderJSONEmpty(t *testing.T) {
 	}
 }
 
+func TestRenderInstructions(t *testing.T) {
+	doc := &Document{
+		Instructions: "Review this codebase for race conditions.",
+		Files:        []FileEntry{{Path: "a.go", Content: []byte("package a")}},
+	}
+
+	if got := render(t, StylePlain, doc, false); !strings.Contains(got, "# Instructions\nReview this codebase for race conditions.") {
+		t.Errorf("plain instructions missing:\n%s", got)
+	}
+	if got := render(t, StyleMarkdown, doc, false); !strings.Contains(got, "## Task / Instructions\n\nReview this codebase for race conditions.") {
+		t.Errorf("markdown instructions missing:\n%s", got)
+	}
+	xmlOut := render(t, StyleXML, doc, false)
+	if !strings.Contains(xmlOut, "<instructions>") || !strings.Contains(xmlOut, "Review this codebase for race conditions.") {
+		t.Errorf("xml instructions missing:\n%s", xmlOut)
+	}
+	jsonOut := render(t, StyleJSON, doc, false)
+	var jd jsonDoc
+	if err := json.Unmarshal([]byte(jsonOut), &jd); err != nil {
+		t.Fatalf("invalid JSON with instructions: %v\n%s", err, jsonOut)
+	}
+	if jd.Instructions != "Review this codebase for race conditions." {
+		t.Errorf("json instructions = %q", jd.Instructions)
+	}
+	if len(jd.Files) != 1 {
+		t.Errorf("json files = %d, want 1", len(jd.Files))
+	}
+}
+
 func TestRenderMarkdown(t *testing.T) {
 	doc := &Document{
 		DirectoryTree: ".\n└── a.txt\n",

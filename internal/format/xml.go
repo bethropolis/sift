@@ -9,11 +9,19 @@ import (
 
 type xmlRenderer struct{}
 
-// Render writes a repository document: a structure tree followed by each
-// file's content wrapped in a CDATA section.
+// Render writes a repository document: an optional instructions block, a
+// structure tree, then each file's content wrapped in a CDATA section.
 func (r *xmlRenderer) Render(doc *Document, w io.Writer) error {
 	if _, err := fmt.Fprint(w, "<repository>\n"); err != nil {
 		return err
+	}
+
+	if doc.Instructions != "" {
+		fmt.Fprint(w, "  <instructions>\n")
+		for _, line := range strings.Split(strings.TrimRight(doc.Instructions, "\n"), "\n") {
+			fmt.Fprintf(w, "    %s\n", html.EscapeString(line))
+		}
+		fmt.Fprint(w, "  </instructions>\n")
 	}
 
 	if doc.DirectoryTree != "" {
