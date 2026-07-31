@@ -8,16 +8,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/fatih/color"
 
 	"github.com/bethropolis/dir-dumper/internal/clipboard"
+	"github.com/bethropolis/dir-dumper/internal/compress"
 	"github.com/bethropolis/dir-dumper/internal/config"
 	"github.com/bethropolis/dir-dumper/internal/format"
 	"github.com/bethropolis/dir-dumper/internal/ignore"
 	"github.com/bethropolis/dir-dumper/internal/logger"
+	"github.com/bethropolis/dir-dumper/internal/rank"
 	"github.com/bethropolis/dir-dumper/internal/secrets"
 	"github.com/bethropolis/dir-dumper/internal/setup"
 	"github.com/bethropolis/dir-dumper/internal/summary"
@@ -30,6 +33,10 @@ type App struct {
 	cfg    *config.Config
 	log    *logger.Logger
 	output io.Writer
+
+	// OnlyPaths, when non-nil, restricts the walk to these relative paths.
+	// Used by dumper diff to dump a curated set of files.
+	OnlyPaths map[string]bool
 }
 
 // New creates a new App instance
@@ -181,6 +188,13 @@ func (a *App) Run() error {
 		scanner = secrets.New()
 	}
 
+	// --- Create the signature compressor (signatures mode only) ---
+	var compressor *compress.Compressor
+	if a.cfg.Mode == "signatures" {
+		compressor = compress.New()
+		a.log.Debug("Compression mode: signatures (tree-sitter)")
+	}
+
 	var filesMu sync.Mutex
 	var files []format.FileEntry
 	var tokenTotal int64
@@ -198,6 +212,10 @@ func (a *App) Run() error {
 			return nil
 		}
 
+		if a.OnlyPaths != nil && !a.OnlyPaths[filepath.ToSlash(relativePath)] {
+			return nil
+		}
+
 		// Redact secrets before the content is stored for rendering.
 		if scanner != nil {
 			redacted, detections := scanner.Redact(content)
@@ -207,13 +225,25 @@ func (a *App) Run() error {
 			content = redacted
 		}
 
+		entry := format.FileEntry{Path: relativePath}
+		if compressor != nil {
+			if lang, ok := compressor.LanguageForPath(relativePath); ok {
+				content = []byte(compressor.Compress(content, lang))
+				entry.IsCompressed = true
+				entry.Language = lang.String()
+			}
+		}
+
 		tokens, err := tokenizer.Count(content)
 		if err != nil {
 			a.log.Warn("Failed to count tokens for %s: %v", relativePath, err)
 		}
 
+		entry.Content = content
+		entry.Tokens = tokens
+
 		filesMu.Lock()
-		files = append(files, format.FileEntry{Path: relativePath, Content: content, Tokens: tokens})
+		files = append(files, entry)
 		tokenTotal += int64(tokens)
 		filesMu.Unlock()
 		return nil // Indicate success to walker
@@ -226,6 +256,20 @@ func (a *App) Run() error {
 	}
 
 	skippedItems, err := a.walkDirectory(absRootDir, matcher, printFunc, walkOptions)
+
+	// Order files by git relevance so the most important context survives the
+	// token budget. Outside a git repository the order is left unchanged.
+	if g := rank.New(absRootDir); g.Available() {
+		a.log.Debug("Ranking %d files by git relevance", len(files))
+		paths := make([]string, len(files))
+		for i, f := range files {
+			paths[i] = f.Path
+		}
+		scores := g.Score(absRootDir, paths)
+		sort.SliceStable(files, func(i, j int) bool {
+			return scores[files[i].Path] > scores[files[j].Path]
+		})
+	}
 
 	// Apply the token budget, keeping the highest-priority files.
 	if a.cfg.Budget > 0 {

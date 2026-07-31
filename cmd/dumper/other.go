@@ -5,10 +5,14 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/bethropolis/dir-dumper/internal/config"
 )
 
 func init() {
-	rootCmd.AddCommand(pickCmd, diffCmd, watchCmd)
+	rootCmd.AddCommand(pickCmd, watchCmd)
+	config.RegisterFlags(cfg, pickCmd.Flags())
+	config.RegisterFlags(cfg, watchCmd.Flags())
 }
 
 var errNotImplemented = errors.New("not yet implemented")
@@ -19,15 +23,6 @@ var pickCmd = &cobra.Command{
 	Short: "Interactively select files and render a context document",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("dumper pick: %w", errNotImplemented)
-	},
-}
-
-// diffCmd renders a context document for files changed between git refs (Phase 3).
-var diffCmd = &cobra.Command{
-	Use:   "diff [ref]",
-	Short: "Dump context for files changed by a git ref",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return fmt.Errorf("dumper diff: %w", errNotImplemented)
 	},
 }
 
