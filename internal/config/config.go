@@ -1,15 +1,15 @@
 package config
 
 import (
-	"flag"
 	"os"
-	"runtime" // Add runtime for CPU core count
+	"runtime"
 	"time"
 
 	"github.com/mattn/go-isatty"
+	"github.com/spf13/pflag"
 )
 
-// Config holds all application configuration settings
+// Config holds all application configuration settings.
 type Config struct {
 	// Directory settings
 	RootDir string
@@ -38,46 +38,91 @@ type Config struct {
 	IncludeBinary bool
 
 	// Output format
+	Style          string
 	JSONOutput     bool
 	MarkdownOutput bool
+
+	// Profile selection
+	Profile string
+
+	// Token and context settings
+	Budget        int
+	TokenizeModel string
+	Mode          string
+
+	// Safety
+	SecretScan   bool
+	ForceSecrets bool
+	Clipboard    bool
 
 	// Version info
 	ShowVersion bool
 	Version     string
 }
 
-// New creates a new Config with values from command-line flags
+// New returns a Config populated with built-in defaults.
 func New() *Config {
-	c := &Config{
-		Version: "1.0.4",
+	return &Config{
+		Version:      "1.0.4",
+		IgnoreHidden: true,
+		IgnoreGit:    true,
+		SecretScan:   true,
+		Style:        "plain",
+		MaxWorkers:   runtime.NumCPU(),
 	}
+}
 
-	// Parse command-line flags
-	flag.StringVar(&c.RootDir, "dir", ".", "The root directory to scan")
-	flag.BoolVar(&c.Verbose, "verbose", false, "Enable verbose logging (DEBUG, WARN, ERROR)")
-	flag.BoolVar(&c.Quiet, "quiet", false, "Suppress INFO messages (only show WARN, ERROR)")
-	flag.StringVar(&c.LogLevel, "log-level", "", "Set the logging level (DEBUG, INFO, WARN, ERROR)")
-	flag.BoolVar(&c.Concurrent, "concurrent", false, "Enable concurrent file processing")
-	flag.IntVar(&c.MaxWorkers, "workers", runtime.NumCPU(), "Max number of concurrent workers (defaults to number of CPU cores)")
-	flag.Int64Var(&c.MaxFileSizeMB, "max-size", 0, "Max file size to process in MB (0 = no limit)")
-	flag.BoolVar(&c.IgnoreHidden, "hidden", true, "Ignore hidden files/directories (starting with '.')")
-	flag.BoolVar(&c.IgnoreGit, "git", true, "Ignore .git directories")
-	flag.BoolVar(&c.IncludeBinary, "binary", false, "Include binary files in output (default: skipped)")
-	flag.StringVar(&c.CustomIgnore, "ignore", "", "Custom ignore patterns (comma-separated, gitignore syntax)")
-	flag.StringVar(&c.Extensions, "ext", "", "Only include files with these extensions (comma-separated, e.g., 'go,md,txt')")
-	flag.BoolVar(&c.NoColor, "no-color", false, "Disable color output")
-	flag.StringVar(&c.OutputFile, "output", "", "Output to file instead of stdout")
-	flag.BoolVar(&c.ShowProgress, "progress", false, "Show progress information")
-	flag.DurationVar(&c.Timeout, "timeout", 0, "Maximum execution time (e.g., '30s', '5m')")
-	flag.BoolVar(&c.ShowSkipped, "show-skipped", false, "Show a list of skipped files/directories and reasons at the end")
-	flag.BoolVar(&c.ShowVersion, "version", false, "Show version information")
-	flag.BoolVar(&c.JSONOutput, "json", false, "Output results in JSON format")
-	flag.BoolVar(&c.MarkdownOutput, "markdown", false, "Output results in Markdown format")
+// EffectiveStyle returns the resolved output style, honoring the legacy
+// --json and --markdown flags.
+func (c *Config) EffectiveStyle() string {
+	switch {
+	case c.JSONOutput:
+		return "json"
+	case c.MarkdownOutput:
+		return "markdown"
+	case c.Style != "":
+		return c.Style
+	default:
+		return "plain"
+	}
+}
 
-	flag.Parse()
-
-	// Determine if colors should be used
+// ResolveColors determines whether colored output should be used.
+func (c *Config) ResolveColors() {
 	c.UseColors = !c.NoColor && isatty.IsTerminal(os.Stderr.Fd()) && c.OutputFile == ""
+}
 
-	return c
+// RegisterFlags binds every config option to fs, using the current field
+// values as flag defaults.
+func RegisterFlags(c *Config, fs *pflag.FlagSet) {
+	fs.StringVar(&c.RootDir, "dir", c.RootDir, "The root directory to scan")
+	fs.BoolVar(&c.Verbose, "verbose", c.Verbose, "Enable verbose logging (DEBUG, WARN, ERROR)")
+	fs.BoolVar(&c.Quiet, "quiet", c.Quiet, "Suppress INFO messages (only show WARN, ERROR)")
+	fs.StringVar(&c.LogLevel, "log-level", c.LogLevel, "Set the logging level (DEBUG, INFO, WARN, ERROR)")
+	fs.BoolVar(&c.Concurrent, "concurrent", c.Concurrent, "Enable concurrent file processing")
+	fs.IntVar(&c.MaxWorkers, "workers", c.MaxWorkers, "Max number of concurrent workers (defaults to number of CPU cores)")
+	fs.Int64Var(&c.MaxFileSizeMB, "max-size", c.MaxFileSizeMB, "Max file size to process in MB (0 = no limit)")
+	fs.BoolVar(&c.IgnoreHidden, "hidden", c.IgnoreHidden, "Ignore hidden files/directories (starting with '.')")
+	fs.BoolVar(&c.IgnoreGit, "git", c.IgnoreGit, "Ignore .git directories")
+	fs.StringVar(&c.CustomIgnore, "ignore", c.CustomIgnore, "Custom ignore patterns (comma-separated, gitignore syntax)")
+	fs.StringVar(&c.Extensions, "ext", c.Extensions, "Only include files with these extensions (comma-separated, e.g., 'go,md,txt')")
+	fs.BoolVar(&c.IncludeBinary, "binary", c.IncludeBinary, "Include binary files in output (default: skipped)")
+	fs.BoolVar(&c.NoColor, "no-color", c.NoColor, "Disable color output")
+	fs.StringVar(&c.OutputFile, "output", c.OutputFile, "Output to file instead of stdout")
+	fs.BoolVar(&c.ShowProgress, "progress", c.ShowProgress, "Show progress information")
+	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, "Maximum execution time (e.g., '30s', '5m')")
+	fs.BoolVar(&c.ShowSkipped, "show-skipped", c.ShowSkipped, "Show a list of skipped files/directories and reasons at the end")
+	fs.BoolVar(&c.ShowVersion, "version", c.ShowVersion, "Show version information")
+	fs.BoolVar(&c.JSONOutput, "json", c.JSONOutput, "Output results in JSON format")
+	fs.BoolVar(&c.MarkdownOutput, "markdown", c.MarkdownOutput, "Output results in Markdown format")
+
+	// Output style, profiles, and LLM context settings
+	fs.StringVar(&c.Style, "style", c.Style, "Output style: plain, markdown, json, xml")
+	fs.StringVar(&c.Profile, "profile", c.Profile, "Config profile to use (see config.toml)")
+	fs.IntVar(&c.Budget, "budget", c.Budget, "Maximum token budget (0 = no limit)")
+	fs.StringVar(&c.TokenizeModel, "tokenize-model", c.TokenizeModel, "Tokenizer model encoding (default: cl100k_base)")
+	fs.StringVar(&c.Mode, "mode", c.Mode, "Compression mode: full, signatures")
+	fs.BoolVar(&c.SecretScan, "secrets", c.SecretScan, "Scan output for secrets and redact them")
+	fs.BoolVar(&c.ForceSecrets, "force-secrets", c.ForceSecrets, "Include secrets in output instead of redacting")
+	fs.BoolVar(&c.Clipboard, "clipboard", c.Clipboard, "Copy the rendered output to the system clipboard")
 }

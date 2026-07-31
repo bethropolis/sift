@@ -7,14 +7,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
 
 	"github.com/bethropolis/dir-dumper/internal/config"
+	"github.com/bethropolis/dir-dumper/internal/format"
 	"github.com/bethropolis/dir-dumper/internal/ignore"
 	"github.com/bethropolis/dir-dumper/internal/logger"
-	"github.com/bethropolis/dir-dumper/internal/printer"
 	"github.com/bethropolis/dir-dumper/internal/setup"
 	"github.com/bethropolis/dir-dumper/internal/summary"
 	"github.com/bethropolis/dir-dumper/internal/walker"
@@ -29,6 +30,9 @@ type App struct {
 
 // New creates a new App instance
 func New(cfg *config.Config) *App {
+	// Resolve color usage from the terminal and output destination
+	cfg.ResolveColors()
+
 	// Configure color globally
 	color.NoColor = !cfg.UseColors
 
@@ -154,23 +158,17 @@ func (a *App) Run() error {
 		return fmt.Errorf("failed to configure walker: %w", err)
 	}
 
-	// --- Create the printer ---
-	p := printer.New()
-	p.WithOutput(a.output)
-	p.WithColors(a.cfg.UseColors)
-
-	// Enable JSON output if requested
-	if a.cfg.JSONOutput {
-		a.log.Debug("JSON output mode enabled")
-		p.WithJSON(true)
-		// Disable colors in JSON mode regardless of other settings
-		p.WithColors(false)
-	} else if a.cfg.MarkdownOutput {
-		a.log.Debug("Markdown output mode enabled")
-		p.WithMarkdown(true)
-		// Disable colors in Markdown mode regardless of other settings
-		p.WithColors(false)
+	// --- Create the renderer ---
+	renderer, err := format.NewRenderer(format.ParseStyle(a.cfg.EffectiveStyle()), a.cfg.UseColors)
+	if err != nil {
+		return err
 	}
+	if a.cfg.JSONOutput || a.cfg.MarkdownOutput || format.ParseStyle(a.cfg.Style) != format.StylePlain {
+		a.log.Debug("Output style: %s", a.cfg.EffectiveStyle())
+	}
+
+	var filesMu sync.Mutex
+	var files []format.FileEntry
 
 	// --- Define walk function ---
 	printFunc := func(relativePath string, content []byte, err error) error {
@@ -179,16 +177,10 @@ func (a *App) Run() error {
 			return nil // Error handled by logging
 		}
 
-		// Debug: Log every file that reaches the printFunc
-		a.log.Debug("Walk callback received file: %s (content nil? %v)",
-			relativePath, content == nil)
-
 		if content != nil { // Ensure content was actually read
-			// Debug info before printing
-			a.log.Debug("About to print file: %s (%d bytes)", relativePath, len(content))
-			p.PrintFile(relativePath, content)
-			// Debug info after printing
-			a.log.Debug("After printing file: %s (printer count: %d)", relativePath, p.GetCount())
+			filesMu.Lock()
+			files = append(files, format.FileEntry{Path: relativePath, Content: content})
+			filesMu.Unlock()
 		} else {
 			// This case shouldn't happen if err is nil, but good to log if it does
 			a.log.Warn("printFunc called for '%s' with nil content and nil error.", relativePath)
@@ -204,9 +196,17 @@ func (a *App) Run() error {
 
 	skippedItems, err := a.walkDirectory(absRootDir, matcher, printFunc, walkOptions)
 
-	// Finalize the printer so JSON output stays valid even when the walk
-	// stops early (e.g. on timeout or cancellation).
-	p.Finalize()
+	// Render whatever was collected, even if the walk stopped early, so the
+	// output stays well-formed (e.g. valid JSON on timeout).
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, f.Path)
+	}
+	doc := &format.Document{
+		DirectoryTree: format.BuildTree(paths),
+		Files:         files,
+	}
+	renderErr := renderer.Render(doc, a.output)
 
 	// --- Handle walk errors ---
 	if err != nil {
@@ -215,11 +215,17 @@ func (a *App) Run() error {
 		} else {
 			a.log.Error("Critical error during directory walk: %v", err)
 		}
+		if renderErr != nil {
+			a.log.Error("Error rendering output: %v", renderErr)
+		}
 		return err
+	}
+	if renderErr != nil {
+		return renderErr
 	}
 
 	// --- Show results summary ---
-	summary.DisplayResults(a.log, p.GetCount(), time.Since(startTime), a.cfg.Quiet)
+	summary.DisplayResults(a.log, int64(len(files)), time.Since(startTime), a.cfg.Quiet)
 
 	// --- Show Skipped Items (if requested) ---
 	if a.cfg.ShowSkipped {
