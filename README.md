@@ -145,7 +145,7 @@ Flags:
       -json
                         Output results in JSON format
       -log-level string
-                        Set the logging level (DEBUG, INFO, WARN, ERROR) (default "INFO")
+                        Set the logging level (DEBUG, INFO, WARN, ERROR)
       -markdown
                         Output results in Markdown format
       -max-size int

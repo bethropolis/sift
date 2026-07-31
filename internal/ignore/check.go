@@ -46,38 +46,26 @@ func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 		return true
 	}
 
-	// Delegate to gitignore library
+	// Check custom ignore patterns first (these override repo rules)
+	absPath := filepath.Join(m.rootDir, relativePath)
+	if m.customIgnore != nil {
+		if m.customIgnore.Ignore(absPath) {
+			excluded := m.customIgnore.Include(absPath)
+			if !excluded {
+				m.logger.Debug("ignore.ShouldIgnore: Ignored %q (custom pattern)", relativePath)
+				return true
+			}
+			m.logger.Debug("ignore.ShouldIgnore: Path %q excluded by custom negation rule", relativePath)
+		}
+	}
+
+	// Delegate to gitignore library for repo rules
 	if m.repoIgnore != nil {
-		unixPath := filepath.ToSlash(relativePath) // Ensure forward slashes
+		m.logger.Debug("ignore.ShouldIgnore: Checking repo rules for path %q", relativePath)
 
-		m.logger.Debug("ignore.ShouldIgnore: Checking library for path %q", unixPath) // Log before library call
-
-		ignored := false
-		included := false
-		// Defensive wrapper for library calls
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					m.logger.Error("PANIC recovered in gitignore library for path %q: %v", relativePath, r)
-					// Treat panic as "cannot determine", maybe default to not ignoring? Or log and ignore?
-					// Let's default to NOT ignoring if the library panics.
-					ignored = false
-					included = false
-				}
-			}()
-			ignored = m.repoIgnore.Ignore(unixPath)
-			if ignored {
-				included = m.repoIgnore.Include(unixPath)
-			}
-		}() // End defensive func
-
-		if ignored {
-			m.logger.Debug("ignore.ShouldIgnore: Path %q ignored by library matcher", relativePath)
-			if included {
-				m.logger.Debug("ignore.ShouldIgnore: Path %q explicitly included by negation rule", relativePath)
-				return false // Explicitly included, so NOT ignored
-			}
-			return true // Ignored and not explicitly included
+		if match := m.repoIgnore.Match(absPath); match != nil {
+			m.logger.Debug("ignore.ShouldIgnore: Path %q matched repo rule (ignore=%v)", relativePath, match.Ignore())
+			return match.Ignore()
 		}
 	} else {
 		m.logger.Debug("ignore.ShouldIgnore: No repository ignore patterns loaded (m.repoIgnore is nil).", relativePath)

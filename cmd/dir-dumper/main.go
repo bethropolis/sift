@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/bethropolis/dir-dumper/internal/app"
 	"github.com/bethropolis/dir-dumper/internal/config"
 )
@@ -17,10 +15,6 @@ func main() {
 	// Run the application
 	application.Run()
 
-	// Close output file if one was opened
-	if cfg.OutputFile != "" {
-		if f, ok := application.Output.(*os.File); ok {
-			f.Close()
-		}
-	}
+	// Clean up
+	application.Close()
 }

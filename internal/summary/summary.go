@@ -7,17 +7,13 @@ import (
 	"sort"
 	"time"
 
+	"github.com/bethropolis/dir-dumper/internal/utils"
 	"github.com/bethropolis/dir-dumper/internal/walker"
 )
 
-// Logger defines the minimal logging interface required
-type Logger interface {
-	Info(format string, args ...interface{})
-}
-
 // DisplayResults shows the end results of a scan operation
 func DisplayResults(
-	logger Logger,
+	logger utils.Logger,
 	fileCount int64,
 	duration time.Duration,
 	quiet bool,
@@ -30,7 +26,7 @@ func DisplayResults(
 
 // DisplaySkippedItems formats and prints information about skipped items
 func DisplaySkippedItems(
-	logger Logger,
+	logger utils.Logger,
 	skippedItems []walker.SkippedItem,
 	output io.Writer,
 	quiet bool,

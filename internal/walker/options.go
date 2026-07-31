@@ -16,7 +16,6 @@ type WalkOptions struct {
 	MaxFileSize  int64
 	ExtensionMap map[string]struct{}
 	Context      context.Context
-	ignoreHidden bool
 	ProgressFn   ProgressCallback // Add progress callback function
 }
 
@@ -42,7 +41,6 @@ func defaultOptions() WalkOptions {
 		MaxFileSize:  0,   // No limit
 		ExtensionMap: nil, // No extension filtering by default
 		Context:      context.Background(),
-		ignoreHidden: false,
 		ProgressFn:   nil,
 	}
 }
@@ -112,13 +110,6 @@ func WithContext(ctx context.Context) Option {
 		if ctx != nil {
 			opts.Context = ctx
 		}
-	}
-}
-
-// WithIgnoreHidden enables or disables ignoring hidden files
-func WithIgnoreHidden(enabled bool) Option {
-	return func(opts *WalkOptions) {
-		opts.ignoreHidden = enabled
 	}
 }
 

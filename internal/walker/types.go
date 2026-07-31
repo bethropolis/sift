@@ -12,7 +12,6 @@ type WalkFunc func(relativePath string, content []byte, err error) error
 type SkippedReason string
 
 const (
-	ReasonIgnoredHidden     SkippedReason = "Ignored (Hidden Rule)"
 	ReasonIgnoredRule       SkippedReason = "Ignored (Gitignore/Custom Rule)"
 	ReasonFilteredExtension SkippedReason = "Filtered (Extension Mismatch)"
 	ReasonSkippedSizeLimit  SkippedReason = "Skipped (Size Limit Exceeded)"
@@ -22,7 +21,6 @@ const (
 	ReasonSkippedReadError  SkippedReason = "Skipped (Read Error)"
 	ReasonSkippedInfoError  SkippedReason = "Skipped (File Info Error)"
 	ReasonSkippedPathError  SkippedReason = "Skipped (Path Calculation Error)"
-	ReasonSkippedDirIgnored SkippedReason = "Skipped (Parent Directory Ignored)"
 )
 
 // SkippedItem holds information about a skipped path.

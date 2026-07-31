@@ -170,7 +170,6 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 		}
 
 		options.Logger.Debug("Walker: File %q PASSED all checks, will be processed", relativePath)
-		stats.processedFiles.Add(1)
 		return nil, true
 	}
 
@@ -183,7 +182,7 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 		options.Logger.Debug("Starting %d workers for concurrent processing.", options.MaxWorkers)
 		for i := 0; i < options.MaxWorkers; i++ {
 			wg.Add(1)
-			go fileProcessorWorker(i+1, filesChan, &wg, options, walkFn, tracker)
+			go fileProcessorWorker(i+1, filesChan, &wg, options, walkFn, tracker, &stats.processedFiles)
 		}
 
 		// Use a goroutine to walk the directory tree and queue files
@@ -257,9 +256,6 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 		duration := time.Since(startTime)
 		options.Logger.Debug("Walker: Total walk and processing time: %s", duration)
 
-		if walkErr == context.Canceled || walkErr == context.DeadlineExceeded {
-			return tracker.Items(), walkErr
-		}
 		return tracker.Items(), walkErr
 	} else {
 		// Sequential processing
@@ -282,8 +278,7 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 				// Triple check - make sure this isn't the root dir or "."
 				if path != absRootDir && relativePath != "." {
 					options.Logger.Debug("Walker Processing Sequentially: File [%s]", relativePath)
-					processFile(path, relativePath, options, walkFn, tracker)
-					stats.processedFiles.Add(1)
+					processFile(path, relativePath, options, walkFn, tracker, &stats.processedFiles)
 				}
 			}
 			return nil

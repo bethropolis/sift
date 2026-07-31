@@ -55,7 +55,7 @@ func New() *Config {
 	flag.StringVar(&c.RootDir, "dir", ".", "The root directory to scan")
 	flag.BoolVar(&c.Verbose, "verbose", false, "Enable verbose logging (DEBUG, WARN, ERROR)")
 	flag.BoolVar(&c.Quiet, "quiet", false, "Suppress INFO messages (only show WARN, ERROR)")
-	flag.StringVar(&c.LogLevel, "log-level", "INFO", "Set the logging level (DEBUG, INFO, WARN, ERROR)")
+	flag.StringVar(&c.LogLevel, "log-level", "", "Set the logging level (DEBUG, INFO, WARN, ERROR)")
 	flag.BoolVar(&c.Concurrent, "concurrent", false, "Enable concurrent file processing")
 	flag.IntVar(&c.MaxWorkers, "workers", runtime.NumCPU(), "Max number of concurrent workers (defaults to number of CPU cores)")
 	flag.Int64Var(&c.MaxFileSizeMB, "max-size", 0, "Max file size to process in MB (0 = no limit)")

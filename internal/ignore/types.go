@@ -11,6 +11,9 @@ type IgnoreMatcher struct {
 	// The core gitignore object handling repository rules
 	repoIgnore gitignore.GitIgnore
 
+	// Matcher built from custom patterns (e.g., -ignore flag)
+	customIgnore gitignore.GitIgnore
+
 	// Configuration flags
 	rootDir        string
 	ignoreHidden   bool

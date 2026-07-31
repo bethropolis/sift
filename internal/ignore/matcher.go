@@ -3,6 +3,7 @@ package ignore
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/bethropolis/dir-dumper/internal/utils"
 	gitignore "github.com/denormal/go-gitignore"
@@ -69,11 +70,10 @@ func (m *IgnoreMatcher) init() error {
 	m.repoIgnore = repoMatcher
 	m.logger.Debug("ignore.New: Successfully loaded repository ignores.")
 
-	// Explicitly ignore .git directory if the flag requires it
-	if m.ignoreGit {
-		m.logger.Debug("ignore.New: Explicitly adding /.git/ pattern.")
-		// Add to custom patterns
-		m.customPatterns = append(m.customPatterns, "/.git/")
+	// Build custom ignore matcher from patterns passed via flags
+	if len(m.customPatterns) > 0 {
+		m.logger.Debug("ignore.New: Building matcher from %d custom patterns: %v", len(m.customPatterns), m.customPatterns)
+		m.customIgnore = gitignore.New(strings.NewReader(strings.Join(m.customPatterns, "\n")), m.rootDir, nil)
 	}
 
 	return nil

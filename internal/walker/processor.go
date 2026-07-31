@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 )
 
 // processFile handles reading a file and calling the walkFn with its content
-func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc, tracker *SkippedTracker) {
+func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc, tracker *SkippedTracker, processed *atomic.Int64) {
 	options.Logger.Debug("processFile: Reading [%s]", relativePath)
 
 	// Update progress info with current file if progress reporting is enabled
@@ -57,6 +58,10 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	if err := walkFn(relativePath, content, nil); err != nil {
 		options.Logger.Error("processFile Error [%s]: Callback function returned error: %v", relativePath, err)
 	}
+
+	if processed != nil {
+		processed.Add(1)
+	}
 }
 
 // fileProcessorWorker is the goroutine function for concurrent processing.
@@ -67,6 +72,7 @@ func fileProcessorWorker(
 	options WalkOptions,
 	walkFn WalkFunc,
 	tracker *SkippedTracker,
+	processed *atomic.Int64,
 ) {
 	defer wg.Done()
 	options.Logger.Debug("Worker %d: Started", id)
@@ -78,7 +84,7 @@ func fileProcessorWorker(
 			return
 		default:
 			options.Logger.Debug("Worker %d: Processing file [%s]", id, item.relativePath)
-			processFile(item.path, item.relativePath, options, walkFn, tracker)
+			processFile(item.path, item.relativePath, options, walkFn, tracker, processed)
 		}
 	}
 

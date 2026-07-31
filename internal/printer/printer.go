@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"sync/atomic"
 )
 
@@ -14,6 +15,7 @@ import (
 type Printer struct {
 	output         io.Writer
 	count          atomic.Int64
+	mu             sync.Mutex
 	useColors      bool
 	jsonOutput     bool
 	jsonStarted    bool
@@ -29,9 +31,6 @@ func New() *Printer {
 		markdownOutput: false,
 	}
 }
-
-// Option is a functional option for configuring the Printer
-type Option func(*Printer)
 
 // WithOutput sets the output destination
 func (p *Printer) WithOutput(w io.Writer) *Printer {
@@ -65,6 +64,9 @@ type JSONFileEntry struct {
 
 // PrintFile outputs the content of a file with its path
 func (p *Printer) PrintFile(relativePath string, content []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	// Increment the file counter
 	p.count.Add(1)
 
@@ -112,6 +114,9 @@ func (p *Printer) PrintFile(relativePath string, content []byte) {
 
 // Finalize completes any pending operations (like closing JSON array)
 func (p *Printer) Finalize() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.jsonOutput && p.jsonStarted {
 		// Close the JSON array
 		fmt.Fprint(p.output, "\n]\n")

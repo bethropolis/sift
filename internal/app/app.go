@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/fatih/color"
+
 	"github.com/bethropolis/dir-dumper/internal/config"
 	"github.com/bethropolis/dir-dumper/internal/ignore"
 	"github.com/bethropolis/dir-dumper/internal/logger"
@@ -15,14 +17,13 @@ import (
 	"github.com/bethropolis/dir-dumper/internal/setup"
 	"github.com/bethropolis/dir-dumper/internal/summary"
 	"github.com/bethropolis/dir-dumper/internal/walker"
-	"github.com/fatih/color"
 )
 
 // App encapsulates the main application functionality
 type App struct {
 	cfg    *config.Config
 	log    *logger.Logger
-	Output io.Writer // Changed from output to Output (exported)
+	output io.Writer
 }
 
 // New creates a new App instance
@@ -56,7 +57,14 @@ func New(cfg *config.Config) *App {
 	return &App{
 		cfg:    cfg,
 		log:    log,
-		Output: output,
+		output: output,
+	}
+}
+
+// Close performs cleanup, such as closing the output file if one was opened.
+func (a *App) Close() {
+	if f, ok := a.output.(*os.File); ok {
+		f.Close()
 	}
 }
 
@@ -146,7 +154,7 @@ func (a *App) Run() {
 		IgnoreGit:     a.cfg.IgnoreGit,
 		CustomIgnore:  a.cfg.CustomIgnore,
 		ShowProgress:  a.cfg.ShowProgress,
-		Timeout:       ctx,
+		Ctx:           ctx,
 		Quiet:         a.cfg.Quiet,
 		Logger:        a.log,
 	}
@@ -159,7 +167,7 @@ func (a *App) Run() {
 
 	// --- Create the printer ---
 	p := printer.New()
-	p.WithOutput(a.Output)
+	p.WithOutput(a.output)
 	p.WithColors(a.cfg.UseColors)
 
 	// Enable JSON output if requested

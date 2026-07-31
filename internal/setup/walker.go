@@ -12,12 +12,6 @@ import (
 	"github.com/bethropolis/dir-dumper/internal/walker"
 )
 
-// Logger defines the minimal logging interface required
-type Logger interface {
-	utils.Logger
-	Debug(format string, args ...interface{})
-}
-
 // InfoLogger wraps the Info method for status updates
 type InfoLogger func(format string, args ...interface{})
 
@@ -32,9 +26,9 @@ type WalkerConfig struct {
 	IgnoreGit     bool
 	CustomIgnore  string
 	ShowProgress  bool
-	Timeout       context.Context
+	Ctx           context.Context
 	Quiet         bool
-	Logger        Logger
+	Logger        utils.Logger
 }
 
 // ConfigureWalker sets up an ignore matcher and walker options based on the config
@@ -155,8 +149,8 @@ func ConfigureWalker(cfg WalkerConfig, infoLog InfoLogger) (
 	}
 
 	// Add walk context option if timeout is specified
-	if cfg.Timeout != nil {
-		walkOptions = append(walkOptions, walker.WithContext(cfg.Timeout))
+	if cfg.Ctx != nil {
+		walkOptions = append(walkOptions, walker.WithContext(cfg.Ctx))
 	}
 
 	return matcher, walkOptions, nil
