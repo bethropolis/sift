@@ -61,7 +61,7 @@ func unexported() {
 	// body
 }
 `
-	out := c.Compress([]byte(src), Go)
+	out, _ := c.Compress([]byte(src), Go)
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 
 	want := []string{
@@ -101,7 +101,7 @@ class Widget {
 	}
 }
 `
-	out := c.Compress([]byte(src), JavaScript)
+	out, _ := c.Compress([]byte(src), JavaScript)
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 
 	want := []string{
@@ -137,7 +137,7 @@ class Server:
     def start(self) -> None:
         pass
 `
-	out := c.Compress([]byte(src), Python)
+	out, _ := c.Compress([]byte(src), Python)
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 
 	want := []string{
@@ -161,9 +161,18 @@ class Server:
 func TestCompressFallback(t *testing.T) {
 	c := New()
 	src := "this is not parseable as code, just prose text without declarations"
-	out := c.Compress([]byte(src), Go)
-	if out != src {
-		t.Errorf("fallback should return source unchanged, got:\n%s", out)
+	out, didCompress := c.Compress([]byte(src), Go)
+	if out != src || didCompress {
+		t.Errorf("fallback should return source unchanged with compressed=false, got %q, %v", out, didCompress)
+	}
+}
+
+func TestCompressReportsCompressed(t *testing.T) {
+	c := New()
+	src := "package p\n\n// F does things.\nfunc F() int {\n\treturn 1\n}\n"
+	out, didCompress := c.Compress([]byte(src), Go)
+	if !didCompress || !strings.Contains(out, "func F() int") {
+		t.Errorf("expected compressed output, got %q, %v", out, didCompress)
 	}
 }
 
@@ -177,7 +186,7 @@ func f() int {
 	return 1
 }
 `
-	out := c.Compress([]byte(src), Go)
+	out, _ := c.Compress([]byte(src), Go)
 	if strings.Contains(out, "note about something") {
 		t.Errorf("blank-line comment leaked into signatures:\n%s", out)
 	}

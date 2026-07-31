@@ -1,5 +1,6 @@
 # Binaries
 /dir-dumper
+/bin/
 *.exe
 *.exe~
 *.dll

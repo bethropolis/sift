@@ -233,8 +233,11 @@ func (a *App) Collect() ([]format.FileEntry, []walker.SkippedItem, error) {
 		entry := format.FileEntry{Path: relativePath}
 		if compressor != nil {
 			if lang, ok := compressor.LanguageForPath(relativePath); ok {
-				content = []byte(compressor.Compress(content, lang))
-				entry.IsCompressed = true
+				var compressed string
+				var didCompress bool
+				compressed, didCompress = compressor.Compress(content, lang)
+				content = []byte(compressed)
+				entry.IsCompressed = didCompress
 				entry.Language = lang.String()
 			}
 		}

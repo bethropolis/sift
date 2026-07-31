@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
 	"github.com/bethropolis/dir-dumper/internal/config"
@@ -15,11 +16,23 @@ import (
 var cfg = config.New()
 
 var rootCmd = &cobra.Command{
-	Use:           "dumper",
-	Short:         "Pack a codebase into an LLM-friendly context document",
+	Use:   "dumper",
+	Short: "Pack a codebase into an LLM-friendly context document",
+	Long: `Pack a codebase into an LLM-friendly context document.
+
+Running dumper with no subcommand launches the interactive file picker.
+Use "dumper dump" for a one-shot scan of the current directory.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	Version:       cfg.Version,
+	// Bare invocation (no subcommand) launches the picker TUI. Outside a
+	// terminal the help text is shown instead so piping stays safe.
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if !isatty.IsTerminal(os.Stdin.Fd()) {
+			return cmd.Help()
+		}
+		return runPick(cmd, args)
+	},
 }
 
 // applyProfile loads the selected profile (or the default profile) and

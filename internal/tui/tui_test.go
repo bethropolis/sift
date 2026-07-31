@@ -50,7 +50,7 @@ func TestCursorClamping(t *testing.T) {
 	if m.offset != 4 {
 		t.Errorf("offset = %d, want 4", m.offset)
 	}
-	if got := m.row(4); got == "" {
+	if got := m.row(4, 60); got == "" {
 		t.Error("row(4) rendered empty")
 	}
 }

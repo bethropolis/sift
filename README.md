@@ -3,190 +3,142 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/bethropolis/dir-dumper)](https://goreportcard.com/report/github.com/bethropolis/dir-dumper)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=89b4fa)](https://github.com/bethropolis/dir-dumper/releases/latest)
 [![GitHub license](https://img.shields.io/github/license/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=cba6f7)](https://github.com/bethropolis/dir-dumper/blob/main/LICENSE)
-[![Go Reference](https://pkg.go.dev/badge/github.com/bethropolis/dir-dumper.svg)](https://pkg.go.dev/github.com/bethropolis/dir-dumper/) 
-[![GitHub stars](https://img.shields.io/github/stars/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=f9e2af)](https://github.com/bethropolis/dir-dumper/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=f38ba8)](https://github.com/bethropolis/dir-dumper/issues)
-[![Go Version](https://img.shields.io/badge/Go-1.21+-a6e3a1?style=flat-square&logo=go&labelColor=1e1e2e)](https://golang.org/doc/go1.21)
+[![Go Reference](https://pkg.go.dev/badge/github.com/bethropolis/dir-dumper.svg)](https://pkg.go.dev/github.com/bethropolis/dir-dumper/)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-a6e3a1?style=flat-square&logo=go&labelColor=1e1e2e)](https://golang.org/doc/go1.21)
 
-
-`dir-dumper` is a command-line tool written in Go that recursively traverses a directory, reads the content of non-ignored files, and prints them to standard output or a specified file. It respects `.gitignore` rules, hidden file conventions, and provides various filtering and formatting options.
-
-The primary goal is to easily aggregate the content of a project's codebase or configuration files into a single block of text, useful for sharing context, documentation, or feeding into other tools (like Large Language Models).
+`dumper` is a command-line tool written in Go that turns a project directory
+into a single LLM-ready context document. It walks the tree, respects
+`.gitignore` rules, and renders the contents in plain text, Markdown, JSON, or
+XML — with optional token budgeting, secret redaction, signature-only
+compression, and git-relevance ranking so the most important context fits in a
+model's window.
 
 ## Features
 
-*   **Recursive Traversal:** Scans directories and subdirectories.
-*   **.gitignore Aware:** Respects rules defined in `.gitignore` files found within the scanned directory tree.
-*   **Hidden File Handling:** Option to ignore or include hidden files and directories (those starting with `.`).
-*   **Filtering:**
-    *   Filter included files by extension (`-ext`).
-    *   Define custom ignore patterns (`-ignore`).
-    *   Set maximum file size limits (`-max-size`).
-*   **Output Formats:**
-    *   Standard plain text (default).
-    *   JSON output (`-json`).
-    *   Markdown output (`-markdown`).
-*   **Concurrency:** Optional parallel processing for faster scans (`-concurrent`).
-*   **Customizable:** Numerous flags to control behavior (see Usage).
-*   **Tracking:** Option to display a summary of skipped files and reasons (`-show-skipped`).
-*   **Progress:** Optional progress display for long scans (`-progress`).
-*   **Timeout:** Set a maximum execution time (`-timeout`).
-*   **Cross-Platform:** Built with Go, runs on Linux, macOS, and Windows.
+*   **Recursive Traversal:** Scans directories and subdirectories, respecting `.gitignore`.
+*   **Output Formats:** `plain`, `markdown`, `json`, and `xml` (with CDATA escaping and token counts).
+*   **LLM Context Packing:**
+    *   Token counting via tiktoken and a `--budget` to keep only the highest-priority files.
+    *   Secret scanning that redacts AWS/GitHub/Slack/Google/Stripe keys before output.
+    *   Signature-only compression (`--mode signatures`) via tree-sitter for Go, Rust, JS, TS, Python, and PHP.
+    *   Git-relevance ranking: modified files score highest, then recent diffs, then recent commits.
+    *   One-click `--clipboard` copy to paste into a chat.
+*   **Profiles:** Reusable TOML profiles in `.dirdumper.toml` or `$XDG_CONFIG_HOME/dir-dumper/config.toml`.
+*   **Subcommands:** `dump`, `pick` (interactive TUI), `diff [ref]`, and `watch`.
+*   **Filtering:** extension filters, custom ignore patterns, hidden/git handling, binary skipping, size limits.
+*   **Concurrency, progress, timeouts, and colored output.**
 
 ## Installation
 
-### Using `go install` (Recommended)
-
-If you have Go (1.21+) installed and configured:
-
 ```bash
-go install github.com/bethropolis/dir-dumper/cmd/dir-dumper@latest
+go install github.com/bethropolis/dir-dumper/cmd/dumper@latest
 ```
 
-> [!NOTE]
-> This will download the source code, compile it, and place the `dir-dumper` binary in your `$GOPATH/bin` directory (usually `$HOME/go/bin`). Ensure this directory is in your system's `PATH`.
+Or build from source:
 
-### From Source
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/bethropolis/dir-dumper.git
-    cd dir-dumper
-    ```
-2.  **Build the binary:**
-    ```bash
-    go build -o dir-dumper ./cmd/dir-dumper/
-    ```
-3.  **(Optional) Move the binary to a directory in your PATH:**
-    ```bash
-    # Example: move to ~/.local/bin 
-    mv dir-dumper ~/.local/bin/
-    ```
-
+```bash
+git clone https://github.com/bethropolis/dir-dumper.git
+cd dir-dumper
+go build -o dumper ./cmd/dumper/
+```
 
 ## Usage
 
 ```bash
-dir-dumper [flags]
-```
-> [!NOTE]
-> By default, `dir-dumper` scans the current directory (`.`) and prints the content of non-ignored files to standard output.
-
-<details>
-<summary>Examples</summary>
-
-*   **Scan the current directory:**
-      ```bash
-      dir-dumper
-      ```
-*   **Scan a specific directory:**
-      ```bash
-      dir-dumper -dir /path/to/your/project
-      ```
-*   **Only include Go and Markdown files:**
-      ```bash
-      dir-dumper -ext go,md
-      ```
-*   **Ignore all `.log` files and the `dist/` directory, in addition to `.gitignore` rules:**
-      ```bash
-      dir-dumper -ignore "*.log,dist/"
-      ```
-*   **Include hidden files (usually ignored):**
-      ```bash
-      dir-dumper -hidden=false
-      ```
-*   **Output to a file:**
-      ```bash
-      dir-dumper -output project_dump.txt
-      ```
-*   **Output in JSON format:**
-      ```bash
-      dir-dumper -json -output dump.json
-      ```
-*   **Output in Markdown format:**
-      ```bash
-      dir-dumper -markdown -output dump.md
-      ```
-*   **Use concurrent processing and show progress:**
-      ```bash
-      dir-dumper -concurrent -progress
-      ```
-*   **Show skipped files at the end:**
-      ```bash
-      dir-dumper -show-skipped
-      ```
-*   **Set a 5-minute timeout:**
-      ```bash
-      dir-dumper -timeout 5m
-      ```
-*   **Combine multiple options:**
-      ```bash
-      dir-dumper -dir ../other-project -ext go,mod -ignore "vendor/,*_test.go" -concurrent -output ../dump.txt
-      ```
-</details>
-
-<details>
-<summary>Flags</summary>
-
-```
-Flags:
-      -concurrent
-                        Enable concurrent file processing
-      -dir string
-                        The root directory to scan (default ".")
-      -ext string
-                        Only include files with these extensions (comma-separated, e.g., 'go,md,txt')
-      -git
-                        Ignore .git directories (default true)
-      -hidden
-                        Ignore hidden files/directories (starting with '.') (default true)
-      -ignore string
-                        Custom ignore patterns (comma-separated, gitignore syntax)
-      -json
-                        Output results in JSON format
-      -log-level string
-                        Set the logging level (DEBUG, INFO, WARN, ERROR)
-      -markdown
-                        Output results in Markdown format
-      -max-size int
-                        Max file size to process in MB (0 = no limit)
-      -no-color
-                        Disable color output
-      -output string
-                        Output to file instead of stdout
-      -progress
-                        Show progress information
-      -quiet
-                        Suppress INFO messages (only show WARN, ERROR)
-      -show-skipped
-                        Show a list of skipped files/directories and reasons at the end
-      -timeout duration
-                        Maximum execution time (e.g., '30s', '5m')
-      -verbose
-                        Enable verbose logging (DEBUG, WARN, ERROR)
-      -version
-                        Show version information
-      -workers int
-                        Max number of concurrent workers (defaults to number of CPU cores)
+dumper              # bare invocation launches the interactive picker (TUI)
+dumper dump [path]  # scan a directory and render its contents
+dumper pick [path]  # interactively choose files, then render
+dumper diff [ref]   # dump files changed relative to a git ref (default HEAD)
+dumper watch [path] # re-render the document on file changes
 ```
 
-</details>
+Running `dumper` with no subcommand (in a terminal) launches the interactive
+file picker; otherwise the help text is shown. By default `dumper dump` scans
+the current directory and prints plain text to stdout.
+
+### Examples
+
+```bash
+# Scan the current directory in Markdown.
+dumper dump --style markdown
+
+# Emit XML with token counts and copy to the clipboard.
+dumper dump -dir ./src --style xml --clipboard
+
+# Keep output under 50k tokens, prioritizing changed files.
+dumper dump --budget 50000
+
+# Strip function bodies down to signatures.
+dumper dump --mode signatures --style xml
+
+# Only dump the files you have changed.
+dumper diff
+
+# Pick files interactively (requires a TTY).
+dumper pick
+```
+
+### Flags
+
+```
+-dir string                 Root directory to scan
+-style string               Output style: plain, markdown, json, xml
+-json                       Legacy: output JSON (same as --style json)
+-markdown                   Legacy: output Markdown
+-output string              Output to file instead of stdout
+-clipboard                  Copy the rendered output to the system clipboard
+-budget int                 Maximum token budget (0 = no limit)
+-tokenize-model string      Tokenizer model encoding (default: cl100k_base)
+-mode string                Compression mode: full, signatures
+-secrets                    Scan output for secrets and redact them (default true)
+-force-secrets              Include secrets instead of redacting
+-binary                     Include binary files (default: skipped)
+-ext string                 Only include files with these extensions
+-ignore string              Custom ignore patterns (comma-separated, gitignore syntax)
+-hidden                     Ignore hidden files/directories (default true)
+-git                        Ignore .git directories (default true)
+-max-size int               Max file size to process in MB (0 = no limit)
+-concurrent                 Enable concurrent file processing
+-workers int                Max concurrent workers
+-progress                   Show progress information
+-timeout duration           Maximum execution time (e.g., '30s', '5m')
+-show-skipped               Show skipped files and reasons at the end
+-profile string             Config profile to use (see below)
+-verbose / -quiet / -no-color / -log-level string
+-version                    Show version information
+```
+
+## Profiles
+
+Create a `.dirdumper.toml` in the scanned directory (or
+`~/.config/dir-dumper/config.toml` globally) and reference it with
+`--profile`:
+
+```toml
+[profiles.claude]
+style = "xml"
+budget = 60000
+secrets = true
+
+[profiles.rust-strict]
+extensions = ["rs"]
+mode = "signatures"
+```
+
+```bash
+dumper dump --profile claude
+```
+
+Command-line flags always override profile values. A global `default_profile`
+can be set in the global config file.
 
 ## Development
 
-### Prerequisites
-
-*   Go 1.21 or later
-
-### Building
-
 ```bash
-go build -o dir-dumper ./cmd/dir-dumper/
+go build ./...
+go vet ./...
+go test -race ./...
 ```
-
-### Pre-built Binaries (Optional)
-
-Pre-built binaries for Linux, macOS, and Windows are available on the [Releases](https://github.com/bethropolis/dir-dumper/releases) page.
 
 ## Contributing
 

@@ -20,13 +20,15 @@ type Item struct {
 }
 
 // Run displays the picker for items and returns the selected paths in the
-// order they were presented. An empty selection yields an empty slice.
+// order they were presented. An empty selection yields an empty slice. The
+// picker takes over its own screen via the alternate buffer and restores the
+// terminal on exit.
 func Run(items []Item) ([]string, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}
 	m := newModel(items)
-	final, err := tea.NewProgram(m).Run()
+	final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
 	if err != nil {
 		return nil, err
 	}
@@ -109,11 +111,12 @@ const headerLines = 2
 const footerLines = 2
 
 func (m model) View() string {
+	width := max(0, min(m.width, 120))
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(" dumper pick "))
 	b.WriteString(hintStyle.Render(fmt.Sprintf(" (%d files)", len(m.items))))
 	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", max(0, min(m.width, 60))))
+	b.WriteString(strings.Repeat("─", width))
 	b.WriteString("\n")
 
 	rows := m.height - headerLines - footerLines
@@ -122,11 +125,11 @@ func (m model) View() string {
 	}
 	end := min(len(m.items), m.offset+rows)
 	for i := m.offset; i < end; i++ {
-		b.WriteString(m.row(i))
+		b.WriteString(m.row(i, width))
 		b.WriteString("\n")
 	}
 
-	b.WriteString(strings.Repeat("─", max(0, min(m.width, 60))))
+	b.WriteString(strings.Repeat("─", width))
 	b.WriteString("\n")
 	selected, tokens := m.stats()
 	b.WriteString(hintStyle.Render(fmt.Sprintf("space toggle   a all/none   enter done   %d selected, %d tokens", selected, tokens)))
@@ -134,12 +137,13 @@ func (m model) View() string {
 	return b.String()
 }
 
-func (m model) row(i int) string {
+func (m model) row(i int, width int) string {
 	mark := "[ ]"
 	if m.selected[i] {
 		mark = "[x]"
 	}
-	row := fmt.Sprintf(" %s %-40s %6d tokens", mark, m.items[i].Path, m.items[i].Tokens)
+	pad := max(20, width-18)
+	row := fmt.Sprintf(" %s %-*s %6d tokens", mark, pad, m.items[i].Path, m.items[i].Tokens)
 	if i == m.cursor {
 		return cursorStyle.Render(row)
 	}

@@ -166,30 +166,31 @@ func (c *Compressor) LanguageForPath(path string) (Language, bool) {
 	return lang, ok
 }
 
-// Compress returns a signature-only summary of src for lang. If parsing fails
-// or yields no declarations, the original source is returned unchanged.
-func (c *Compressor) Compress(src []byte, lang Language) string {
+// Compress returns a signature-only summary of src for lang. The boolean
+// result reports whether any declaration was emitted; false means the source
+// is returned unchanged (nothing to compress or a parse failure).
+func (c *Compressor) Compress(src []byte, lang Language) (string, bool) {
 	parser := sitter.NewParser()
 	defer parser.Close()
 
 	grammar, ok := c.grammars[lang]
 	if !ok {
-		return string(src)
+		return string(src), false
 	}
 	parser.SetLanguage(grammar)
 
 	tree := parser.Parse(nil, src)
 	if tree == nil {
-		return string(src)
+		return string(src), false
 	}
 	root := tree.RootNode()
 
 	var b strings.Builder
 	c.walkDeclarations(root, src, lang, &b)
 	if b.Len() == 0 {
-		return string(src)
+		return string(src), false
 	}
-	return strings.TrimRight(b.String(), "\n")
+	return strings.TrimRight(b.String(), "\n"), true
 }
 
 func (c *Compressor) walkDeclarations(n *sitter.Node, src []byte, lang Language, b *strings.Builder) {
