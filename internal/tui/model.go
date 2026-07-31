@@ -242,12 +242,19 @@ func (m *model) copy() {
 	m.notice = fmt.Sprintf("Copied %d files (%d tokens) to clipboard", len(sel), m.root.TotalActiveTokens())
 }
 
-func (m *model) clampOffset() {
-	footerHeight := 3
+// footerHeight returns the number of lines the footer occupies. The join
+// newline between body and footer is included, so the whole view is exactly
+// height lines tall and the footer sits on the bottom row.
+func (m model) footerHeight() int {
+	h := footerLines
 	if m.notice != "" {
-		footerHeight = 4
+		h++
 	}
-	bodyHeight := max(5, m.height-footerHeight)
+	return h
+}
+
+func (m *model) clampOffset() {
+	bodyHeight := max(5, m.height-m.footerHeight())
 	innerRows := max(1, bodyHeight-3)
 
 	if m.cursor < m.offset {
@@ -274,11 +281,7 @@ func (m model) View() string {
 	}
 	rightWidth := width - leftWidth
 
-	footerHeight := 3
-	if m.notice != "" {
-		footerHeight = 4
-	}
-	bodyHeight := max(5, height-footerHeight)
+	bodyHeight := max(5, height-m.footerHeight())
 
 	leftBox := m.renderTreeBox(leftWidth, bodyHeight)
 	rightBox := m.renderPreviewBox(rightWidth, bodyHeight)
@@ -369,9 +372,11 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	rightWidth := lipgloss.Width(right)
 
 	if leftWidth+rightWidth > width {
-		avail := width - rightWidth - lipgloss.Width(treeGuide) - lipgloss.Width(mark) - lipgloss.Width(icon) - lipgloss.Width(modeStr) - lipgloss.Width(secret) - 3
-		if avail > 4 && len(name) > avail {
-			name = truncateString(name, avail)
+		fixed := lipgloss.Width(treeGuide) + lipgloss.Width(mark) + lipgloss.Width(icon) +
+			lipgloss.Width(modeStr) + lipgloss.Width(secret) + 2
+		nameSpace := width - rightWidth - fixed
+		if nameSpace >= 2 && len(name) > nameSpace {
+			name = truncateString(name, nameSpace)
 			left = fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
 			leftWidth = lipgloss.Width(left)
 		}
@@ -417,12 +422,17 @@ func (m model) renderPreviewBox(width, height int) string {
 	innerWidth := max(10, width-4)
 
 	if n.Kind == KindDir {
-		b.WriteString(hintStyle.Render(fmt.Sprintf("%d files, %d tokens",
-			n.FileCount(), n.TotalActiveTokens())))
-		b.WriteString("\n\n")
-		b.WriteString(hintStyle.Render("Press [Space] to toggle directory selection."))
-		b.WriteString("\n")
-		b.WriteString(hintStyle.Render("Press [Enter] or [l] to expand/collapse."))
+		innerRows := max(1, height-3)
+		lines := []string{
+			fmt.Sprintf("%d files, %d tokens", n.FileCount(), n.TotalActiveTokens()),
+			"",
+			"Press [Space] to toggle directory selection.",
+			"Press [Enter] or [l] to expand/collapse.",
+		}
+		for i := 0; i < len(lines) && i < innerRows; i++ {
+			b.WriteString(hintStyle.Render(lines[i]))
+			b.WriteString("\n")
+		}
 	} else {
 		content := n.Preview()
 		lines := strings.Split(string(content), "\n")
@@ -486,14 +496,13 @@ func (m model) renderFooter(width int) string {
 
 	var b strings.Builder
 	b.WriteString(strings.Repeat("─", width))
-	b.WriteString("\n")
 	if m.notice != "" {
-		b.WriteString(noticeStyle.Render(m.notice))
 		b.WriteString("\n")
+		b.WriteString(noticeStyle.Render(m.notice))
 	}
+	b.WriteString("\n")
 	b.WriteString(hintStyle.Render(fmt.Sprintf("%sStyle: %s | %d selected, %d tokens | %s",
 		budget, m.style, selected, active, keys)))
-	b.WriteString("\n")
 	return b.String()
 }
 
