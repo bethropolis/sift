@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,12 +13,15 @@ import (
 
 	"github.com/fatih/color"
 
+	"github.com/bethropolis/dir-dumper/internal/clipboard"
 	"github.com/bethropolis/dir-dumper/internal/config"
 	"github.com/bethropolis/dir-dumper/internal/format"
 	"github.com/bethropolis/dir-dumper/internal/ignore"
 	"github.com/bethropolis/dir-dumper/internal/logger"
+	"github.com/bethropolis/dir-dumper/internal/secrets"
 	"github.com/bethropolis/dir-dumper/internal/setup"
 	"github.com/bethropolis/dir-dumper/internal/summary"
+	"github.com/bethropolis/dir-dumper/internal/tokenize"
 	"github.com/bethropolis/dir-dumper/internal/walker"
 )
 
@@ -163,12 +167,23 @@ func (a *App) Run() error {
 	if err != nil {
 		return err
 	}
-	if a.cfg.JSONOutput || a.cfg.MarkdownOutput || format.ParseStyle(a.cfg.Style) != format.StylePlain {
-		a.log.Debug("Output style: %s", a.cfg.EffectiveStyle())
+	a.log.Debug("Output style: %s", a.cfg.EffectiveStyle())
+
+	// --- Create the token counter ---
+	tokenizer, err := tokenize.New(a.cfg.TokenizeModel)
+	if err != nil {
+		return err
+	}
+
+	// --- Create the secret scanner ---
+	var scanner *secrets.Scanner
+	if a.cfg.SecretScan && !a.cfg.ForceSecrets {
+		scanner = secrets.New()
 	}
 
 	var filesMu sync.Mutex
 	var files []format.FileEntry
+	var tokenTotal int64
 
 	// --- Define walk function ---
 	printFunc := func(relativePath string, content []byte, err error) error {
@@ -177,14 +192,30 @@ func (a *App) Run() error {
 			return nil // Error handled by logging
 		}
 
-		if content != nil { // Ensure content was actually read
-			filesMu.Lock()
-			files = append(files, format.FileEntry{Path: relativePath, Content: content})
-			filesMu.Unlock()
-		} else {
+		if content == nil {
 			// This case shouldn't happen if err is nil, but good to log if it does
 			a.log.Warn("printFunc called for '%s' with nil content and nil error.", relativePath)
+			return nil
 		}
+
+		// Redact secrets before the content is stored for rendering.
+		if scanner != nil {
+			redacted, detections := scanner.Redact(content)
+			for _, d := range detections {
+				a.log.Warn("Redacted %s in %s", d.RuleName, relativePath)
+			}
+			content = redacted
+		}
+
+		tokens, err := tokenizer.Count(content)
+		if err != nil {
+			a.log.Warn("Failed to count tokens for %s: %v", relativePath, err)
+		}
+
+		filesMu.Lock()
+		files = append(files, format.FileEntry{Path: relativePath, Content: content, Tokens: tokens})
+		tokenTotal += int64(tokens)
+		filesMu.Unlock()
 		return nil // Indicate success to walker
 	}
 
@@ -196,6 +227,17 @@ func (a *App) Run() error {
 
 	skippedItems, err := a.walkDirectory(absRootDir, matcher, printFunc, walkOptions)
 
+	// Apply the token budget, keeping the highest-priority files.
+	if a.cfg.Budget > 0 {
+		infoLog("Applying token budget: %d", a.cfg.Budget)
+	}
+	var usedTokens int
+	files, usedTokens = tokenize.FitToBudget(files, a.cfg.Budget)
+	tokenTotal = int64(usedTokens)
+	if a.cfg.Budget > 0 && len(files) == 0 {
+		a.log.Warn("Token budget %d is too small for any file.", a.cfg.Budget)
+	}
+
 	// Render whatever was collected, even if the walk stopped early, so the
 	// output stays well-formed (e.g. valid JSON on timeout).
 	paths := make([]string, 0, len(files))
@@ -205,8 +247,23 @@ func (a *App) Run() error {
 	doc := &format.Document{
 		DirectoryTree: format.BuildTree(paths),
 		Files:         files,
+		TotalTokens:   int(tokenTotal),
 	}
-	renderErr := renderer.Render(doc, a.output)
+
+	// --- Render output ---
+	if a.cfg.Clipboard {
+		var buf bytes.Buffer
+		renderErr := renderer.Render(doc, &buf)
+		if renderErr != nil {
+			a.log.Error("Error rendering output: %v", renderErr)
+		} else if err := clipboard.Copy(buf.Bytes()); err != nil {
+			a.log.Error("Failed to copy output to clipboard: %v", err)
+		} else {
+			infoLog("Copied %d files (%d tokens) to clipboard.", len(files), tokenTotal)
+		}
+	} else if renderErr := renderer.Render(doc, a.output); renderErr != nil {
+		a.log.Error("Error rendering output: %v", renderErr)
+	}
 
 	// --- Handle walk errors ---
 	if err != nil {
@@ -215,17 +272,11 @@ func (a *App) Run() error {
 		} else {
 			a.log.Error("Critical error during directory walk: %v", err)
 		}
-		if renderErr != nil {
-			a.log.Error("Error rendering output: %v", renderErr)
-		}
 		return err
-	}
-	if renderErr != nil {
-		return renderErr
 	}
 
 	// --- Show results summary ---
-	summary.DisplayResults(a.log, int64(len(files)), time.Since(startTime), a.cfg.Quiet)
+	summary.DisplayResults(a.log, int64(len(files)), tokenTotal, time.Since(startTime), a.cfg.Quiet)
 
 	// --- Show Skipped Items (if requested) ---
 	if a.cfg.ShowSkipped {

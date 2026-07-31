@@ -15,11 +15,13 @@ import (
 func DisplayResults(
 	logger utils.Logger,
 	fileCount int64,
+	totalTokens int64,
 	duration time.Duration,
 	quiet bool,
 ) {
 	if !quiet {
 		logger.Info("Found and processed %d files.", fileCount)
+		logger.Info("Total tokens: %d.", totalTokens)
 		logger.Info("Scan complete in %v.", duration.Round(time.Millisecond))
 	}
 }
