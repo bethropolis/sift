@@ -10,13 +10,14 @@ import (
 
 // WalkOptions configures the behavior of the Walk function
 type WalkOptions struct {
-	Logger       utils.Logger
-	Concurrent   bool
-	MaxWorkers   int
-	MaxFileSize  int64
-	ExtensionMap map[string]struct{}
-	Context      context.Context
-	ProgressFn   ProgressCallback // Add progress callback function
+	Logger        utils.Logger
+	Concurrent    bool
+	MaxWorkers    int
+	MaxFileSize   int64
+	ExtensionMap  map[string]struct{}
+	IncludeBinary bool
+	Context       context.Context
+	ProgressFn    ProgressCallback // Add progress callback function
 }
 
 // ProgressCallback is a function that receives progress updates
@@ -110,6 +111,14 @@ func WithContext(ctx context.Context) Option {
 		if ctx != nil {
 			opts.Context = ctx
 		}
+	}
+}
+
+// WithIncludeBinary controls whether binary files are included in the output.
+// By default binary files are skipped.
+func WithIncludeBinary(include bool) Option {
+	return func(opts *WalkOptions) {
+		opts.IncludeBinary = include
 	}
 }
 

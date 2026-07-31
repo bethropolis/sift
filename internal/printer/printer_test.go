@@ -62,10 +62,41 @@ func TestPrintFileMarkdown(t *testing.T) {
 	p.WithMarkdown(true)
 
 	p.PrintFile("a.txt", []byte("hello"))
+	p.PrintFile("b.go", []byte("package main"))
 
-	want := "file: a.txt\n\n```\nhello\n```\n\n"
+	want := "file: a.txt\n\n```\nhello\n```\n\n" +
+		"file: b.go\n\n```go\npackage main\n```\n\n"
 	if buf.String() != want {
 		t.Errorf("output = %q, want %q", buf.String(), want)
+	}
+}
+
+func TestPrintFileMarkdownFenceNegotiation(t *testing.T) {
+	var buf bytes.Buffer
+	p := New()
+	p.WithOutput(&buf)
+	p.WithMarkdown(true)
+
+	// Content contains a nested triple-backtick fence, so the enclosing fence
+	// must be one backtick longer.
+	p.PrintFile("doc.md", []byte("before\n```go\ncode\n```\nafter"))
+
+	want := "file: doc.md\n\n````markdown\nbefore\n```go\ncode\n```\nafter\n````\n\n"
+	if buf.String() != want {
+		t.Errorf("output = %q, want %q", buf.String(), want)
+	}
+}
+
+func TestFinalizeEmptyJSON(t *testing.T) {
+	var buf bytes.Buffer
+	p := New()
+	p.WithOutput(&buf)
+	p.WithJSON(true)
+
+	p.Finalize()
+
+	if got := buf.String(); got != "[]\n" {
+		t.Errorf("Finalize() output = %q, want %q", got, "[]\n")
 	}
 }
 

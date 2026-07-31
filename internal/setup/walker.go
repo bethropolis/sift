@@ -25,6 +25,7 @@ type WalkerConfig struct {
 	IgnoreHidden  bool
 	IgnoreGit     bool
 	CustomIgnore  string
+	IncludeBinary bool
 	ShowProgress  bool
 	Ctx           context.Context
 	Quiet         bool
@@ -139,6 +140,11 @@ func ConfigureWalker(cfg WalkerConfig, infoLog InfoLogger) (
 			extList = append(extList, ext)
 		}
 		walkOptions = append(walkOptions, walker.WithExtensions(extList))
+	}
+
+	// Add binary inclusion option if requested
+	if cfg.IncludeBinary {
+		walkOptions = append(walkOptions, walker.WithIncludeBinary(true))
 	}
 
 	// Convert MB to bytes for MaxFileSize if specified

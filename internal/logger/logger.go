@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -23,6 +24,7 @@ const (
 
 // Logger provides structured logging with levels
 type Logger struct {
+	mu          sync.Mutex
 	out         io.Writer
 	useColors   bool
 	level       LogLevel
@@ -79,45 +81,41 @@ func parseLogLevel(level string) LogLevel {
 // Debug logs a debug message if verbose mode is enabled
 func (l *Logger) Debug(format string, args ...interface{}) {
 	if l.level <= LevelDebug {
-		prefix := "DEBUG"
-		if l.useColors {
-			prefix = color.CyanString(prefix)
-		}
-		fmt.Fprintf(l.out, "[%s %s] %s\n", timeString(), prefix, fmt.Sprintf(format, args...))
+		l.write("DEBUG", color.CyanString, format, args...)
 	}
 }
 
 // Info logs an informational message (standard level)
 func (l *Logger) Info(format string, args ...interface{}) {
 	if l.level <= LevelInfo {
-		prefix := "INFO"
-		if l.useColors {
-			prefix = color.BlueString(prefix)
-		}
-		fmt.Fprintf(l.out, "[%s %s] %s\n", timeString(), prefix, fmt.Sprintf(format, args...))
+		l.write("INFO", color.BlueString, format, args...)
 	}
 }
 
 // Warn logs a warning message
 func (l *Logger) Warn(format string, args ...interface{}) {
 	if l.level <= LevelWarn {
-		prefix := "WARN"
-		if l.useColors {
-			prefix = color.YellowString(prefix)
-		}
-		fmt.Fprintf(l.out, "[%s %s] %s\n", timeString(), prefix, fmt.Sprintf(format, args...))
+		l.write("WARN", color.YellowString, format, args...)
 	}
 }
 
 // Error logs an error message
 func (l *Logger) Error(format string, args ...interface{}) {
 	if l.level <= LevelError {
-		prefix := "ERROR"
-		if l.useColors {
-			prefix = color.RedString(prefix)
-		}
-		fmt.Fprintf(l.out, "[%s %s] %s\n", timeString(), prefix, fmt.Sprintf(format, args...))
+		l.write("ERROR", color.RedString, format, args...)
 	}
+}
+
+// write emits a single formatted log line, serialized against concurrent writers.
+func (l *Logger) write(level string, colorize func(string, ...interface{}) string, format string, args ...interface{}) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	prefix := level
+	if l.useColors {
+		prefix = colorize(prefix)
+	}
+	fmt.Fprintf(l.out, "[%s %s] %s\n", timeString(), prefix, fmt.Sprintf(format, args...))
 }
 
 // timeString returns a formatted time string for the log prefix

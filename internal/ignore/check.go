@@ -41,7 +41,7 @@ func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 	}
 
 	// Special check for .git directory
-	if m.ignoreGit && isPathInGitDir(relativePath, isDir) {
+	if m.ignoreGit && isPathInGitDir(relativePath) {
 		m.logger.Debug("ignore.ShouldIgnore: Ignored %q (.git rule)", relativePath)
 		return true
 	}
@@ -75,15 +75,13 @@ func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 	return false
 }
 
-// isPathInGitDir checks if a path is inside a .git directory
-func isPathInGitDir(relativePath string, isDir bool) bool {
-	parts := strings.Split(filepath.ToSlash(relativePath), "/")
-	for i, part := range parts {
+// isPathInGitDir reports whether any path component is named ".git".
+// This covers both ".git" directories and Git submodule/worktree markers,
+// which are regular files named ".git" at the end of the path.
+func isPathInGitDir(relativePath string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(relativePath), "/") {
 		if part == ".git" {
-			// If .git is a directory component (not just a prefix of a filename)
-			if isDir || i < len(parts)-1 {
-				return true
-			}
+			return true
 		}
 	}
 	return false

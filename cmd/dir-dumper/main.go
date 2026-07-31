@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/bethropolis/dir-dumper/internal/app"
 	"github.com/bethropolis/dir-dumper/internal/config"
 )
@@ -12,9 +14,12 @@ func main() {
 	// Create and run the application
 	application := app.New(cfg)
 
-	// Run the application
-	application.Run()
+	err := application.Run()
 
 	// Clean up
 	application.Close()
+
+	if err != nil {
+		os.Exit(1)
+	}
 }

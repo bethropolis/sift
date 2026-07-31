@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -63,19 +64,20 @@ func New(cfg *config.Config) *App {
 
 // Close performs cleanup, such as closing the output file if one was opened.
 func (a *App) Close() {
-	if f, ok := a.output.(*os.File); ok {
+	if f, ok := a.output.(*os.File); ok && f != os.Stdout && f != os.Stderr {
 		f.Close()
 	}
 }
 
-// Run executes the main application logic
-func (a *App) Run() {
+// Run executes the main application logic.
+// It returns a non-nil error when the scan failed, including on timeout.
+func (a *App) Run() error {
 	startTime := time.Now() // Start timer for overall execution
 
 	// Show version and exit if requested
 	if a.cfg.ShowVersion {
 		fmt.Printf("dir-dumper version %s\n", a.cfg.Version)
-		os.Exit(0)
+		return nil
 	}
 
 	// Handle timeout if specified
@@ -84,19 +86,10 @@ func (a *App) Run() {
 
 	if a.cfg.Timeout > 0 {
 		ctx, cancel = context.WithTimeout(context.Background(), a.cfg.Timeout)
-		defer cancel()
-
-		go func() {
-			<-ctx.Done()
-			if ctx.Err() == context.DeadlineExceeded {
-				fmt.Fprintf(os.Stderr, "\nTimeout of %v reached. Exiting.\n", a.cfg.Timeout)
-				os.Exit(1)
-			}
-		}()
 	} else {
 		ctx, cancel = context.WithCancel(context.Background())
-		defer cancel()
 	}
+	defer cancel()
 
 	// Helper for info messages, suppressed by quiet flag
 	infoLog := func(format string, args ...interface{}) {
@@ -124,23 +117,19 @@ func (a *App) Run() {
 	// --- Directory validation ---
 	absRootDir, err := filepath.Abs(a.cfg.RootDir)
 	if err != nil {
-		a.log.Error("Invalid root directory path '%s': %v", a.cfg.RootDir, err)
-		os.Exit(1)
+		return fmt.Errorf("invalid root directory path '%s': %w", a.cfg.RootDir, err)
 	}
 
 	// Check if directory exists
 	dirInfo, err := os.Stat(absRootDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			a.log.Error("Root directory '%s' not found.", absRootDir)
-		} else {
-			a.log.Error("Could not access root directory '%s': %v", absRootDir, err)
+			return fmt.Errorf("root directory '%s' not found", absRootDir)
 		}
-		os.Exit(1)
+		return fmt.Errorf("could not access root directory '%s': %w", absRootDir, err)
 	}
 	if !dirInfo.IsDir() {
-		a.log.Error("Specified path '%s' is not a directory.", absRootDir)
-		os.Exit(1)
+		return fmt.Errorf("specified path '%s' is not a directory", absRootDir)
 	}
 
 	// Configure the walker using the setup package
@@ -153,6 +142,7 @@ func (a *App) Run() {
 		IgnoreHidden:  a.cfg.IgnoreHidden,
 		IgnoreGit:     a.cfg.IgnoreGit,
 		CustomIgnore:  a.cfg.CustomIgnore,
+		IncludeBinary: a.cfg.IncludeBinary,
 		ShowProgress:  a.cfg.ShowProgress,
 		Ctx:           ctx,
 		Quiet:         a.cfg.Quiet,
@@ -161,8 +151,7 @@ func (a *App) Run() {
 
 	matcher, walkOptions, err := setup.ConfigureWalker(walkerConfig, infoLog)
 	if err != nil {
-		a.log.Error("%v", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to configure walker: %w", err)
 	}
 
 	// --- Create the printer ---
@@ -215,22 +204,29 @@ func (a *App) Run() {
 
 	skippedItems, err := a.walkDirectory(absRootDir, matcher, printFunc, walkOptions)
 
+	// Finalize the printer so JSON output stays valid even when the walk
+	// stops early (e.g. on timeout or cancellation).
+	p.Finalize()
+
 	// --- Handle walk errors ---
 	if err != nil {
-		a.log.Error("Critical error during directory walk: %v", err)
-		os.Exit(1)
+		if errors.Is(err, context.DeadlineExceeded) {
+			a.log.Warn("Timeout of %v reached. Scan stopped.", a.cfg.Timeout)
+		} else {
+			a.log.Error("Critical error during directory walk: %v", err)
+		}
+		return err
 	}
 
 	// --- Show results summary ---
 	summary.DisplayResults(a.log, p.GetCount(), time.Since(startTime), a.cfg.Quiet)
 
-	// Finalize the printer (important for JSON output to close the array)
-	p.Finalize()
-
 	// --- Show Skipped Items (if requested) ---
 	if a.cfg.ShowSkipped {
 		summary.DisplaySkippedItems(a.log, skippedItems, os.Stderr, a.cfg.Quiet)
 	}
+
+	return nil
 }
 
 // walkDirectory is a helper method that performs the actual directory walk

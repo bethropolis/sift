@@ -19,6 +19,7 @@ const (
 	ReasonSkippedPermError  SkippedReason = "Skipped (Permission Error)"
 	ReasonSkippedWalkError  SkippedReason = "Skipped (Walk Error)"
 	ReasonSkippedReadError  SkippedReason = "Skipped (Read Error)"
+	ReasonSkippedBinary     SkippedReason = "Skipped (Binary File)"
 	ReasonSkippedInfoError  SkippedReason = "Skipped (File Info Error)"
 	ReasonSkippedPathError  SkippedReason = "Skipped (Path Calculation Error)"
 )

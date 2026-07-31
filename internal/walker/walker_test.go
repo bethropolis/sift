@@ -1,6 +1,7 @@
 package walker
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -132,5 +133,53 @@ func TestWalkContextCancellation(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("processed %d files with cancelled context, want 0", count)
+	}
+}
+
+func TestWalkBinaryFiles(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Write a file with a NUL byte in the first 512 bytes.
+	if err := os.WriteFile(filepath.Join(root, "data.bin"), []byte{0x00, 0x01, 0x02}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "ok.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Binary files are skipped by default.
+	got := collectWalk(t, root)
+	if len(got) != 1 || got[0] != "ok.txt" {
+		t.Errorf("got %v, want [ok.txt]", got)
+	}
+
+	// With WithIncludeBinary they are included.
+	got = collectWalk(t, root, WithIncludeBinary(true))
+	if len(got) != 2 {
+		t.Errorf("got %v, want [data.bin ok.txt]", got)
+	}
+}
+
+func TestIsBinary(t *testing.T) {
+	tests := []struct {
+		name    string
+		content []byte
+		want    bool
+	}{
+		{name: "empty", content: nil, want: false},
+		{name: "text", content: []byte("hello world"), want: false},
+		{name: "nul at start", content: []byte{0x00, 0x01}, want: true},
+		{name: "nul within first 512", content: append(bytes.Repeat([]byte("a"), 100), 0x00), want: true},
+		{name: "nul beyond 512 bytes not detected", content: append(bytes.Repeat([]byte("a"), 600), 0x00), want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isBinary(tc.content); got != tc.want {
+				t.Errorf("isBinary(%q) = %v, want %v", tc.content, got, tc.want)
+			}
+		})
 	}
 }

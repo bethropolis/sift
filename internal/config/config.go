@@ -31,10 +31,11 @@ type Config struct {
 	Timeout       time.Duration
 
 	// Filtering settings
-	IgnoreHidden bool
-	IgnoreGit    bool
-	CustomIgnore string
-	Extensions   string
+	IgnoreHidden  bool
+	IgnoreGit     bool
+	CustomIgnore  string
+	Extensions    string
+	IncludeBinary bool
 
 	// Output format
 	JSONOutput     bool
@@ -61,6 +62,7 @@ func New() *Config {
 	flag.Int64Var(&c.MaxFileSizeMB, "max-size", 0, "Max file size to process in MB (0 = no limit)")
 	flag.BoolVar(&c.IgnoreHidden, "hidden", true, "Ignore hidden files/directories (starting with '.')")
 	flag.BoolVar(&c.IgnoreGit, "git", true, "Ignore .git directories")
+	flag.BoolVar(&c.IncludeBinary, "binary", false, "Include binary files in output (default: skipped)")
 	flag.StringVar(&c.CustomIgnore, "ignore", "", "Custom ignore patterns (comma-separated, gitignore syntax)")
 	flag.StringVar(&c.Extensions, "ext", "", "Only include files with these extensions (comma-separated, e.g., 'go,md,txt')")
 	flag.BoolVar(&c.NoColor, "no-color", false, "Disable color output")

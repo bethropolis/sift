@@ -80,6 +80,8 @@ func TestShouldIgnoreGit(t *testing.T) {
 		{name: ".git dir", path: ".git", isDir: true, want: true},
 		{name: "file inside .git", path: ".git/config", want: true},
 		{name: "nested .git", path: "vendor/.git/HEAD", want: true},
+		{name: "submodule .git file", path: "submodule/.git", want: true},
+		{name: "file inside submodule", path: "submodule/src/main.go", want: false},
 		{name: ".gitignore file itself", path: ".gitignore", want: false},
 		{name: "unrelated file", path: "main.go", want: false},
 	}

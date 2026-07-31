@@ -15,6 +15,16 @@ import (
 	"github.com/bethropolis/dir-dumper/internal/ignore"
 )
 
+// walkStats holds atomic counters used for progress reporting.
+type walkStats struct {
+	totalFiles     atomic.Int64
+	processedFiles atomic.Int64
+	skippedFiles   atomic.Int64
+	totalDirs      atomic.Int64
+	skippedDirs    atomic.Int64
+	currentFile    atomic.Pointer[string]
+}
+
 // Walk traverses the directory tree starting from rootDir.
 // It returns a list of skipped items and any critical error that occurred.
 func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts ...Option) ([]SkippedItem, error) {
@@ -37,13 +47,7 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 	tracker := NewSkippedTracker(100)
 
 	// Create atomic counters for progress tracking
-	var stats struct {
-		totalFiles     atomic.Int64
-		processedFiles atomic.Int64
-		skippedFiles   atomic.Int64
-		totalDirs      atomic.Int64
-		skippedDirs    atomic.Int64
-	}
+	stats := &walkStats{}
 
 	// Start progress reporting if enabled
 	var progressCtx context.Context
@@ -54,7 +58,9 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 		progressCtx, progressCancel = context.WithCancel(context.Background())
 		defer progressCancel()
 
-		// Start a goroutine to periodically report progress
+		// Start a goroutine to periodically report progress.
+		// It is the only caller of ProgressFn, so progress output never races.
+		var printed atomic.Bool
 		go func() {
 			ticker := time.NewTicker(300 * time.Millisecond)
 			defer ticker.Stop()
@@ -62,15 +68,24 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 			for {
 				select {
 				case <-progressCtx.Done():
+					// Clear the progress line so it does not linger after the walk.
+					if printed.Load() {
+						fmt.Fprintln(os.Stderr)
+					}
 					return
 				case <-ticker.C:
-					// Report progress with current statistics
+					printed.Store(true)
+					current := ""
+					if cp := stats.currentFile.Load(); cp != nil {
+						current = *cp
+					}
 					options.ProgressFn(ProgressStats{
-						TotalFiles:     stats.totalFiles.Load(),
-						ProcessedFiles: stats.processedFiles.Load(),
-						SkippedFiles:   stats.skippedFiles.Load(),
-						TotalDirs:      stats.totalDirs.Load(),
-						SkippedDirs:    stats.skippedDirs.Load(),
+						CurrentFilePath: current,
+						TotalFiles:      stats.totalFiles.Load(),
+						ProcessedFiles:  stats.processedFiles.Load(),
+						SkippedFiles:    stats.skippedFiles.Load(),
+						TotalDirs:       stats.totalDirs.Load(),
+						SkippedDirs:     stats.skippedDirs.Load(),
 					})
 				}
 			}
@@ -182,7 +197,7 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 		options.Logger.Debug("Starting %d workers for concurrent processing.", options.MaxWorkers)
 		for i := 0; i < options.MaxWorkers; i++ {
 			wg.Add(1)
-			go fileProcessorWorker(i+1, filesChan, &wg, options, walkFn, tracker, &stats.processedFiles)
+			go fileProcessorWorker(i+1, filesChan, &wg, options, walkFn, tracker, stats)
 		}
 
 		// Use a goroutine to walk the directory tree and queue files
@@ -278,7 +293,7 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 				// Triple check - make sure this isn't the root dir or "."
 				if path != absRootDir && relativePath != "." {
 					options.Logger.Debug("Walker Processing Sequentially: File [%s]", relativePath)
-					processFile(path, relativePath, options, walkFn, tracker, &stats.processedFiles)
+					processFile(path, relativePath, options, walkFn, tracker, stats)
 				}
 			}
 			return nil

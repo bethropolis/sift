@@ -2,22 +2,16 @@
 package walker
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"sync"
-	"sync/atomic"
 )
 
 // processFile handles reading a file and calling the walkFn with its content
-func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc, tracker *SkippedTracker, processed *atomic.Int64) {
+func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc, tracker *SkippedTracker, stats *walkStats) {
 	options.Logger.Debug("processFile: Reading [%s]", relativePath)
-
-	// Update progress info with current file if progress reporting is enabled
-	if options.ProgressFn != nil {
-		options.ProgressFn(ProgressStats{
-			CurrentFilePath: relativePath,
-		})
-	}
+	stats.currentFile.Store(&relativePath)
 
 	// Only perform file stats if we have a size limit configured
 	if options.MaxFileSize > 0 {
@@ -53,15 +47,30 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 		return
 	}
 
+	// Skip binary files unless explicitly included
+	if !options.IncludeBinary && isBinary(content) {
+		options.Logger.Debug("processFile Skipping [%s]: Binary file detected", relativePath)
+		tracker.Track(relativePath, ReasonSkippedBinary, false)
+		return
+	}
+
 	// Call the walk function with the content
 	options.Logger.Debug("processFile Success [%s]: Read %d bytes. Calling walkFn.", relativePath, len(content))
 	if err := walkFn(relativePath, content, nil); err != nil {
 		options.Logger.Error("processFile Error [%s]: Callback function returned error: %v", relativePath, err)
 	}
 
-	if processed != nil {
-		processed.Add(1)
+	stats.processedFiles.Add(1)
+}
+
+// isBinary reports whether content looks like binary data by sniffing the
+// first 512 bytes for a NUL byte.
+func isBinary(content []byte) bool {
+	n := len(content)
+	if n > 512 {
+		n = 512
 	}
+	return bytes.IndexByte(content[:n], 0) != -1
 }
 
 // fileProcessorWorker is the goroutine function for concurrent processing.
@@ -72,20 +81,18 @@ func fileProcessorWorker(
 	options WalkOptions,
 	walkFn WalkFunc,
 	tracker *SkippedTracker,
-	processed *atomic.Int64,
+	stats *walkStats,
 ) {
 	defer wg.Done()
 	options.Logger.Debug("Worker %d: Started", id)
 
 	for item := range filesChan {
-		select {
-		case <-options.Context.Done():
+		if err := options.Context.Err(); err != nil {
 			options.Logger.Debug("Worker %d: Received cancellation signal", id)
 			return
-		default:
-			options.Logger.Debug("Worker %d: Processing file [%s]", id, item.relativePath)
-			processFile(item.path, item.relativePath, options, walkFn, tracker, processed)
 		}
+		options.Logger.Debug("Worker %d: Processing file [%s]", id, item.relativePath)
+		processFile(item.path, item.relativePath, options, walkFn, tracker, stats)
 	}
 
 	options.Logger.Debug("Worker %d: Finished", id)
