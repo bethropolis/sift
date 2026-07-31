@@ -60,7 +60,7 @@ func newModel(root *TreeNode, opts Options) model {
 
 func (m *model) recomputeRows() {
 	m.rows = m.root.VisibleRows(m.filter)
-	if m.cursor > len(m.rows) {
+	if m.cursor >= len(m.rows) {
 		m.cursor = len(m.rows) - 1
 	}
 	if m.cursor < 0 {
@@ -243,55 +243,82 @@ func (m *model) copy() {
 }
 
 func (m *model) clampOffset() {
-	rows := m.height - headerLines - footerLines
-	if rows < 1 {
-		rows = 1
+	footerHeight := 3
+	if m.notice != "" {
+		footerHeight = 4
 	}
+	bodyHeight := max(5, m.height-footerHeight)
+	innerRows := max(1, bodyHeight-3)
+
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	}
-	if m.cursor >= m.offset+rows {
-		m.offset = m.cursor - rows + 1
+	if m.cursor >= m.offset+innerRows {
+		m.offset = m.cursor - innerRows + 1
 	}
 }
 
 func (m model) View() string {
-	width := max(0, min(m.width, 160))
-	leftWidth := width / 2
+	width := max(20, m.width)
+	height := max(10, m.height)
+
+	leftWidth := width * 42 / 100
+	if leftWidth < 32 {
+		leftWidth = 32
+	}
+	if leftWidth > width-35 {
+		leftWidth = width - 35
+	}
+	if leftWidth < 20 {
+		leftWidth = width / 2
+	}
 	rightWidth := width - leftWidth
 
-	left := m.renderTree(leftWidth)
-	right := m.renderPreview(rightWidth)
-	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	footerHeight := 3
+	if m.notice != "" {
+		footerHeight = 4
+	}
+	bodyHeight := max(5, height-footerHeight)
 
+	leftBox := m.renderTreeBox(leftWidth, bodyHeight)
+	rightBox := m.renderPreviewBox(rightWidth, bodyHeight)
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 	footer := m.renderFooter(width)
 	return body + "\n" + footer
 }
 
-func (m model) renderTree(width int) string {
+func (m model) renderTreeBox(width, height int) string {
+	boxStyle := lipgloss.NewStyle().
+		Width(max(1, width-2)).
+		Height(max(1, height-2)).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62"))
+
 	var b strings.Builder
-	title := fmt.Sprintf(" %s Directory Tree (%d files, %d tokens) ",
-		m.glyphs.FolderOpen, m.root.FileCount(), m.root.TotalActiveTokens())
+	title := fmt.Sprintf(" Explorer (%d files, %d tok) ",
+		m.root.FileCount(), m.root.TotalActiveTokens())
+	if m.glyphs.FolderOpen != "" {
+		title = fmt.Sprintf(" %sExplorer (%d files, %d tok) ",
+			m.glyphs.FolderOpen, m.root.FileCount(), m.root.TotalActiveTokens())
+	}
 	b.WriteString(titleStyle.Render(title))
 	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", width))
-	b.WriteString("\n")
 
-	rows := m.height - headerLines - footerLines
-	if rows < 1 {
-		rows = 1
-	}
-	end := min(len(m.rows), m.offset+rows)
+	innerRows := max(1, height-3)
+	end := min(len(m.rows), m.offset+innerRows)
+	innerWidth := max(10, width-4)
+
 	for i := m.offset; i < end; i++ {
-		b.WriteString(m.treeRow(m.rows[i], width))
+		b.WriteString(m.treeRow(m.rows[i], innerWidth))
 		b.WriteString("\n")
 	}
-	return lipgloss.NewStyle().Width(width).Render(b.String())
+
+	return boxStyle.Render(b.String())
 }
 
 func (m model) treeRow(n *TreeNode, width int) string {
-	depth := n.depth() - 1
-	indent := strings.Repeat("  ", max(0, depth))
+	prefix := n.TreePrefix(m.glyphs)
 
 	var mark string
 	switch n.SelectState {
@@ -312,6 +339,7 @@ func (m model) treeRow(n *TreeNode, width int) string {
 			icon = m.glyphs.FolderOpen
 		}
 		name += "/"
+		tokens = n.TotalActiveTokens()
 	} else if n.Mode == ModeFull {
 		tokens = n.TokensFull
 	}
@@ -321,9 +349,35 @@ func (m model) treeRow(n *TreeNode, width int) string {
 		secret = " " + warningStyle.Render(m.glyphs.Warning)
 	}
 
-	left := fmt.Sprintf(" %s %s %s %s", mark, icon, indent+name, secret)
+	modeStr := ""
+	if n.Kind == KindFile {
+		switch n.Mode {
+		case ModeFull:
+			modeStr = " " + modeFullStyle.Render(m.glyphs.ModeFull)
+		case ModeSignatures:
+			modeStr = " " + modeSigStyle.Render(m.glyphs.ModeSigns)
+		case ModeSkip:
+			modeStr = " " + modeSkipStyle.Render(m.glyphs.ModeSkip)
+		}
+	}
+
+	treeGuide := treeGuideStyle.Render(prefix)
+	left := fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
 	right := fmt.Sprintf("%6d tok", tokens)
-	pad := max(4, width-lipgloss.Width(left)-lipgloss.Width(right))
+
+	leftWidth := lipgloss.Width(left)
+	rightWidth := lipgloss.Width(right)
+
+	if leftWidth+rightWidth > width {
+		avail := width - rightWidth - lipgloss.Width(treeGuide) - lipgloss.Width(mark) - lipgloss.Width(icon) - lipgloss.Width(modeStr) - lipgloss.Width(secret) - 3
+		if avail > 4 && len(name) > avail {
+			name = truncateString(name, avail)
+			left = fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
+			leftWidth = lipgloss.Width(left)
+		}
+	}
+
+	pad := max(1, width-leftWidth-rightWidth)
 	row := left + strings.Repeat(" ", pad) + right
 
 	if n == m.node() {
@@ -335,45 +389,76 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	return row
 }
 
-func (m model) renderPreview(width int) string {
+func (m model) renderPreviewBox(width, height int) string {
+	boxStyle := lipgloss.NewStyle().
+		Width(max(1, width-2)).
+		Height(max(1, height-2)).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(0, 1)
+
 	var b strings.Builder
 	n := m.node()
-	if n == nil {
-		return lipgloss.NewStyle().Width(width).Render(b.String())
-	}
 
 	title := " Preview "
-	if n.Kind == KindFile {
-		title = fmt.Sprintf(" %s Preview: %s ", m.glyphs.File, n.Path)
+	if n != nil && n.Kind == KindFile {
+		title = fmt.Sprintf(" %sPreview: %s ", m.glyphs.File, n.Path)
+	} else if n != nil && n.Kind == KindDir {
+		title = fmt.Sprintf(" %sFolder: %s/ ", m.glyphs.FolderOpen, n.Path)
 	}
 	b.WriteString(titleStyle.Render(title))
 	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", width))
-	b.WriteString("\n")
+
+	if n == nil {
+		b.WriteString(hintStyle.Render("No file selected"))
+		return boxStyle.Render(b.String())
+	}
+
+	innerWidth := max(10, width-4)
 
 	if n.Kind == KindDir {
-		b.WriteString(hintStyle.Render(fmt.Sprintf("  %s %d files, %d tokens",
-			m.glyphs.FolderOpen, n.FileCount(), n.TotalActiveTokens())))
+		b.WriteString(hintStyle.Render(fmt.Sprintf("%d files, %d tokens",
+			n.FileCount(), n.TotalActiveTokens())))
+		b.WriteString("\n\n")
+		b.WriteString(hintStyle.Render("Press [Space] to toggle directory selection."))
+		b.WriteString("\n")
+		b.WriteString(hintStyle.Render("Press [Enter] or [l] to expand/collapse."))
 	} else {
 		content := n.Preview()
 		lines := strings.Split(string(content), "\n")
-		rows := m.height - headerLines - footerLines - 1
-		if rows < 1 {
-			rows = 1
+
+		innerRows := max(1, height-3)
+		if n.SecretCount > 0 {
+			innerRows--
 		}
-		for _, line := range lines {
-			if len(strings.Split(b.String(), "\n")) >= rows+2 {
-				break
+
+		maxLines := min(len(lines), innerRows)
+		for i := 0; i < maxLines; i++ {
+			lineNo := i + 1
+			lineText := lines[i]
+
+			prefix := fmt.Sprintf("%3d │ ", lineNo)
+			prefixWidth := lipgloss.Width(prefix)
+			maxLen := max(1, innerWidth-prefixWidth)
+
+			lineText = strings.ReplaceAll(lineText, "\t", "    ")
+			if lipgloss.Width(lineText) > maxLen {
+				lineText = truncateString(lineText, maxLen)
 			}
-			b.WriteString(line)
+
+			b.WriteString(dimStyle.Render(prefix))
+			b.WriteString(lineText)
 			b.WriteString("\n")
 		}
+
 		if n.SecretCount > 0 {
-			b.WriteString(warningStyle.Render(fmt.Sprintf(" %s Warning: %d secret detected in this file",
+			b.WriteString(warningStyle.Render(fmt.Sprintf("%sWarning: %d secret(s) detected in this file",
 				m.glyphs.Warning, n.SecretCount)))
+			b.WriteString("\n")
 		}
 	}
-	return lipgloss.NewStyle().Width(width).Render(b.String())
+
+	return boxStyle.Render(b.String())
 }
 
 func (m model) renderFooter(width int) string {
@@ -429,16 +514,36 @@ func (n *TreeNode) Preview() []byte {
 	return n.Content
 }
 
+func truncateString(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	if maxLen == 1 {
+		return "…"
+	}
+	return string(runes[:maxLen-1]) + "…"
+}
+
 const headerLines = 2
 const footerLines = 2
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	hintStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	cursorStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10"))
-	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	warningStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
-	noticeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	titleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
+	hintStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	dimStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	treeGuideStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("239"))
+	cursorStyle    = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15"))
+	selectedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	warningStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
+	noticeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+
+	modeFullStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // Green
+	modeSigStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("11")) // Yellow
+	modeSkipStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))  // Red
 )
 
 func max(a, b int) int {

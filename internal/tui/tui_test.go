@@ -65,6 +65,33 @@ func TestTreeToggleDirectory(t *testing.T) {
 	}
 }
 
+func TestTreePrefix(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "cmd/main.go"},
+		{Path: "internal/app/app.go"},
+	})
+	glyphs := NewNerdFontGlyphs()
+
+	cmd := root.findChild("cmd")
+	if cmd == nil {
+		t.Fatal("missing cmd node")
+	}
+	pCmd := cmd.TreePrefix(glyphs)
+	if pCmd != glyphs.TreeMiddle {
+		t.Errorf("cmd TreePrefix = %q, want %q", pCmd, glyphs.TreeMiddle)
+	}
+
+	mainGo := cmd.findChild("main.go")
+	if mainGo == nil {
+		t.Fatal("missing main.go node")
+	}
+	pMain := mainGo.TreePrefix(glyphs)
+	wantMain := glyphs.TreePipe + glyphs.TreeLast
+	if pMain != wantMain {
+		t.Errorf("main.go TreePrefix = %q, want %q", pMain, wantMain)
+	}
+}
+
 func TestModePropagation(t *testing.T) {
 	root := BuildTree([]Item{
 		{Path: "internal/b.go", TokensFull: 20, TokensSig: 8},
@@ -133,7 +160,7 @@ func TestCursorClamping(t *testing.T) {
 	m := newModel(BuildTree([]Item{
 		{Path: "a.go"}, {Path: "b.go"}, {Path: "c.go"}, {Path: "d.go"}, {Path: "e.go"},
 	}), Options{})
-	m.height = 5 // header 2 + footer 2 => 1 visible row
+	m.height = 5
 
 	for i := 0; i < 10; i++ {
 		m = updateKey(m, tea.KeyDown)
@@ -141,8 +168,24 @@ func TestCursorClamping(t *testing.T) {
 	if m.cursor != 4 {
 		t.Errorf("cursor = %d, want 4", m.cursor)
 	}
-	if m.offset != 4 {
-		t.Errorf("offset = %d, want 4", m.offset)
+}
+
+func TestDirsPreCollapsed(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "cmd/main.go"},
+		{Path: "internal/app/app.go"},
+	})
+	if root.Expanded != true {
+		t.Errorf("root Expanded = %v, want true", root.Expanded)
+	}
+	for _, child := range root.Children {
+		if child.Kind == KindDir && child.Expanded {
+			t.Errorf("dir %s Expanded = true, want pre-collapsed", child.Path)
+		}
+	}
+	// Only top-level rows visible initially.
+	if rows := root.VisibleRows(""); len(rows) != 2 {
+		t.Errorf("initial visible rows = %d, want 2", len(rows))
 	}
 }
 

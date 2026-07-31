@@ -117,7 +117,9 @@ func BuildTree(items []Item) *TreeNode {
 					child.Kind = KindFile
 				} else {
 					child.Kind = KindDir
-					child.Expanded = true
+					// Directories start collapsed so the initial view shows a
+					// tidy top level; expand with Enter, l, or Right.
+					child.Expanded = false
 				}
 				cur.Children = append(cur.Children, child)
 			}
@@ -148,6 +150,50 @@ func (n *TreeNode) findChild(name string) *TreeNode {
 		}
 	}
 	return nil
+}
+
+// TreePrefix computes the hierarchical guide lines prefix (e.g. "│   ├── ")
+// for node rendering in the explorer view.
+func (n *TreeNode) TreePrefix(g Glyphs) string {
+	if n.Parent == nil || n.Parent.Parent == nil {
+		if n.Parent == nil {
+			return ""
+		}
+		if n.isLastSibling() {
+			return g.TreeLast
+		}
+		return g.TreeMiddle
+	}
+
+	var ancestors []*TreeNode
+	for p := n.Parent; p != nil && p.Parent != nil; p = p.Parent {
+		ancestors = append(ancestors, p)
+	}
+
+	var sb strings.Builder
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		anc := ancestors[i]
+		if anc.isLastSibling() {
+			sb.WriteString(g.TreeSpace)
+		} else {
+			sb.WriteString(g.TreePipe)
+		}
+	}
+
+	if n.isLastSibling() {
+		sb.WriteString(g.TreeLast)
+	} else {
+		sb.WriteString(g.TreeMiddle)
+	}
+
+	return sb.String()
+}
+
+func (n *TreeNode) isLastSibling() bool {
+	if n.Parent == nil || len(n.Parent.Children) == 0 {
+		return true
+	}
+	return n.Parent.Children[len(n.Parent.Children)-1] == n
 }
 
 // sortTree orders children: directories first, then files, alphabetically.
