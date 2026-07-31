@@ -19,8 +19,11 @@ func TestNewDefaults(t *testing.T) {
 	if !c.SecretScan {
 		t.Error("SecretScan default = false, want true")
 	}
-	if c.Style != "plain" {
-		t.Errorf("Style default = %q, want plain", c.Style)
+	if c.Style != "markdown" {
+		t.Errorf("Style default = %q, want markdown", c.Style)
+	}
+	if c.OutputFile != "codebase.md" {
+		t.Errorf("OutputFile default = %q, want codebase.md", c.OutputFile)
 	}
 }
 

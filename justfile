@@ -36,9 +36,13 @@ test:
 test-race:
   go test -race ./...
 
-# Build and scan the current directory (plain text)
-run:
+# Write the default codebase.md for the current directory
+dump:
   go run {{ pkg }} dump .
+
+# Preview the current directory on stdout (no file)
+run:
+  go run {{ pkg }} dump . --output -
 
 # Launch the interactive file picker
 pick:

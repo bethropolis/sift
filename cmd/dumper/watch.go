@@ -56,12 +56,7 @@ var watchCmd = &cobra.Command{
 			return err
 		}
 
-		outputPath := ""
-		if cfg.OutputFile != "" {
-			if p, absErr := filepath.Abs(cfg.OutputFile); absErr == nil {
-				outputPath = p
-			}
-		}
+		outputPath := application.OutputPath()
 		ignore := func(path string) bool {
 			if strings.Contains(path, string(filepath.Separator)+".git") {
 				return true

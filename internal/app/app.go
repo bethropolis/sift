@@ -34,6 +34,11 @@ type App struct {
 	log    *logger.Logger
 	output io.Writer
 
+	// outputPath is the absolute path of the output file, or "" for stdout.
+	// Files matching it are excluded from the walk so the dump never contains
+	// itself.
+	outputPath string
+
 	// OnlyPaths, when non-nil, restricts the walk to these relative paths.
 	// Used by dumper diff to dump a curated set of files.
 	OnlyPaths map[string]bool
@@ -47,10 +52,24 @@ func New(cfg *config.Config) *App {
 	// Configure color globally
 	color.NoColor = !cfg.UseColors
 
-	// Set up output destination
+	// Set up output destination. A dash means stdout; otherwise the dump is
+	// written to a file (codebase.md by default). Relative paths resolve
+	// against the scanned root so the dump lands next to the codebase.
 	var output io.Writer = os.Stdout
-	if cfg.OutputFile != "" {
-		file, err := os.Create(cfg.OutputFile)
+	var outputPath string
+	if cfg.OutputFile != "" && cfg.OutputFile != "-" {
+		outputPath = cfg.OutputFile
+		if !filepath.IsAbs(outputPath) {
+			base := cfg.RootDir
+			if base == "" {
+				base = "."
+			}
+			if absBase, err := filepath.Abs(base); err == nil {
+				outputPath = filepath.Join(absBase, outputPath)
+			}
+		}
+		outputPath, _ = filepath.Abs(outputPath)
+		file, err := os.Create(outputPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: Failed to create output file: %v\n", err)
 			os.Exit(1)
@@ -71,9 +90,10 @@ func New(cfg *config.Config) *App {
 	}
 
 	return &App{
-		cfg:    cfg,
-		log:    log,
-		output: output,
+		cfg:        cfg,
+		log:        log,
+		output:     output,
+		outputPath: outputPath,
 	}
 }
 
@@ -94,6 +114,12 @@ func (a *App) infoLog(format string, args ...interface{}) {
 // LogError logs an error message through the app's logger.
 func (a *App) LogError(format string, args ...interface{}) {
 	a.log.Error(format, args...)
+}
+
+// OutputPath returns the absolute path of the output file, or "" when writing
+// to stdout.
+func (a *App) OutputPath() string {
+	return a.outputPath
 }
 
 // Run executes the main application logic.
@@ -219,6 +245,13 @@ func (a *App) Collect() ([]format.FileEntry, []walker.SkippedItem, error) {
 
 		if a.OnlyPaths != nil && !a.OnlyPaths[filepath.ToSlash(relativePath)] {
 			return nil
+		}
+
+		if a.outputPath != "" {
+			absFile := filepath.Join(absRootDir, filepath.FromSlash(relativePath))
+			if filepath.Clean(absFile) == filepath.Clean(a.outputPath) {
+				return nil
+			}
 		}
 
 		// Redact secrets before the content is stored for rendering.

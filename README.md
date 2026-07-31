@@ -8,10 +8,10 @@
 
 `dumper` is a command-line tool written in Go that turns a project directory
 into a single LLM-ready context document. It walks the tree, respects
-`.gitignore` rules, and renders the contents in plain text, Markdown, JSON, or
-XML — with optional token budgeting, secret redaction, signature-only
-compression, and git-relevance ranking so the most important context fits in a
-model's window.
+`.gitignore` rules, and renders the contents to a `codebase.md` file (or to
+stdout with `--output -`) in plain text, Markdown, JSON, or XML — with optional
+token budgeting, secret redaction, signature-only compression, and
+git-relevance ranking so the most important context fits in a model's window.
 
 ## Features
 
@@ -53,8 +53,10 @@ dumper watch [path] # re-render the document on file changes
 ```
 
 Running `dumper` with no subcommand (in a terminal) launches the interactive
-file picker; otherwise the help text is shown. By default `dumper dump` scans
-the current directory and prints plain text to stdout.
+file picker; otherwise the help text is shown. `dumper dump` scans the current
+directory and writes the result to `codebase.md` (Markdown by default) next to
+the scanned root; use `--output -` to print to stdout instead. The output file
+is excluded from the scan so it never contains itself.
 
 ### Examples
 
@@ -85,7 +87,7 @@ dumper pick
 -style string               Output style: plain, markdown, json, xml
 -json                       Legacy: output JSON (same as --style json)
 -markdown                   Legacy: output Markdown
--output string              Output to file instead of stdout
+-output string              Output file (default "codebase.md", use "-" for stdout)
 -clipboard                  Copy the rendered output to the system clipboard
 -budget int                 Maximum token budget (0 = no limit)
 -tokenize-model string      Tokenizer model encoding (default: cl100k_base)

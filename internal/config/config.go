@@ -67,7 +67,8 @@ func New() *Config {
 		IgnoreHidden: true,
 		IgnoreGit:    true,
 		SecretScan:   true,
-		Style:        "plain",
+		Style:        "markdown",
+		OutputFile:   "codebase.md",
 		MaxWorkers:   runtime.NumCPU(),
 	}
 }
@@ -108,7 +109,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.StringVar(&c.Extensions, "ext", c.Extensions, "Only include files with these extensions (comma-separated, e.g., 'go,md,txt')")
 	fs.BoolVar(&c.IncludeBinary, "binary", c.IncludeBinary, "Include binary files in output (default: skipped)")
 	fs.BoolVar(&c.NoColor, "no-color", c.NoColor, "Disable color output")
-	fs.StringVar(&c.OutputFile, "output", c.OutputFile, "Output to file instead of stdout")
+	fs.StringVar(&c.OutputFile, "output", c.OutputFile, "Output file (default \"codebase.md\", use \"-\" for stdout)")
 	fs.BoolVar(&c.ShowProgress, "progress", c.ShowProgress, "Show progress information")
 	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, "Maximum execution time (e.g., '30s', '5m')")
 	fs.BoolVar(&c.ShowSkipped, "show-skipped", c.ShowSkipped, "Show a list of skipped files/directories and reasons at the end")
