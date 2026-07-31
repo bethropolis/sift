@@ -84,6 +84,18 @@ func (a *App) Close() {
 	}
 }
 
+// infoLog logs at INFO level unless quiet mode is active.
+func (a *App) infoLog(format string, args ...interface{}) {
+	if !a.cfg.Quiet {
+		a.log.Info(format, args...)
+	}
+}
+
+// LogError logs an error message through the app's logger.
+func (a *App) LogError(format string, args ...interface{}) {
+	a.log.Error(format, args...)
+}
+
 // Run executes the main application logic.
 // It returns a non-nil error when the scan failed, including on timeout.
 func (a *App) Run() error {
@@ -93,24 +105,6 @@ func (a *App) Run() error {
 	if a.cfg.ShowVersion {
 		fmt.Printf("dir-dumper version %s\n", a.cfg.Version)
 		return nil
-	}
-
-	// Handle timeout if specified
-	var ctx context.Context
-	var cancel context.CancelFunc
-
-	if a.cfg.Timeout > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), a.cfg.Timeout)
-	} else {
-		ctx, cancel = context.WithCancel(context.Background())
-	}
-	defer cancel()
-
-	// Helper for info messages, suppressed by quiet flag
-	infoLog := func(format string, args ...interface{}) {
-		if !a.cfg.Quiet {
-			a.log.Info(format, args...)
-		}
 	}
 
 	if a.log.VerboseMode {
@@ -129,22 +123,41 @@ func (a *App) Run() error {
 		}
 	}
 
+	files, skippedItems, err := a.Collect()
+	return a.Render(files, skippedItems, time.Since(startTime), err)
+}
+
+// Collect walks and processes the configured directory, returning the
+// collected file entries ordered by git relevance. The token budget is
+// deliberately not applied here so callers can curate the selection first.
+func (a *App) Collect() ([]format.FileEntry, []walker.SkippedItem, error) {
+	// Handle timeout if specified
+	var ctx context.Context
+	var cancel context.CancelFunc
+
+	if a.cfg.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), a.cfg.Timeout)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
+	defer cancel()
+
 	// --- Directory validation ---
 	absRootDir, err := filepath.Abs(a.cfg.RootDir)
 	if err != nil {
-		return fmt.Errorf("invalid root directory path '%s': %w", a.cfg.RootDir, err)
+		return nil, nil, fmt.Errorf("invalid root directory path '%s': %w", a.cfg.RootDir, err)
 	}
 
 	// Check if directory exists
 	dirInfo, err := os.Stat(absRootDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("root directory '%s' not found", absRootDir)
+			return nil, nil, fmt.Errorf("root directory '%s' not found", absRootDir)
 		}
-		return fmt.Errorf("could not access root directory '%s': %w", absRootDir, err)
+		return nil, nil, fmt.Errorf("could not access root directory '%s': %w", absRootDir, err)
 	}
 	if !dirInfo.IsDir() {
-		return fmt.Errorf("specified path '%s' is not a directory", absRootDir)
+		return nil, nil, fmt.Errorf("specified path '%s' is not a directory", absRootDir)
 	}
 
 	// Configure the walker using the setup package
@@ -164,22 +177,15 @@ func (a *App) Run() error {
 		Logger:        a.log,
 	}
 
-	matcher, walkOptions, err := setup.ConfigureWalker(walkerConfig, infoLog)
+	matcher, walkOptions, err := setup.ConfigureWalker(walkerConfig, a.infoLog)
 	if err != nil {
-		return fmt.Errorf("failed to configure walker: %w", err)
+		return nil, nil, fmt.Errorf("failed to configure walker: %w", err)
 	}
-
-	// --- Create the renderer ---
-	renderer, err := format.NewRenderer(format.ParseStyle(a.cfg.EffectiveStyle()), a.cfg.UseColors)
-	if err != nil {
-		return err
-	}
-	a.log.Debug("Output style: %s", a.cfg.EffectiveStyle())
 
 	// --- Create the token counter ---
 	tokenizer, err := tokenize.New(a.cfg.TokenizeModel)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	// --- Create the secret scanner ---
@@ -197,7 +203,6 @@ func (a *App) Run() error {
 
 	var filesMu sync.Mutex
 	var files []format.FileEntry
-	var tokenTotal int64
 
 	// --- Define walk function ---
 	printFunc := func(relativePath string, content []byte, err error) error {
@@ -244,15 +249,14 @@ func (a *App) Run() error {
 
 		filesMu.Lock()
 		files = append(files, entry)
-		tokenTotal += int64(tokens)
 		filesMu.Unlock()
 		return nil // Indicate success to walker
 	}
 
 	// --- Start the directory walk ---
-	infoLog("Scanning directory: %s", absRootDir)
+	a.infoLog("Scanning directory: %s", absRootDir)
 	if a.cfg.Concurrent {
-		infoLog("Using concurrent processing with %d workers.", a.cfg.MaxWorkers)
+		a.infoLog("Using concurrent processing with %d workers.", a.cfg.MaxWorkers)
 	}
 
 	skippedItems, err := a.walkDirectory(absRootDir, matcher, printFunc, walkOptions)
@@ -271,19 +275,31 @@ func (a *App) Run() error {
 		})
 	}
 
+	return files, skippedItems, err
+}
+
+// Render applies the token budget to files and writes the rendered document.
+// A non-nil runErr from Collect is reported but rendering still happens so the
+// output stays well-formed (e.g. valid JSON on timeout).
+func (a *App) Render(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) error {
+	// --- Create the renderer ---
+	renderer, err := format.NewRenderer(format.ParseStyle(a.cfg.EffectiveStyle()), a.cfg.UseColors)
+	if err != nil {
+		return err
+	}
+	a.log.Debug("Output style: %s", a.cfg.EffectiveStyle())
+
 	// Apply the token budget, keeping the highest-priority files.
 	if a.cfg.Budget > 0 {
-		infoLog("Applying token budget: %d", a.cfg.Budget)
+		a.infoLog("Applying token budget: %d", a.cfg.Budget)
 	}
 	var usedTokens int
 	files, usedTokens = tokenize.FitToBudget(files, a.cfg.Budget)
-	tokenTotal = int64(usedTokens)
+	tokenTotal := int64(usedTokens)
 	if a.cfg.Budget > 0 && len(files) == 0 {
 		a.log.Warn("Token budget %d is too small for any file.", a.cfg.Budget)
 	}
 
-	// Render whatever was collected, even if the walk stopped early, so the
-	// output stays well-formed (e.g. valid JSON on timeout).
 	paths := make([]string, 0, len(files))
 	for _, f := range files {
 		paths = append(paths, f.Path)
@@ -303,24 +319,24 @@ func (a *App) Run() error {
 		} else if err := clipboard.Copy(buf.Bytes()); err != nil {
 			a.log.Error("Failed to copy output to clipboard: %v", err)
 		} else {
-			infoLog("Copied %d files (%d tokens) to clipboard.", len(files), tokenTotal)
+			a.infoLog("Copied %d files (%d tokens) to clipboard.", len(files), tokenTotal)
 		}
 	} else if renderErr := renderer.Render(doc, a.output); renderErr != nil {
 		a.log.Error("Error rendering output: %v", renderErr)
 	}
 
 	// --- Handle walk errors ---
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
+	if runErr != nil {
+		if errors.Is(runErr, context.DeadlineExceeded) {
 			a.log.Warn("Timeout of %v reached. Scan stopped.", a.cfg.Timeout)
 		} else {
-			a.log.Error("Critical error during directory walk: %v", err)
+			a.log.Error("Critical error during directory walk: %v", runErr)
 		}
-		return err
+		return runErr
 	}
 
 	// --- Show results summary ---
-	summary.DisplayResults(a.log, int64(len(files)), tokenTotal, time.Since(startTime), a.cfg.Quiet)
+	summary.DisplayResults(a.log, int64(len(files)), tokenTotal, duration, a.cfg.Quiet)
 
 	// --- Show Skipped Items (if requested) ---
 	if a.cfg.ShowSkipped {
