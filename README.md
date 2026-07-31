@@ -31,6 +31,8 @@ git-relevance ranking so the most important context fits in a model's window.
     *   A right-hand preview pane with secret warning badges.
     *   `s` smart auto-select by git relevance, `/` fuzzy filter, `y` clipboard copy.
     *   Nerd Font glyphs by default, plain ASCII with `--no-nerd-fonts`.
+    *   Tree guide lines (`│ ├── └──`), folder icons before each name, and
+        directories starting collapsed for a tidy top-level view.
 *   **Prompt Directives:** `--prompt` (or `-p`) prepends a task/instructions
     section to any output format, so the document arrives with its mission.
 *   **Subcommands:** `dump`, `pick` (interactive TUI), `diff [ref]`, and `watch`.
