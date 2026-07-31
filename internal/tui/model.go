@@ -306,15 +306,14 @@ func (m model) renderTreeBox(width, height int) string {
 			m.glyphs.FolderOpen, m.root.FileCount(), m.root.TotalActiveTokens())
 	}
 	b.WriteString(titleStyle.Render(title))
-	b.WriteString("\n")
 
 	innerRows := max(1, height-3)
 	end := min(len(m.rows), m.offset+innerRows)
 	innerWidth := max(10, width-4)
 
 	for i := m.offset; i < end; i++ {
-		b.WriteString(m.treeRow(m.rows[i], innerWidth))
 		b.WriteString("\n")
+		b.WriteString(m.treeRow(m.rows[i], innerWidth))
 	}
 
 	return boxStyle.Render(b.String())
@@ -382,7 +381,7 @@ func (m model) treeRow(n *TreeNode, width int) string {
 		}
 	}
 
-	pad := max(1, width-leftWidth-rightWidth)
+	pad := max(0, width-leftWidth-rightWidth)
 	row := left + strings.Repeat(" ", pad) + right
 
 	if n == m.node() {
@@ -412,9 +411,9 @@ func (m model) renderPreviewBox(width, height int) string {
 		title = fmt.Sprintf(" %sFolder: %s/ ", m.glyphs.FolderOpen, n.Path)
 	}
 	b.WriteString(titleStyle.Render(title))
-	b.WriteString("\n")
 
 	if n == nil {
+		b.WriteString("\n")
 		b.WriteString(hintStyle.Render("No file selected"))
 		return boxStyle.Render(b.String())
 	}
@@ -430,8 +429,8 @@ func (m model) renderPreviewBox(width, height int) string {
 			"Press [Enter] or [l] to expand/collapse.",
 		}
 		for i := 0; i < len(lines) && i < innerRows; i++ {
-			b.WriteString(hintStyle.Render(lines[i]))
 			b.WriteString("\n")
+			b.WriteString(hintStyle.Render(lines[i]))
 		}
 	} else {
 		content := n.Preview()
@@ -456,15 +455,15 @@ func (m model) renderPreviewBox(width, height int) string {
 				lineText = truncateString(lineText, maxLen)
 			}
 
+			b.WriteString("\n")
 			b.WriteString(dimStyle.Render(prefix))
 			b.WriteString(lineText)
-			b.WriteString("\n")
 		}
 
 		if n.SecretCount > 0 {
+			b.WriteString("\n")
 			b.WriteString(warningStyle.Render(fmt.Sprintf("%sWarning: %d secret(s) detected in this file",
 				m.glyphs.Warning, n.SecretCount)))
-			b.WriteString("\n")
 		}
 	}
 

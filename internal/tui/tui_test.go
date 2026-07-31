@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestSelectAndResult(t *testing.T) {
@@ -193,6 +195,24 @@ func TestViewRendersRows(t *testing.T) {
 	m := newModel(BuildTree([]Item{{Path: "a.go", TokensFull: 10}}), Options{})
 	if view := m.View(); view == "" {
 		t.Fatal("empty view")
+	}
+}
+
+func TestCardHeightsEqual(t *testing.T) {
+	items := make([]Item, 30)
+	for i := 0; i < 30; i++ {
+		items[i] = Item{Path: fmt.Sprintf("file_%d.go", i), Content: []byte("package main\nfunc main() {}\n")}
+	}
+	m := newModel(BuildTree(items), Options{})
+	m.height = 24
+	m.width = 80
+	bodyHeight := max(5, m.height-m.footerHeight())
+
+	leftBox := m.renderTreeBox(40, bodyHeight)
+	rightBox := m.renderPreviewBox(40, bodyHeight)
+
+	if lipgloss.Height(leftBox) != lipgloss.Height(rightBox) {
+		t.Errorf("height mismatch! leftBox=%d, rightBox=%d", lipgloss.Height(leftBox), lipgloss.Height(rightBox))
 	}
 }
 

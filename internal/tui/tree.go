@@ -56,10 +56,13 @@ type TreeNode struct {
 	// TokensFull and TokensSig aggregate descendant token counts. For files
 	// they come straight from the item; for directories they are the sum of
 	// all descendants.
-	TokensFull  int
-	TokensSig   int
-	SecretCount int
-	RankScore   float64
+	TokensFull       int
+	TokensSig        int
+	ActiveTokens     int // Cached active tokens for O(1) lookup
+	FileCountVal     int // Cached file count for O(1) lookup
+	SelectedCountVal int // Cached selected file count for O(1) lookup
+	SecretCount      int
+	RankScore        float64
 
 	// Content and SigContent are the file's two renderings (only set on file
 	// nodes). They are nil on directories.
@@ -214,17 +217,39 @@ func sortTree(n *TreeNode) {
 // the tree. Call after any structural change.
 func (n *TreeNode) recompute() {
 	if n.Kind == KindFile {
+		if n.SelectState == Selected && n.Mode != ModeSkip {
+			if n.Mode == ModeSignatures {
+				n.ActiveTokens = n.TokensSig
+			} else {
+				n.ActiveTokens = n.TokensFull
+			}
+			n.SelectedCountVal = 1
+		} else {
+			n.ActiveTokens = 0
+			n.SelectedCountVal = 0
+		}
+		n.FileCountVal = 1
 		return
 	}
+
 	n.TokensFull, n.TokensSig, n.SecretCount = 0, 0, 0
+	n.FileCountVal = 0
+	n.SelectedCountVal = 0
+	n.ActiveTokens = 0
+
 	anySelected, anyUnselected := false, false
 	effectiveMode := n.Mode
 	modeSet := false
+
 	for _, c := range n.Children {
 		c.recompute()
 		n.TokensFull += c.TokensFull
 		n.TokensSig += c.TokensSig
 		n.SecretCount += c.SecretCount
+		n.FileCountVal += c.FileCountVal
+		n.SelectedCountVal += c.SelectedCountVal
+		n.ActiveTokens += c.ActiveTokens
+
 		switch c.SelectState {
 		case Selected:
 			anySelected = true
@@ -233,6 +258,7 @@ func (n *TreeNode) recompute() {
 		case Partial:
 			anySelected, anyUnselected = true, true
 		}
+
 		if modeSet {
 			if effectiveMode != c.Mode {
 				effectiveMode = ModeFull // Mixed modes under one folder.
@@ -242,6 +268,7 @@ func (n *TreeNode) recompute() {
 			modeSet = true
 		}
 	}
+
 	switch {
 	case anySelected && anyUnselected:
 		n.SelectState = Partial
@@ -250,10 +277,22 @@ func (n *TreeNode) recompute() {
 	default:
 		n.SelectState = Unselected
 	}
+
 	if modeSet {
 		n.Mode = effectiveMode
 	} else {
 		n.Mode = ModeFull
+	}
+
+	// Fast O(1) override for uniform directory states
+	if n.SelectState == Unselected || n.Mode == ModeSkip {
+		n.ActiveTokens = 0
+	} else if n.SelectState == Selected {
+		if n.Mode == ModeFull {
+			n.ActiveTokens = n.TokensFull
+		} else if n.Mode == ModeSignatures {
+			n.ActiveTokens = n.TokensSig
+		}
 	}
 }
 
@@ -271,15 +310,20 @@ func (n *TreeNode) Toggle() {
 
 // setSelected sets the subtree to the given selection state.
 func (n *TreeNode) setSelected(on bool) {
+	n.setSelectedSubtree(on)
+	n.recompute()
+	n.bubbleUp()
+}
+
+func (n *TreeNode) setSelectedSubtree(on bool) {
 	if on {
 		n.SelectState = Selected
 	} else {
 		n.SelectState = Unselected
 	}
 	for _, c := range n.Children {
-		c.setSelected(on)
+		c.setSelectedSubtree(on)
 	}
-	n.bubbleUp()
 }
 
 // bubbleUp recomputes the SelectState of every ancestor.
@@ -303,6 +347,8 @@ func (n *TreeNode) CycleMode() {
 		next = ModeFull
 	}
 	n.applyMode(next)
+	n.recompute()
+	n.bubbleUp()
 }
 
 // applyMode sets the mode on n and every descendant.
@@ -313,25 +359,9 @@ func (n *TreeNode) applyMode(m CompressMode) {
 	}
 }
 
-// TotalActiveTokens returns the tokens contributed by the selected,
-// non-skipped descendants of n, respecting each file's mode.
+// TotalActiveTokens returns the cached active tokens for n in O(1) time.
 func (n *TreeNode) TotalActiveTokens() int {
-	if n.SelectState == Unselected || n.Mode == ModeSkip {
-		return 0
-	}
-	if n.Kind == KindFile {
-		switch n.Mode {
-		case ModeSignatures:
-			return n.TokensSig
-		default:
-			return n.TokensFull
-		}
-	}
-	total := 0
-	for _, c := range n.Children {
-		total += c.TotalActiveTokens()
-	}
-	return total
+	return n.ActiveTokens
 }
 
 // VisibleRows returns the flattened, currently expanded nodes in display
@@ -414,31 +444,14 @@ func (n *TreeNode) collectSelections(out *[]Selection) {
 	}
 }
 
-// FileCount returns the number of files under n.
+// FileCount returns the cached file count under n in O(1) time.
 func (n *TreeNode) FileCount() int {
-	if n.Kind == KindFile {
-		return 1
-	}
-	total := 0
-	for _, c := range n.Children {
-		total += c.FileCount()
-	}
-	return total
+	return n.FileCountVal
 }
 
-// SelectedCount returns the number of selected files under n.
+// SelectedCount returns the cached selected file count under n in O(1) time.
 func (n *TreeNode) SelectedCount() int {
-	if n.Kind == KindFile {
-		if n.SelectState == Selected {
-			return 1
-		}
-		return 0
-	}
-	total := 0
-	for _, c := range n.Children {
-		total += c.SelectedCount()
-	}
-	return total
+	return n.SelectedCountVal
 }
 
 // SelectByRank selects files in descending rank order until the cumulative
@@ -464,21 +477,20 @@ func (n *TreeNode) SelectByRank(budget int) int {
 		if budget > 0 && used+toks > budget {
 			continue
 		}
-		f.setSelected(true)
+		f.setSelectedSubtree(true)
 		used += toks
 		count++
 	}
-	if budget > 0 {
-		n.recompute()
-	}
+	n.recompute()
 	return count
 }
 
 // ClearSelection deselects every file.
 func (n *TreeNode) ClearSelection() {
 	for _, c := range n.Children {
-		c.setSelected(false)
+		c.setSelectedSubtree(false)
 	}
+	n.recompute()
 }
 
 func (n *TreeNode) collectFiles(out *[]*TreeNode) {
