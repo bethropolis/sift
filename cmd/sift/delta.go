@@ -10,12 +10,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bethropolis/dir-dumper/internal/app"
-	"github.com/bethropolis/dir-dumper/internal/clipboard"
-	"github.com/bethropolis/dir-dumper/internal/config"
-	"github.com/bethropolis/dir-dumper/internal/rank"
-	"github.com/bethropolis/dir-dumper/internal/state"
-	"github.com/bethropolis/dir-dumper/internal/tokenize"
+	"github.com/bethropolis/sift/internal/app"
+	"github.com/bethropolis/sift/internal/clipboard"
+	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/rank"
+	"github.com/bethropolis/sift/internal/state"
+	"github.com/bethropolis/sift/internal/tokenize"
 )
 
 var (
@@ -58,20 +58,20 @@ diff, or delta for this project, or --since to override it.`,
 
 		g := rank.New(absRootDir)
 		if !g.Available() {
-			return fmt.Errorf("dumper delta: %q is not inside a git repository", absRootDir)
+			return fmt.Errorf("sift delta: %q is not inside a git repository", absRootDir)
 		}
 
 		from := deltaSince
 		if from == "" {
 			st, err := state.Load()
 			if err != nil {
-				return fmt.Errorf("dumper delta: %w", err)
+				return fmt.Errorf("sift delta: %w", err)
 			}
 			key := state.GetProjectKey(absRootDir)
 			if rec, ok := st.Get(key); ok && rec.LastCommitHash != "" {
 				from = rec.LastCommitHash
 			} else {
-				return fmt.Errorf("dumper delta: no previous dump recorded for %q; run \"dumper dump\" first or pass --since <ref>", absRootDir)
+				return fmt.Errorf("sift delta: no previous dump recorded for %q; run \"sift dump\" first or pass --since <ref>", absRootDir)
 			}
 		}
 
@@ -84,12 +84,12 @@ diff, or delta for this project, or --since to override it.`,
 		// recorded baseline name an actual commit, not a symbolic ref.
 		to, _ = g.Head()
 		if to == "" {
-			return fmt.Errorf("dumper delta: cannot resolve HEAD")
+			return fmt.Errorf("sift delta: cannot resolve HEAD")
 		}
 
 		changed := g.ChangedBetween(from, to)
 		if len(changed) == 0 {
-			return fmt.Errorf("dumper delta: no files changed since %s", from)
+			return fmt.Errorf("sift delta: no files changed since %s", from)
 		}
 
 		if deltaPatch {
@@ -130,7 +130,7 @@ func runDeltaPatch(g *rank.Git, absRootDir, from, to string, changed []string) e
 	patch := g.RawPatch(from, to)
 	patch = strings.TrimSpace(patch)
 	if patch == "" {
-		return fmt.Errorf("dumper delta: no changes between %s and %s", from, to)
+		return fmt.Errorf("sift delta: no changes between %s and %s", from, to)
 	}
 
 	var buf bytes.Buffer
@@ -142,13 +142,13 @@ func runDeltaPatch(g *rank.Git, absRootDir, from, to string, changed []string) e
 
 	if cfg.Clipboard {
 		if err := clipboard.Copy(body); err != nil {
-			return fmt.Errorf("dumper delta: %w", err)
+			return fmt.Errorf("sift delta: %w", err)
 		}
 	} else {
 		application := app.New(cfg)
 		defer application.Close()
 		if _, err := application.Output().Write(body); err != nil {
-			return fmt.Errorf("dumper delta: %w", err)
+			return fmt.Errorf("sift delta: %w", err)
 		}
 	}
 

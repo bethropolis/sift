@@ -14,18 +14,18 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/bethropolis/dir-dumper/internal/clipboard"
-	"github.com/bethropolis/dir-dumper/internal/compress"
-	"github.com/bethropolis/dir-dumper/internal/config"
-	"github.com/bethropolis/dir-dumper/internal/format"
-	"github.com/bethropolis/dir-dumper/internal/ignore"
-	"github.com/bethropolis/dir-dumper/internal/logger"
-	"github.com/bethropolis/dir-dumper/internal/rank"
-	"github.com/bethropolis/dir-dumper/internal/secrets"
-	"github.com/bethropolis/dir-dumper/internal/setup"
-	"github.com/bethropolis/dir-dumper/internal/summary"
-	"github.com/bethropolis/dir-dumper/internal/tokenize"
-	"github.com/bethropolis/dir-dumper/internal/walker"
+	"github.com/bethropolis/sift/internal/clipboard"
+	"github.com/bethropolis/sift/internal/compress"
+	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/ignore"
+	"github.com/bethropolis/sift/internal/logger"
+	"github.com/bethropolis/sift/internal/rank"
+	"github.com/bethropolis/sift/internal/secrets"
+	"github.com/bethropolis/sift/internal/setup"
+	"github.com/bethropolis/sift/internal/summary"
+	"github.com/bethropolis/sift/internal/tokenize"
+	"github.com/bethropolis/sift/internal/walker"
 )
 
 // App encapsulates the main application functionality
@@ -40,7 +40,7 @@ type App struct {
 	outputPath string
 
 	// OnlyPaths, when non-nil, restricts the walk to these relative paths.
-	// Used by dumper diff to dump a curated set of files.
+	// Used by sift diff to dump a curated set of files.
 	OnlyPaths map[string]bool
 }
 
@@ -136,7 +136,7 @@ func (a *App) Run() error {
 
 	// Show version and exit if requested
 	if a.cfg.ShowVersion {
-		fmt.Printf("dir-dumper version %s\n", a.cfg.Version)
+		fmt.Printf("sift version %s\n", a.cfg.Version)
 		return nil
 	}
 

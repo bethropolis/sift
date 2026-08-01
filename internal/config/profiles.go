@@ -40,12 +40,12 @@ func globalConfigPath() string {
 		}
 		dir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(dir, "dir-dumper", "config.toml")
+	return filepath.Join(dir, "sift", "config.toml")
 }
 
 // localConfigPath returns the per-repository config file path.
 func localConfigPath() string {
-	return ".dirdumper.toml"
+	return ".sift.toml"
 }
 
 // readProfilesFile loads a profiles file, ignoring a missing file.
@@ -71,7 +71,7 @@ func readProfilesFile(path string) (profilesFile, error) {
 }
 
 // DefaultProfileName returns the configured default profile name, if any.
-// The local .dirdumper.toml takes precedence over the global config.
+// The local .sift.toml takes precedence over the global config.
 func DefaultProfileName() (string, error) {
 	global, err := readProfilesFile(globalConfigPath())
 	if err != nil {

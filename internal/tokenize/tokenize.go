@@ -7,7 +7,7 @@ import (
 
 	"github.com/tiktoken-go/tokenizer"
 
-	"github.com/bethropolis/dir-dumper/internal/format"
+	"github.com/bethropolis/sift/internal/format"
 )
 
 // Tokenizer counts tokens using an offline BPE encoder.

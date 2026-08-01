@@ -1,4 +1,4 @@
-// Command dumper packs a codebase into an LLM-friendly context document.
+// Command sift packs a codebase into an LLM-friendly context document.
 package main
 
 import (
@@ -8,7 +8,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
-	"github.com/bethropolis/dir-dumper/internal/config"
+	"github.com/bethropolis/sift/internal/config"
 )
 
 // cfg holds the flags shared across commands. Flags are bound to it in init,
@@ -16,12 +16,12 @@ import (
 var cfg = config.New()
 
 var rootCmd = &cobra.Command{
-	Use:   "dumper",
-	Short: "Pack a codebase into an LLM-friendly context document",
-	Long: `Pack a codebase into an LLM-friendly context document.
+	Use:   "sift",
+	Short: "Sift a codebase into an LLM-friendly context document",
+	Long: `Sift a codebase into an LLM-friendly context document.
 
-Running dumper with no subcommand launches the interactive file picker.
-Use "dumper dump" for a one-shot scan of the current directory.`,
+Running sift with no subcommand launches the interactive file picker.
+Use "sift dump" for a one-shot scan of the current directory.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	Version:       cfg.Version,

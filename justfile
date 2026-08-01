@@ -1,7 +1,7 @@
-# Dir-Dumper: LLM context packer
+# Sift: LLM context packer
 
-binary := 'bin/dumper'
-pkg := './cmd/dumper'
+binary := 'bin/sift'
+pkg := './cmd/sift'
 
 # List all recipes
 default:
@@ -20,7 +20,7 @@ fmt-write:
 vet:
   go vet ./...
 
-# Build the dumper binary into {{ binary }}
+# Build the sift binary into {{ binary }}
 build:
   mkdir -p bin
   go build -o {{ binary }} {{ pkg }}

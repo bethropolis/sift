@@ -2,7 +2,7 @@
 package ignore
 
 import (
-	"github.com/bethropolis/dir-dumper/internal/utils"
+	"github.com/bethropolis/sift/internal/utils"
 	gitignore "github.com/denormal/go-gitignore"
 )
 

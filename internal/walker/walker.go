@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bethropolis/dir-dumper/internal/ignore"
+	"github.com/bethropolis/sift/internal/ignore"
 )
 
 // walkStats holds atomic counters used for progress reporting.

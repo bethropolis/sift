@@ -1,6 +1,6 @@
 package ignore
 
-import "github.com/bethropolis/dir-dumper/internal/utils"
+import "github.com/bethropolis/sift/internal/utils"
 
 // Option functions for configuration
 type Option func(*IgnoreMatcher)

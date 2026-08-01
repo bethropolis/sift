@@ -25,13 +25,13 @@ func TestBuildTree(t *testing.T) {
 	paths := []string{
 		"internal/app/app.go",
 		"internal/format/format.go",
-		"cmd/dumper/main.go",
+		"cmd/sift/main.go",
 		"go.mod",
 	}
 	got := BuildTree(paths)
 	want := ".\n" +
 		"├── cmd/\n" +
-		"│   └── dumper/\n" +
+		"│   └── sift/\n" +
 		"│       └── main.go\n" +
 		"├── go.mod\n" +
 		"└── internal/\n" +

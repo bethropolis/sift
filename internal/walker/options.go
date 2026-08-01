@@ -5,7 +5,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/bethropolis/dir-dumper/internal/utils"
+	"github.com/bethropolis/sift/internal/utils"
 )
 
 // WalkOptions configures the behavior of the Walk function

@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bethropolis/dir-dumper/internal/app"
-	"github.com/bethropolis/dir-dumper/internal/config"
-	"github.com/bethropolis/dir-dumper/internal/rank"
+	"github.com/bethropolis/sift/internal/app"
+	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/rank"
 )
 
 func init() {
@@ -41,7 +41,7 @@ restricted to them, so the output contains exactly the edited surface.`,
 
 		g := rank.New(absRootDir)
 		if !g.Available() {
-			return fmt.Errorf("dumper diff: %q is not inside a git repository", absRootDir)
+			return fmt.Errorf("sift diff: %q is not inside a git repository", absRootDir)
 		}
 		if ref == "" {
 			ref = "HEAD"
@@ -49,7 +49,7 @@ restricted to them, so the output contains exactly the edited surface.`,
 
 		changed := g.ChangedSinceRef(ref)
 		if len(changed) == 0 {
-			return fmt.Errorf("dumper diff: no files changed since %s", ref)
+			return fmt.Errorf("sift diff: no files changed since %s", ref)
 		}
 
 		only := make(map[string]bool, len(changed))

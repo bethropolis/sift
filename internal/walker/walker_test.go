@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/bethropolis/dir-dumper/internal/ignore"
+	"github.com/bethropolis/sift/internal/ignore"
 )
 
 func writeTestTree(t *testing.T, root string) {

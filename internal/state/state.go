@@ -41,13 +41,13 @@ func GetProjectKey(absPath string) string {
 }
 
 // StatePath returns the JSON state file location in the user's config
-// directory: ~/.config/dir-dumper/state.json on Linux, %APPDATA% on Windows.
+// directory: ~/.config/sift/state.json on Linux, %APPDATA% on Windows.
 func StatePath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "dir-dumper", "state.json"), nil
+	return filepath.Join(dir, "sift", "state.json"), nil
 }
 
 // Load reads the state file, returning an empty state when it does not exist.

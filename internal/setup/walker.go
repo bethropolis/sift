@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bethropolis/dir-dumper/internal/ignore"
-	"github.com/bethropolis/dir-dumper/internal/utils"
-	"github.com/bethropolis/dir-dumper/internal/walker"
+	"github.com/bethropolis/sift/internal/ignore"
+	"github.com/bethropolis/sift/internal/utils"
+	"github.com/bethropolis/sift/internal/walker"
 )
 
 // InfoLogger wraps the Info method for status updates

@@ -141,7 +141,7 @@ func TestLoadProfileMergesLocalOverGlobal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	globalPath := filepath.Join(globalDir, "dir-dumper", "config.toml")
+	globalPath := filepath.Join(globalDir, "sift", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(globalPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ budget = 60000
 		t.Fatal(err)
 	}
 
-	localPath := filepath.Join(localDir, ".dirdumper.toml")
+	localPath := filepath.Join(localDir, ".sift.toml")
 	if err := os.WriteFile(localPath, []byte(`
 [profiles.claude]
 style = "markdown"

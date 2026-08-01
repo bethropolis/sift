@@ -3,9 +3,9 @@ package main
 import (
 	"path/filepath"
 
-	"github.com/bethropolis/dir-dumper/internal/format"
-	"github.com/bethropolis/dir-dumper/internal/rank"
-	"github.com/bethropolis/dir-dumper/internal/state"
+	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/rank"
+	"github.com/bethropolis/sift/internal/state"
 )
 
 // recordDumpState updates the persisted per-project dump record after a

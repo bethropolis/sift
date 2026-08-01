@@ -1,4 +1,4 @@
-module github.com/bethropolis/dir-dumper
+module github.com/bethropolis/sift
 
 go 1.26
 

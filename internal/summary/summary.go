@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bethropolis/dir-dumper/internal/utils"
-	"github.com/bethropolis/dir-dumper/internal/walker"
+	"github.com/bethropolis/sift/internal/utils"
+	"github.com/bethropolis/sift/internal/walker"
 )
 
 // DisplayResults shows the end results of a scan operation

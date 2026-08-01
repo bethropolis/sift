@@ -3,7 +3,7 @@ package tokenize
 import (
 	"testing"
 
-	"github.com/bethropolis/dir-dumper/internal/format"
+	"github.com/bethropolis/sift/internal/format"
 )
 
 func TestNew(t *testing.T) {

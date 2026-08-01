@@ -1,12 +1,12 @@
-# Dir-Dumper
+# Sift
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/bethropolis/dir-dumper)](https://goreportcard.com/report/github.com/bethropolis/dir-dumper)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=89b4fa)](https://github.com/bethropolis/dir-dumper/releases/latest)
-[![GitHub license](https://img.shields.io/github/license/bethropolis/dir-dumper?style=flat-square&labelColor=1e1e2e&color=cba6f7)](https://github.com/bethropolis/dir-dumper/blob/main/LICENSE)
-[![Go Reference](https://pkg.go.dev/badge/github.com/bethropolis/dir-dumper.svg)](https://pkg.go.dev/github.com/bethropolis/dir-dumper/)
+[![Go Report Card](https://goreportcard.com/badge/github.com/bethropolis/sift)](https://goreportcard.com/report/github.com/bethropolis/sift)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/bethropolis/sift?style=flat-square&labelColor=1e1e2e&color=89b4fa)](https://github.com/bethropolis/sift/releases/latest)
+[![GitHub license](https://img.shields.io/github/license/bethropolis/sift?style=flat-square&labelColor=1e1e2e&color=cba6f7)](https://github.com/bethropolis/sift/blob/main/LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/bethropolis/sift.svg)](https://pkg.go.dev/github.com/bethropolis/sift/)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-a6e3a1?style=flat-square&logo=go&labelColor=1e1e2e)](https://golang.org/doc/go1.21)
 
-`dumper` is a command-line tool written in Go that turns a project directory
+`sift` is a command-line tool written in Go that turns a project directory
 into a single LLM-ready context document. It walks the tree, respects
 `.gitignore` rules, and renders the contents to a `codebase.md` file (or to
 stdout with `--output -`) in plain text, Markdown, JSON, or XML — with optional
@@ -23,7 +23,7 @@ git-relevance ranking so the most important context fits in a model's window.
     *   Signature-only compression (`--mode signatures`) via tree-sitter for Go, Rust, JS, TS, Python, and PHP.
     *   Git-relevance ranking: modified files score highest, then recent diffs, then recent commits.
     *   One-click `--clipboard` copy to paste into a chat.
-*   **Profiles:** Reusable TOML profiles in `.dirdumper.toml` or `$XDG_CONFIG_HOME/dir-dumper/config.toml`.
+*   **Profiles:** Reusable TOML profiles in `.sift.toml` or `$XDG_CONFIG_HOME/sift/config.toml`.
 *   **Interactive Picker (`pick`):** A foldable, dual-pane tree TUI with:
     *   3-state checkboxes (`[x]`/`[-]`/`[ ]`) and directory toggling (`Space`).
     *   Per-file/folder compression modes — `FULL`/`SIGS`/`SKIP` — cycled with `m`.
@@ -41,7 +41,7 @@ git-relevance ranking so the most important context fits in a model's window.
         patch (`--patch`) wrapped in a `<context_update>` block.
     *   The comparison base is the commit recorded by the most recent
         `dump`/`pick`/`diff`/`delta` for that project (or `--since <ref>`).
-    *   State lives outside the repo in `~/.config/dir-dumper/state.json`,
+    *   State lives outside the repo in `~/.config/sift/state.json`,
         keeping working trees and git history clean.
 *   **Prompt Directives:** `--prompt` (or `-p`) prepends a task/instructions
     section to any output format, so the document arrives with its mission.
@@ -52,50 +52,50 @@ git-relevance ranking so the most important context fits in a model's window.
 ## Installation
 
 ```bash
-go install github.com/bethropolis/dir-dumper/cmd/dumper@latest
+go install github.com/bethropolis/sift/cmd/sift@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/bethropolis/dir-dumper.git
-cd dir-dumper
-go build -o dumper ./cmd/dumper/
+git clone https://github.com/bethropolis/sift.git
+cd sift
+go build -o sift ./cmd/sift/
 ```
 
 ## Usage
 
 ```bash
-dumper              # bare invocation launches the interactive picker (TUI)
-dumper dump [path]  # scan a directory and render its contents
-dumper pick [path]  # interactively choose files, then render
-dumper diff [ref]   # dump files changed relative to a git ref (default HEAD)
-dumper delta [path] # dump only changes since the last recorded dump
-dumper watch [path] # re-render the document on file changes
+sift                # bare invocation launches the interactive picker (TUI)
+sift dump [path]  # scan a directory and render its contents
+sift pick [path]  # interactively choose files, then render
+sift diff [ref]   # dump files changed relative to a git ref (default HEAD)
+sift delta [path] # dump only changes since the last recorded dump
+sift watch [path] # re-render the document on file changes
 ```
 
-Running `dumper` with no subcommand (in a terminal) launches the interactive
-file picker; otherwise the help text is shown. `dumper dump` scans the current
+Running `sift` with no subcommand (in a terminal) launches the interactive
+file picker; otherwise the help text is shown. `sift dump` scans the current
 directory and writes the result to `codebase.md` (Markdown by default) next to
 the scanned root; use `--output -` to print to stdout instead. The output file
 is excluded from the scan so it never contains itself.
 
 ### Incremental Deltas
 
-`dumper delta` compares the current tree against the commit recorded by the
+`sift delta` compares the current tree against the commit recorded by the
 last successful `dump`, `pick`, `diff`, or `delta` for this project and dumps
 only what changed:
 
 ```bash
-dumper delta                 # full content of files changed since last dump
-dumper delta --patch         # raw unified diff in a <context_update> block
-dumper delta --since main    # compare against a specific ref or branch
-dumper delta --patch --clipboard
+sift delta                 # full content of files changed since last dump
+sift delta --patch         # raw unified diff in a <context_update> block
+sift delta --since main    # compare against a specific ref or branch
+sift delta --patch --clipboard
 ```
 
-The record is kept in `~/.config/dir-dumper/state.json`, keyed by the hash of
+The record is kept in `~/.config/sift/state.json`, keyed by the hash of
 the project's absolute path, so repositories stay free of state files. Outside
-a git repository, or with no baseline yet, `dumper delta` explains what to run.
+a git repository, or with no baseline yet, `sift delta` explains what to run.
 Inside the picker, press `d` to choose the commit range and strategy
 interactively before dumping or copying.
 
@@ -103,34 +103,34 @@ interactively before dumping or copying.
 
 ```bash
 # Scan the current directory in Markdown.
-dumper dump --style markdown
+sift dump --style markdown
 
 # Emit XML with token counts and copy to the clipboard.
-dumper dump -dir ./src --style xml --clipboard
+sift dump -dir ./src --style xml --clipboard
 
 # Keep output under 50k tokens, prioritizing changed files.
-dumper dump --budget 50000
+sift dump --budget 50000
 
 # Strip function bodies down to signatures.
-dumper dump --mode signatures --style xml
+sift dump --mode signatures --style xml
 
 # Only dump the files you have changed.
-dumper diff
+sift diff
 
 # Dump just the changes since the last recorded dump.
-dumper delta
+sift delta
 
 # Token-minimal incremental update as a raw diff patch.
-dumper delta --patch
+sift delta --patch
 
 # Pick files interactively (requires a TTY).
-dumper pick
+sift pick
 
 # Attach a task prompt to the dump.
-dumper dump --prompt "Review this codebase for race conditions."
+sift dump --prompt "Review this codebase for race conditions."
 
 # Use the picker without Nerd Font glyphs.
-dumper pick --no-nerd-fonts
+sift pick --no-nerd-fonts
 ```
 
 ### Flags
@@ -167,8 +167,8 @@ dumper pick --no-nerd-fonts
 
 ## Profiles
 
-Create a `.dirdumper.toml` in the scanned directory (or
-`~/.config/dir-dumper/config.toml` globally) and reference it with
+Create a `.sift.toml` in the scanned directory (or
+`~/.config/sift/config.toml` globally) and reference it with
 `--profile`:
 
 ```toml
@@ -184,7 +184,7 @@ prompt = "Review this Rust codebase for unsafe usage."
 ```
 
 ```bash
-dumper dump --profile claude
+sift dump --profile claude
 ```
 
 Command-line flags always override profile values. A global `default_profile`

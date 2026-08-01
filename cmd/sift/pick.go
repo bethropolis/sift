@@ -11,13 +11,13 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
-	"github.com/bethropolis/dir-dumper/internal/app"
-	"github.com/bethropolis/dir-dumper/internal/clipboard"
-	"github.com/bethropolis/dir-dumper/internal/config"
-	"github.com/bethropolis/dir-dumper/internal/format"
-	"github.com/bethropolis/dir-dumper/internal/rank"
-	"github.com/bethropolis/dir-dumper/internal/state"
-	"github.com/bethropolis/dir-dumper/internal/tui"
+	"github.com/bethropolis/sift/internal/app"
+	"github.com/bethropolis/sift/internal/clipboard"
+	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/rank"
+	"github.com/bethropolis/sift/internal/state"
+	"github.com/bethropolis/sift/internal/tui"
 )
 
 func init() {
@@ -37,7 +37,7 @@ var pickCmd = &cobra.Command{
 // launches the picker when invoked without a subcommand.
 func runPick(cmd *cobra.Command, args []string) error {
 	if !isatty.IsTerminal(os.Stdin.Fd()) {
-		return fmt.Errorf("dumper pick requires an interactive terminal")
+		return fmt.Errorf("sift pick requires an interactive terminal")
 	}
 
 	if len(args) > 0 {
@@ -84,7 +84,7 @@ func runPick(cmd *cobra.Command, args []string) error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("dumper pick: %w", err)
+		return fmt.Errorf("sift pick: %w", err)
 	}
 	if result.DeltaDone {
 		// The delta dump already wrote its own output and recorded state.
@@ -93,10 +93,10 @@ func runPick(cmd *cobra.Command, args []string) error {
 
 	selected := result.Selections
 	if len(selected) == 0 {
-		return fmt.Errorf("dumper pick: no files selected")
+		return fmt.Errorf("sift pick: no files selected")
 	}
 	if len(selected) == 0 {
-		return fmt.Errorf("dumper pick: no files selected")
+		return fmt.Errorf("sift pick: no files selected")
 	}
 
 	chosen := applySelection(files, selected)

@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bethropolis/dir-dumper/internal/app"
-	"github.com/bethropolis/dir-dumper/internal/config"
-	"github.com/bethropolis/dir-dumper/internal/watch"
+	"github.com/bethropolis/sift/internal/app"
+	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/watch"
 )
 
 func init() {
