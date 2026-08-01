@@ -16,6 +16,12 @@ type model struct {
 	cursor int
 	offset int
 
+	// previewOffset is the first line shown in the preview pane, and
+	// previewNode the node it belongs to. Scrolling is reset whenever the
+	// cursor moves to a different node.
+	previewOffset int
+	previewNode   *TreeNode
+
 	height int
 	width  int
 
@@ -84,6 +90,64 @@ func (m *model) recomputeRows() {
 		m.cursor = 0
 	}
 	m.clampOffset()
+	m.syncPreview()
+}
+
+// syncPreview resets the preview scroll position whenever the selected node
+// changes, so each file starts at its top.
+func (m *model) syncPreview() {
+	if n := m.node(); n != m.previewNode {
+		m.previewNode = n
+		m.previewOffset = 0
+	}
+}
+
+// previewLines splits preview content into lines, dropping the phantom empty
+// line left by a trailing newline so the scroll range matches visible text.
+func previewLines(content []byte) []string {
+	lines := strings.Split(string(content), "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+// previewLineCount returns the number of preview lines for the selected node.
+func (m model) previewLineCount() int {
+	n := m.node()
+	if n == nil || n.Kind != KindFile {
+		return 0
+	}
+	return len(previewLines(n.Preview()))
+}
+
+// previewPageSize returns how many content lines fit in the preview pane.
+func (m model) previewPageSize() int {
+	bodyHeight := max(5, m.height-m.footerHeight())
+	return max(1, bodyHeight-3)
+}
+
+// previewHalfPage returns the number of lines for a half-page scroll step.
+func (m model) previewHalfPage() int {
+	return max(1, m.previewPageSize()/2)
+}
+
+// scrollPreview scrolls the preview pane by delta lines, clamped to the
+// available content. It is a no-op when the selected node is a directory.
+func (m *model) scrollPreview(delta int) {
+	n := m.node()
+	if n == nil || n.Kind != KindFile {
+		return
+	}
+	total := m.previewLineCount()
+	maxOffset := max(0, total-m.previewPageSize())
+	m.previewOffset += delta
+	if m.previewOffset < 0 {
+		m.previewOffset = 0
+	}
+	if m.previewOffset > maxOffset {
+		m.previewOffset = maxOffset
+	}
 }
 
 func (m *model) node() *TreeNode {
@@ -147,6 +211,14 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.move(-1)
 	case tea.KeyDown, tea.KeyTab:
 		m.move(1)
+	case tea.KeyPgUp:
+		m.scrollPreview(-m.previewPageSize())
+	case tea.KeyPgDown:
+		m.scrollPreview(m.previewPageSize())
+	case tea.KeyCtrlU:
+		m.scrollPreview(-m.previewHalfPage())
+	case tea.KeyCtrlD:
+		m.scrollPreview(m.previewHalfPage())
 	case tea.KeySpace:
 		if n := m.node(); n != nil {
 			n.Toggle()
@@ -171,6 +243,10 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				n.Expanded = true
 				m.recomputeRows()
 			}
+		case "[":
+			m.scrollPreview(-m.previewPageSize())
+		case "]":
+			m.scrollPreview(m.previewPageSize())
 		case " ":
 			if n := m.node(); n != nil {
 				n.Toggle()
@@ -208,6 +284,7 @@ func (m *model) move(delta int) {
 		m.cursor = len(m.rows) - 1
 	}
 	m.clampOffset()
+	m.syncPreview()
 }
 
 // collapseOrParent collapses the hovered directory; when it is already
@@ -230,6 +307,7 @@ func (m *model) collapseOrParent() {
 			}
 		}
 	}
+	m.syncPreview()
 }
 
 func (m *model) selectAll() {
@@ -602,21 +680,37 @@ func (m model) renderPreviewBox(width, height int) string {
 		}
 	} else {
 		content := n.Preview()
-		lines := strings.Split(string(content), "\n")
+		lines := previewLines(content)
 
 		innerRows := max(1, height-3)
 		if n.SecretCount > 0 {
 			innerRows--
 		}
 
-		maxLines := min(len(lines), innerRows)
-		for i := 0; i < maxLines; i++ {
+		// Clamp the scroll position in case the pane was resized since the
+		// last scroll.
+		if maxOffset := max(0, len(lines)-innerRows); m.previewOffset > maxOffset {
+			m.previewOffset = maxOffset
+		}
+
+		barCols := previewScrollbar(m.previewOffset, innerRows, len(lines))
+
+		end := min(len(lines), m.previewOffset+innerRows)
+		for i := m.previewOffset; i < end; i++ {
 			lineNo := i + 1
 			lineText := lines[i]
 
 			prefix := fmt.Sprintf("%3d │ ", lineNo)
 			prefixWidth := lipgloss.Width(prefix)
-			maxLen := max(1, innerWidth-prefixWidth)
+
+			barWidth := 0
+			var bar string
+			if barCols != nil {
+				barWidth = 1
+				bar = barCols[i-m.previewOffset]
+			}
+
+			maxLen := max(1, innerWidth-prefixWidth-barWidth)
 
 			lineText = strings.ReplaceAll(lineText, "\t", "    ")
 			if lipgloss.Width(lineText) > maxLen {
@@ -626,6 +720,10 @@ func (m model) renderPreviewBox(width, height int) string {
 			b.WriteString("\n")
 			b.WriteString(dimStyle.Render(prefix))
 			b.WriteString(lineText)
+			if barWidth > 0 {
+				b.WriteString(strings.Repeat(" ", max(0, maxLen-lipgloss.Width(lineText))))
+				b.WriteString(scrollbarStyle.Render(bar))
+			}
 		}
 
 		if n.SecretCount > 0 {
@@ -636,6 +734,32 @@ func (m model) renderPreviewBox(width, height int) string {
 	}
 
 	return boxStyle.Render(b.String())
+}
+
+// previewScrollbar returns a one-character-per-row scrollbar column for a
+// viewport showing view rows of total lines starting at offset, or nil when
+// the content fits without scrolling.
+func previewScrollbar(offset, view, total int) []string {
+	if total <= view {
+		return nil
+	}
+	track := view
+	thumb := max(1, track*view/total)
+	maxOffset := total - view
+	thumbTop := 0
+	if maxOffset > 0 {
+		thumbTop = offset * (track - thumb) / maxOffset
+	}
+
+	cols := make([]string, track)
+	for i := 0; i < track; i++ {
+		if i >= thumbTop && i < thumbTop+thumb {
+			cols[i] = "█"
+		} else {
+			cols[i] = "░"
+		}
+	}
+	return cols
 }
 
 func (m model) renderFooter(width int) string {
@@ -656,7 +780,7 @@ func (m model) renderFooter(width int) string {
 		budget = fmt.Sprintf("Budget: %d / %d %s %d%% | ", active, m.budget, bar, pct)
 	}
 
-	keys := "space toggle   m mode   a all/none   s smart   / filter   y copy   d delta   enter done   q quit"
+	keys := "space toggle   m mode   a all/none   s smart   / filter   y copy   d delta   pgup/pgdn preview   enter done   q quit"
 	if m.filtering {
 		keys = "/ filter: " + m.filter + "▌"
 	}
@@ -807,6 +931,7 @@ var (
 	dimStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	treeGuideStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("239"))
 	cursorStyle    = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15"))
+	scrollbarStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	selectedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 	warningStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
 	noticeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
