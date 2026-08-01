@@ -46,6 +46,10 @@ func runPick(cmd *cobra.Command, args []string) error {
 	// minified, and oversized files never clutter the tree.
 	cfg.SmartFilter = true
 
+	// Suppress summary log lines to os.Stderr while the BubbleTea alt-screen
+	// is active so generation never bleeds text onto the TUI.
+	cfg.Quiet = true
+
 	start := time.Now()
 	application := app.New(cfg)
 	defer application.Close()

@@ -112,13 +112,13 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filtering = true
 			m.filter = ""
 		case "y":
-			m.copy()
+			return m, m.copy()
 		case "d":
 			m.openDelta()
 		case "?":
 			m.helpOpen = !m.helpOpen
 		case "g":
-			m.generate()
+			return m, m.generate()
 		case "E":
 			m.root.ExpandAll()
 			m.recomputeRows()
@@ -178,46 +178,39 @@ func (m *model) selectAll() {
 }
 
 func (m *model) smartSelect() {
-	count := m.root.SelectByRank(m.budget)
-	if m.budget > 0 {
-		m.notice = fmt.Sprintf("Smart select: %d files within %d tokens", count, m.budget)
-	} else {
-		m.notice = fmt.Sprintf("Smart select: %d files", count)
-	}
+	// Checkboxes and the token tally react instantly; a notice here would only
+	// linger redundantly.
+	m.root.SelectByRank(m.budget)
 }
 
-func (m *model) copy() {
+func (m *model) copy() tea.Cmd {
 	if m.onCopy == nil {
-		return
+		return nil
 	}
 	sel := m.root.Selections()
 	if len(sel) == 0 {
-		m.notice = "Nothing selected to copy"
-		return
+		return m.setNotice("Nothing selected to copy")
 	}
 	if err := m.onCopy(sel); err != nil {
-		m.notice = "Copy failed: " + err.Error()
-		return
+		return m.setNotice("Copy failed: " + err.Error())
 	}
-	m.notice = fmt.Sprintf("Copied %d files (%d tokens) to clipboard", len(sel), m.root.TotalActiveTokens())
+	return m.setNotice(fmt.Sprintf("Copied %d files (%d tokens) to clipboard", len(sel), m.root.TotalActiveTokens()))
 }
 
 // generate renders the current selection to the output document without
 // leaving the picker, so the user can keep tweaking the selection.
-func (m *model) generate() {
+func (m *model) generate() tea.Cmd {
 	if m.onGenerate == nil {
-		return
+		return nil
 	}
 	sel := m.root.Selections()
 	if len(sel) == 0 {
-		m.notice = "Nothing selected to generate"
-		return
+		return m.setNotice("Nothing selected to generate")
 	}
 	if err := m.onGenerate(sel); err != nil {
-		m.notice = "Generate failed: " + err.Error()
-		return
+		return m.setNotice("Generate failed: " + err.Error())
 	}
-	m.notice = fmt.Sprintf("Generated output (%d files, %d tokens)", len(sel), m.root.TotalActiveTokens())
+	return m.setNotice(fmt.Sprintf("Generated output (%d files, %d tokens)", len(sel), m.root.TotalActiveTokens()))
 }
 
 // updateDeltaKey handles keys while the delta modal is open.

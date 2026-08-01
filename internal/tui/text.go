@@ -6,9 +6,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const headerLines = 2
-const footerLines = 2
-
 func truncateString(s string, maxLen int) string {
 	if maxLen <= 0 {
 		return ""

@@ -1,9 +1,17 @@
 package tui
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// clearNoticeMsg is dispatched after a timer to restore the standard footer
+// status line. The id guards against a stale timer clearing a newer notice.
+type clearNoticeMsg struct {
+	id int
+}
 
 // model is the BubbleTea state for the dual-pane picker: a foldable tree on
 // the left and a live file preview on the right, with a budget footer.
@@ -31,6 +39,8 @@ type model struct {
 
 	onCopy func([]Selection) error
 	notice string
+	// noticeID stamps each notice so only its own timer clears it.
+	noticeID int
 
 	// Help modal state.
 	helpOpen   bool
@@ -111,6 +121,11 @@ func (m model) Init() tea.Cmd { return nil }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case clearNoticeMsg:
+		if msg.id == m.noticeID {
+			m.notice = ""
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.height, m.width = msg.Height, msg.Width
 		m.clampOffset()
@@ -118,6 +133,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateKey(msg)
 	}
 	return m, nil
+}
+
+// setNotice stores a transient status message and schedules it to clear after
+// 2.5s. The returned tea.Cmd must be handed to BubbleTea for the timer to run.
+func (m *model) setNotice(text string) tea.Cmd {
+	m.notice = text
+	m.noticeID++
+	id := m.noticeID
+	return tea.Tick(2500*time.Millisecond, func(time.Time) tea.Msg {
+		return clearNoticeMsg{id: id}
+	})
 }
 
 func (m model) View() string {

@@ -9,13 +9,10 @@ import (
 
 // footerHeight returns the number of lines the footer occupies. The join
 // newline between body and footer is included, so the whole view is exactly
-// height lines tall and the footer sits on the bottom row.
+// height lines tall and the footer sits on the bottom row. It is always a
+// fixed 2 lines (divider + status) so the panes never resize mid-session.
 func (m model) footerHeight() int {
-	h := footerLines
-	if m.notice != "" {
-		h++
-	}
-	return h
+	return 2
 }
 
 func (m model) renderFooter(width int) string {
@@ -47,19 +44,20 @@ func (m model) renderFooter(width int) string {
 		budget = fmt.Sprintf("Budget: %d / %d %s %d%% | ", active, m.budget, styledBar, pct)
 	}
 
-	actions := "[?] Help  [g] Generate  [y] Copy  [q] Exit"
-	if m.filtering {
-		actions = fmt.Sprintf("/ Filter (%d matches): %s▌", len(m.rows), m.filter)
+	var statusLine string
+	switch {
+	case m.notice != "":
+		statusLine = noticeStyle.Render(m.notice)
+	case m.filtering:
+		statusLine = fmt.Sprintf("/ Filter (%d matches): %s▌", len(m.rows), m.filter)
+	default:
+		actions := "[?] Help  [g] Generate  [y] Copy  [q] Exit"
+		statusLine = fmt.Sprintf("%sStyle: %s | %d selected (%d tok) | %s", budget, m.style, selected, active, actions)
 	}
 
 	var b strings.Builder
 	b.WriteString(strings.Repeat("─", width))
-	if m.notice != "" {
-		b.WriteString("\n")
-		b.WriteString(noticeStyle.Render(m.notice))
-	}
 	b.WriteString("\n")
-	b.WriteString(hintStyle.Render(fmt.Sprintf("%sStyle: %s | %d selected (%d tok) | %s",
-		budget, m.style, selected, active, actions)))
+	b.WriteString(hintStyle.Render(statusLine))
 	return b.String()
 }
