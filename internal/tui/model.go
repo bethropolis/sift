@@ -29,6 +29,15 @@ type model struct {
 	onCopy func([]Selection) error
 	notice string
 
+	// Delta modal state.
+	delta         *DeltaInfo
+	deltaOpen     bool
+	deltaCursor   int
+	deltaOffset   int
+	deltaStrategy DeltaStrategy
+	onDelta       func(DeltaSelection) error
+	deltaDone     bool
+
 	quit bool
 }
 
@@ -38,6 +47,12 @@ type Options struct {
 	Style   string
 	UseNerd bool
 	OnCopy  func([]Selection) error
+
+	// Delta is the git delta state shown in the delta modal (pressing d).
+	// When nil the modal shows "not available" messaging. OnDelta is invoked
+	// when the user confirms a delta dump.
+	Delta   *DeltaInfo
+	OnDelta func(DeltaSelection) error
 }
 
 func newModel(root *TreeNode, opts Options) model {
@@ -46,13 +61,15 @@ func newModel(root *TreeNode, opts Options) model {
 		glyphs = NewNerdFontGlyphs()
 	}
 	m := model{
-		root:   root,
-		height: 24,
-		width:  80,
-		budget: opts.Budget,
-		style:  opts.Style,
-		glyphs: glyphs,
-		onCopy: opts.OnCopy,
+		root:    root,
+		height:  24,
+		width:   80,
+		budget:  opts.Budget,
+		style:   opts.Style,
+		glyphs:  glyphs,
+		onCopy:  opts.OnCopy,
+		delta:   opts.Delta,
+		onDelta: opts.OnDelta,
 	}
 	m.recomputeRows()
 	return m
@@ -90,6 +107,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.deltaOpen {
+		return m.updateDeltaKey(msg)
+	}
+
 	if m.filtering {
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -167,6 +188,8 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filter = ""
 		case "y":
 			m.copy()
+		case "d":
+			m.openDelta()
 		case "q":
 			m.quit = true
 			return m, tea.Quit
@@ -242,6 +265,146 @@ func (m *model) copy() {
 	m.notice = fmt.Sprintf("Copied %d files (%d tokens) to clipboard", len(sel), m.root.TotalActiveTokens())
 }
 
+// openDelta opens the delta modal, resetting the commit selection to include
+// every commit since the last dump. Outside a git repo with a baseline it
+// shows an explanatory notice instead.
+func (m *model) openDelta() {
+	if m.delta == nil {
+		m.notice = "Delta mode needs a git repo with a recorded dump baseline"
+		return
+	}
+	m.deltaOpen = true
+	m.deltaCursor = 0
+	m.deltaOffset = 0
+	m.deltaStrategy = DeltaFull
+	for i := range m.delta.Commits {
+		m.delta.Commits[i].Checked = true
+	}
+}
+
+// updateDeltaKey handles keys while the delta modal is open.
+func (m model) updateDeltaKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyCtrlC, tea.KeyCtrlQ:
+		m.quit = true
+		return m, tea.Quit
+	case tea.KeyEsc:
+		m.deltaOpen = false
+	case tea.KeyUp, tea.KeyShiftTab:
+		m.deltaMove(-1)
+	case tea.KeyDown, tea.KeyTab:
+		m.deltaMove(1)
+	case tea.KeyEnter:
+		m.performDelta(false)
+	case tea.KeySpace:
+		if m.delta != nil && len(m.delta.Commits) > 0 {
+			i := m.deltaCursor
+			m.delta.Commits[i].Checked = !m.delta.Commits[i].Checked
+		}
+	case tea.KeyRunes:
+		switch string(msg.Runes) {
+		case "k":
+			m.deltaMove(-1)
+		case "j":
+			m.deltaMove(1)
+		case "m":
+			m.deltaStrategy = (m.deltaStrategy + 1) % 2
+		case "c":
+			m.performDelta(true)
+		case "d", "q":
+			m.deltaOpen = false
+		}
+	}
+	return m, nil
+}
+
+func (m *model) deltaMove(delta int) {
+	if m.delta == nil || len(m.delta.Commits) == 0 {
+		return
+	}
+	m.deltaCursor += delta
+	if m.deltaCursor < 0 {
+		m.deltaCursor = 0
+	}
+	if m.deltaCursor >= len(m.delta.Commits) {
+		m.deltaCursor = len(m.delta.Commits) - 1
+	}
+}
+
+// performDelta invokes the caller's delta handler with the current selection.
+// copyMode routes output to the clipboard instead of the dump destination.
+// The checked commits determine the range: the newest checked commit is the
+// To boundary and the parent of the oldest checked commit the From boundary,
+// so unchecking the top or bottom of the list narrows the delta.
+func (m *model) performDelta(copyMode bool) {
+	if m.delta == nil || m.onDelta == nil {
+		m.notice = "Delta mode is unavailable"
+		m.deltaOpen = false
+		return
+	}
+	sel := DeltaSelection{
+		Strategy:  m.deltaStrategy,
+		From:      m.delta.FromHash,
+		To:        m.delta.HeadHash,
+		Clipboard: copyMode,
+	}
+	if from, to, ok := m.deltaRange(); ok {
+		sel.From, sel.To = from, to
+	}
+	if err := m.onDelta(sel); err != nil {
+		m.notice = "Delta failed: " + err.Error()
+		m.deltaOpen = false
+		return
+	}
+	m.deltaDone = true
+	m.deltaOpen = false
+	if !copyMode {
+		// A delta dump replaces the picker's output, so finish the session.
+		m.quit = true
+	} else {
+		m.notice = fmt.Sprintf("Delta copied to clipboard (%s)", strategyName(m.deltaStrategy))
+	}
+}
+
+func strategyName(s DeltaStrategy) string {
+	if s == DeltaPatch {
+		return "patch"
+	}
+	return "full content"
+}
+
+// deltaRange computes the effective from/to from the checked commits. The
+// commits slice is newest-first, so commit[i]'s parent is commit[i+1] (or the
+// recorded baseline for the oldest entry).
+func (m model) deltaRange() (from, to string, ok bool) {
+	if m.delta == nil {
+		return "", "", false
+	}
+	newest := -1
+	oldest := -1
+	for i, c := range m.delta.Commits {
+		if c.Checked {
+			if newest == -1 {
+				newest = i
+			}
+			oldest = i
+		}
+	}
+	if newest == -1 {
+		return "", "", false
+	}
+
+	to = m.delta.Commits[newest].Short
+	from = m.delta.FromHash
+	if oldest+1 < len(m.delta.Commits) {
+		from = m.delta.Commits[oldest+1].Short
+	}
+	if to == "" {
+		to = m.delta.HeadHash
+	}
+	return from, to, true
+}
+
 // footerHeight returns the number of lines the footer occupies. The join
 // newline between body and footer is included, so the whole view is exactly
 // height lines tall and the footer sits on the bottom row.
@@ -288,7 +451,12 @@ func (m model) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 	footer := m.renderFooter(width)
-	return body + "\n" + footer
+	view := body + "\n" + footer
+
+	if m.deltaOpen {
+		view = m.renderDeltaModal(view, width, height)
+	}
+	return view
 }
 
 func (m model) renderTreeBox(width, height int) string {
@@ -488,7 +656,7 @@ func (m model) renderFooter(width int) string {
 		budget = fmt.Sprintf("Budget: %d / %d %s %d%% | ", active, m.budget, bar, pct)
 	}
 
-	keys := "space toggle   m mode   a all/none   s smart   / filter   y copy   enter done   q quit"
+	keys := "space toggle   m mode   a all/none   s smart   / filter   y copy   d delta   enter done   q quit"
 	if m.filtering {
 		keys = "/ filter: " + m.filter + "▌"
 	}
@@ -503,6 +671,100 @@ func (m model) renderFooter(width int) string {
 	b.WriteString(hintStyle.Render(fmt.Sprintf("%sStyle: %s | %d selected, %d tokens | %s",
 		budget, m.style, selected, active, keys)))
 	return b.String()
+}
+
+// renderDeltaModal overlays the delta selection modal centered on the view.
+func (m model) renderDeltaModal(view string, width, height int) string {
+	modalWidth := min(width, 64)
+	if modalWidth < 30 {
+		modalWidth = 30
+	}
+
+	var b strings.Builder
+	b.WriteString(" Incremental Context / Delta Mode ")
+	b.WriteString("\n")
+
+	if m.delta == nil {
+		b.WriteString(hintStyle.Render("Not available outside a git repository."))
+		return m.overlay(view, boxStyle(modalWidth).Render(b.String()), width, height)
+	}
+
+	b.WriteString(fmt.Sprintf("Project: %s", m.delta.RootDir))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("Last Dumped: %s %s", m.delta.FromHash, truncateString(m.delta.FromMsg, modalWidth-30)))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("HEAD:        %s %s", m.delta.HeadHash, truncateString(m.delta.HeadMsg, modalWidth-30)))
+	b.WriteString("\n\n")
+	b.WriteString(dimStyle.Render("Commits since last dump:"))
+	b.WriteString("\n")
+
+	// Scrollable commit list, newest first.
+	innerRows := max(1, height-14)
+	end := min(len(m.delta.Commits), m.deltaOffset+innerRows)
+	for i := m.deltaOffset; i < end; i++ {
+		c := m.delta.Commits[i]
+		mark := " [ ] "
+		if c.Checked {
+			mark = " [x] "
+		}
+		line := fmt.Sprintf("%s %s %s", mark, c.Short, c.Subject)
+		line = truncateString(line, modalWidth-4)
+		if i == m.deltaCursor {
+			b.WriteString(cursorStyle.Render(line))
+		} else {
+			b.WriteString(line)
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("Delta output mode:"))
+	b.WriteString("\n")
+
+	modeFull := "( ) "
+	if m.deltaStrategy == DeltaFull {
+		modeFull = "(*) "
+	}
+	modePatch := "( ) "
+	if m.deltaStrategy == DeltaPatch {
+		modePatch = "(*) "
+	}
+	b.WriteString(fmt.Sprintf("%sFull content of modified files (%d files, %d tokens)", modeFull, len(m.delta.Files), m.delta.FilesToken))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("%sGit unified patch diff (%d lines, %d tokens)", modePatch, m.delta.PatchLines, m.delta.PatchToken))
+	b.WriteString("\n\n")
+	b.WriteString(hintStyle.Render("[Enter] perform delta dump | [c] copy | [Esc] cancel"))
+
+	modal := boxStyle(modalWidth).Render(b.String())
+	return m.overlay(view, modal, width, height)
+}
+
+// boxStyle returns a rounded bordered box of the given width.
+func boxStyle(width int) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Width(max(1, width-2)).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62"))
+}
+
+// overlay centers sub over view, blanking the area behind it.
+func (m model) overlay(view, sub string, width, height int) string {
+	subHeight := lipgloss.Height(sub)
+	subWidth := lipgloss.Width(sub)
+	top := max(0, (height-subHeight)/2)
+	if top > height-1 {
+		top = height - 1
+	}
+	left := max(0, (width-subWidth)/2)
+	right := max(0, width-subWidth-left)
+
+	viewLines := strings.Split(view, "\n")
+	subLines := strings.Split(sub, "\n")
+
+	for i := 0; i < len(subLines) && top+i < len(viewLines); i++ {
+		viewLines[top+i] = strings.Repeat(" ", left) + subLines[i] + strings.Repeat(" ", right)
+	}
+	return strings.Join(viewLines, "\n")
 }
 
 func (n *TreeNode) depth() int {

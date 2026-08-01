@@ -60,6 +60,14 @@ run-xml:
 diff:
   go run {{ pkg }} diff
 
+# Dump only changes since the last recorded dump (incremental)
+delta:
+  go run {{ pkg }} delta
+
+# Dump the changes as a raw unified diff patch
+delta-patch:
+  go run {{ pkg }} delta --patch
+
 # Dump signature-only summaries of the current directory
 sig:
   go run {{ pkg }} dump . --mode signatures --style xml

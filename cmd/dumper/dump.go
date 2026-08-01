@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/spf13/cobra"
 
 	"github.com/bethropolis/dir-dumper/internal/app"
@@ -28,6 +30,21 @@ var dumpCmd = &cobra.Command{
 
 		application := app.New(cfg)
 		defer application.Close()
-		return application.Run()
+
+		start := time.Now()
+		files, skipped, err := application.Collect()
+		if err != nil {
+			return err
+		}
+		if err := application.Render(files, skipped, time.Since(start), err); err != nil {
+			return err
+		}
+
+		// Record the dump baseline so future delta dumps know what changed
+		// since this scan. Failure to record is non-fatal.
+		if err := recordDumpState(cfg.RootDir, files, "HEAD"); err != nil {
+			application.LogError("Failed to record dump state: %v", err)
+		}
+		return nil
 	},
 }

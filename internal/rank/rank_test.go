@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -115,6 +116,69 @@ func TestScoreDirPrefix(t *testing.T) {
 	}
 	if changes.Score("sub/deep/y.txt") != ScoreModified {
 		t.Errorf("nested score = %v, want %v", changes.Score("sub/deep/y.txt"), ScoreModified)
+	}
+}
+
+func TestCommitsBetween(t *testing.T) {
+	dir := initRepo(t) // one commit: "initial"
+	g := New(dir)
+
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one+second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, dir, "add", "a.txt")
+	gitCmd(t, dir, "commit", "-q", "-m", "second")
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("two+third"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, dir, "add", "b.txt")
+	gitCmd(t, dir, "commit", "-q", "-m", "third")
+
+	initialHash := g.run("rev-parse", "--short", "HEAD~2")
+
+	commits := g.CommitsBetween(initialHash, "HEAD")
+	if len(commits) != 2 {
+		t.Fatalf("CommitsBetween = %d commits, want 2", len(commits))
+	}
+	if commits[0].Subject != "third" || commits[1].Subject != "second" {
+		t.Errorf("subjects = %q, %q; want third (newest first), second", commits[0].Subject, commits[1].Subject)
+	}
+	if commits[0].Short == "" || commits[1].Short == "" {
+		t.Errorf("expected short hashes, got %q, %q", commits[0].Short, commits[1].Short)
+	}
+
+	// Empty range yields no commits.
+	if got := g.CommitsBetween("HEAD", "HEAD"); len(got) != 0 {
+		t.Errorf("empty range returned %d commits", len(got))
+	}
+}
+
+func TestHead(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir)
+	short, subject := g.Head()
+	if short == "" || subject != "initial" {
+		t.Errorf("Head() = (%q, %q), want (short, initial)", short, subject)
+	}
+}
+
+func TestRawPatch(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir)
+
+	// Edit a.txt and commit, so the patch vs HEAD~1 shows the change.
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\nchanged"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, dir, "add", "a.txt")
+	gitCmd(t, dir, "commit", "-q", "-m", "edit a")
+
+	patch := g.RawPatch("HEAD~1", "HEAD")
+	if !strings.Contains(patch, "diff --git") {
+		t.Errorf("RawPatch missing diff header: %q", patch)
+	}
+	if !strings.Contains(patch, "a.txt") {
+		t.Errorf("RawPatch missing filename: %q", patch)
 	}
 }
 

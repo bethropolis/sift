@@ -122,6 +122,13 @@ func (a *App) OutputPath() string {
 	return a.outputPath
 }
 
+// Output returns the writer the rendered document is written to, backing the
+// configured output file or stdout. Callers that produce output outside the
+// standard render path (e.g. delta patches) reuse it to honor --output.
+func (a *App) Output() io.Writer {
+	return a.output
+}
+
 // Run executes the main application logic.
 // It returns a non-nil error when the scan failed, including on timeout.
 func (a *App) Run() error {

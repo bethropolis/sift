@@ -55,6 +55,9 @@ var watchCmd = &cobra.Command{
 		if err := application.Render(files, skipped, time.Since(start), err); err != nil {
 			return err
 		}
+		if err := recordDumpState(absRootDir, files, "HEAD"); err != nil {
+			application.LogError("Failed to record dump state: %v", err)
+		}
 
 		outputPath := application.OutputPath()
 		ignore := func(path string) bool {
@@ -77,7 +80,13 @@ var watchCmd = &cobra.Command{
 					application.LogError("re-render: %v", err)
 					return nil
 				}
-				return application.Render(files, skipped, time.Since(start), err)
+				if err := application.Render(files, skipped, time.Since(start), err); err != nil {
+					return err
+				}
+				if err := recordDumpState(absRootDir, files, "HEAD"); err != nil {
+					application.LogError("Failed to record dump state: %v", err)
+				}
+				return nil
 			},
 		})
 	},

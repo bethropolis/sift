@@ -150,6 +150,78 @@ func (g *Git) Score(rootDir string, paths []string) map[string]float64 {
 	return scores
 }
 
+// Commit identifies a git commit in the short form used by delta dumps.
+type Commit struct {
+	Short   string
+	Hash    string
+	Subject string
+}
+
+// Head returns the short hash and subject of the current HEAD commit.
+func (g *Git) Head() (short, subject string) {
+	short = g.run("rev-parse", "--short", "HEAD")
+	subject = g.run("log", "-1", "--format=%s", "HEAD")
+	return short, subject
+}
+
+// Ref returns the short hash and subject of the given ref.
+func (g *Git) Ref(ref string) (short, subject string) {
+	short = g.run("rev-parse", "--short", ref)
+	subject = g.run("log", "-1", "--format=%s", ref)
+	return short, subject
+}
+
+// Parent returns the short hash of ref's first parent, or "" when ref has no
+// parent (e.g. the repository root commit).
+func (g *Git) Parent(ref string) string {
+	return g.run("rev-parse", "--short", ref+"^")
+}
+
+// CommitsBetween lists the commits in the range from..to, newest first, in
+// short form. The range is empty when to is not an ancestor of HEAD.
+func (g *Git) CommitsBetween(from, to string) []Commit {
+	lines := g.runList("log", "--format=%h%x09%H%x09%s", from+".."+to)
+	commits := make([]Commit, 0, len(lines))
+	for _, l := range lines {
+		short, hash, subject := splitCommit(l)
+		if short == "" {
+			continue
+		}
+		commits = append(commits, Commit{Short: short, Hash: hash, Subject: subject})
+	}
+	return commits
+}
+
+// splitCommit splits one git log format line into short hash, full hash, and
+// subject. Returns empty short when the line is unusable.
+func splitCommit(line string) (short, hash, subject string) {
+	fields := strings.Split(line, "\t")
+	if len(fields) < 3 || fields[0] == "" {
+		return "", "", ""
+	}
+	return fields[0], fields[1], fields[2]
+}
+
+// RawPatch returns the unified diff between from and to.
+func (g *Git) RawPatch(from, to string) string {
+	return g.runRaw("diff", from+".."+to)
+}
+
+// ChangedBetween returns the paths changed between two refs.
+func (g *Git) ChangedBetween(from, to string) []string {
+	set := map[string]bool{}
+	for _, p := range g.runList("diff", "--name-only", from+".."+to) {
+		if p = strings.TrimSpace(p); p != "" {
+			set[p] = true
+		}
+	}
+	paths := make([]string, 0, len(set))
+	for p := range set {
+		paths = append(paths, p)
+	}
+	return paths
+}
+
 // ChangedSinceRef returns the paths that differ between the working tree and
 // ref, including uncommitted changes and commits made after ref. With the
 // default ref (HEAD) this is exactly the uncommitted working tree.
