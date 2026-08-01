@@ -71,6 +71,28 @@ func (n *TreeNode) walk(rows *[]*TreeNode) {
 	}
 }
 
+// ExpandAll expands every directory in the subtree. The root's own state is
+// left untouched.
+func (n *TreeNode) ExpandAll() {
+	for _, c := range n.Children {
+		if c.Kind == KindDir {
+			c.Expanded = true
+			c.ExpandAll()
+		}
+	}
+}
+
+// CollapseAll collapses every directory in the subtree. The root's own state
+// is left untouched.
+func (n *TreeNode) CollapseAll() {
+	for _, c := range n.Children {
+		if c.Kind == KindDir {
+			c.Expanded = false
+			c.CollapseAll()
+		}
+	}
+}
+
 // walkFiltered walks with a fuzzy filter: a node is kept when its name matches
 // or any descendant matches. Ancestors of a match are expanded implicitly.
 func (n *TreeNode) walkFiltered(rows *[]*TreeNode, filter string) {

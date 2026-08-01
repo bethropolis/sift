@@ -11,6 +11,18 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateDeltaKey(msg)
 	}
 
+	if m.helpOpen {
+		switch msg.Type {
+		case tea.KeyEsc, tea.KeyCtrlC, tea.KeyCtrlQ:
+			m.helpOpen = false
+		case tea.KeyRunes:
+			if r := string(msg.Runes); r == "?" || r == "q" {
+				m.helpOpen = false
+			}
+		}
+		return m, nil
+	}
+
 	if m.filtering {
 		switch msg.Type {
 		case tea.KeyEsc:
@@ -32,16 +44,17 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.Type {
-	case tea.KeyCtrlC, tea.KeyCtrlQ:
+	case tea.KeyCtrlC, tea.KeyCtrlQ, tea.KeyEsc:
 		m.quit = true
 		return m, tea.Quit
 	case tea.KeyEnter:
-		if n := m.node(); n != nil && n.Kind == KindDir {
-			n.Expanded = !n.Expanded
-			m.recomputeRows()
-		} else {
-			m.quit = true
-			return m, tea.Quit
+		if n := m.node(); n != nil {
+			if n.Kind == KindDir {
+				n.Expanded = !n.Expanded
+				m.recomputeRows()
+			} else {
+				n.Toggle()
+			}
 		}
 	case tea.KeyUp, tea.KeyShiftTab:
 		m.move(-1)
@@ -102,6 +115,16 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.copy()
 		case "d":
 			m.openDelta()
+		case "?":
+			m.helpOpen = !m.helpOpen
+		case "g":
+			m.generate()
+		case "E":
+			m.root.ExpandAll()
+			m.recomputeRows()
+		case "C":
+			m.root.CollapseAll()
+			m.recomputeRows()
 		case "q":
 			m.quit = true
 			return m, tea.Quit
@@ -177,6 +200,24 @@ func (m *model) copy() {
 		return
 	}
 	m.notice = fmt.Sprintf("Copied %d files (%d tokens) to clipboard", len(sel), m.root.TotalActiveTokens())
+}
+
+// generate renders the current selection to the output document without
+// leaving the picker, so the user can keep tweaking the selection.
+func (m *model) generate() {
+	if m.onGenerate == nil {
+		return
+	}
+	sel := m.root.Selections()
+	if len(sel) == 0 {
+		m.notice = "Nothing selected to generate"
+		return
+	}
+	if err := m.onGenerate(sel); err != nil {
+		m.notice = "Generate failed: " + err.Error()
+		return
+	}
+	m.notice = fmt.Sprintf("Generated output (%d files, %d tokens)", len(sel), m.root.TotalActiveTokens())
 }
 
 // updateDeltaKey handles keys while the delta modal is open.

@@ -32,6 +32,10 @@ type model struct {
 	onCopy func([]Selection) error
 	notice string
 
+	// Help modal state.
+	helpOpen   bool
+	onGenerate func([]Selection) error
+
 	// Delta modal state.
 	delta         *DeltaInfo
 	deltaOpen     bool
@@ -51,6 +55,11 @@ type Options struct {
 	UseNerd bool
 	OnCopy  func([]Selection) error
 
+	// OnGenerate renders the current selection without exiting the picker
+	// (pressing g). It mirrors OnCopy but writes the document instead of the
+	// clipboard.
+	OnGenerate func([]Selection) error
+
 	// Delta is the git delta state shown in the delta modal (pressing d).
 	// When nil the modal shows "not available" messaging. OnDelta is invoked
 	// when the user confirms a delta dump.
@@ -64,15 +73,16 @@ func newModel(root *TreeNode, opts Options) model {
 		glyphs = NewNerdFontGlyphs()
 	}
 	m := model{
-		root:    root,
-		height:  24,
-		width:   80,
-		budget:  opts.Budget,
-		style:   opts.Style,
-		glyphs:  glyphs,
-		onCopy:  opts.OnCopy,
-		delta:   opts.Delta,
-		onDelta: opts.OnDelta,
+		root:       root,
+		height:     24,
+		width:      80,
+		budget:     opts.Budget,
+		style:      opts.Style,
+		glyphs:     glyphs,
+		onCopy:     opts.OnCopy,
+		onGenerate: opts.OnGenerate,
+		delta:      opts.Delta,
+		onDelta:    opts.OnDelta,
 	}
 	m.recomputeRows()
 	return m
@@ -137,6 +147,9 @@ func (m model) View() string {
 
 	if m.deltaOpen {
 		view = m.renderDeltaModal(view, width, height)
+	}
+	if m.helpOpen {
+		view = m.renderHelpModal(view, width, height)
 	}
 	return view
 }

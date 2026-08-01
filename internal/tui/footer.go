@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // footerHeight returns the number of lines the footer occupies. The join
@@ -31,12 +33,23 @@ func (m model) renderFooter(width int) string {
 		barLen := max(1, width-60)
 		filled := barLen * pct / 100
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", max(0, barLen-filled))
-		budget = fmt.Sprintf("Budget: %d / %d %s %d%% | ", active, m.budget, bar, pct)
+
+		var barColor lipgloss.Color
+		switch {
+		case active > m.budget:
+			barColor = lipgloss.Color("9") // Red
+		case pct >= 80:
+			barColor = lipgloss.Color("11") // Yellow
+		default:
+			barColor = lipgloss.Color("10") // Green
+		}
+		styledBar := lipgloss.NewStyle().Foreground(barColor).Render(bar)
+		budget = fmt.Sprintf("Budget: %d / %d %s %d%% | ", active, m.budget, styledBar, pct)
 	}
 
-	keys := "space toggle   m mode   a all/none   s smart   / filter   y copy   d delta   pgup/pgdn preview   enter done   q quit"
+	actions := "[?] Help  [g] Generate  [y] Copy  [q] Exit"
 	if m.filtering {
-		keys = "/ filter: " + m.filter + "▌"
+		actions = fmt.Sprintf("/ Filter (%d matches): %s▌", len(m.rows), m.filter)
 	}
 
 	var b strings.Builder
@@ -46,7 +59,7 @@ func (m model) renderFooter(width int) string {
 		b.WriteString(noticeStyle.Render(m.notice))
 	}
 	b.WriteString("\n")
-	b.WriteString(hintStyle.Render(fmt.Sprintf("%sStyle: %s | %d selected, %d tokens | %s",
-		budget, m.style, selected, active, keys)))
+	b.WriteString(hintStyle.Render(fmt.Sprintf("%sStyle: %s | %d selected (%d tok) | %s",
+		budget, m.style, selected, active, actions)))
 	return b.String()
 }

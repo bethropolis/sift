@@ -12,6 +12,7 @@ import (
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/tui"
+	"github.com/bethropolis/sift/internal/walker"
 )
 
 func init() {
@@ -71,6 +72,9 @@ func runPick(cmd *cobra.Command, args []string) error {
 		UseNerd: !cfg.NoNerdFonts,
 		OnCopy: func(sel []tui.Selection) error {
 			return copySelection(application, files, sel)
+		},
+		OnGenerate: func(sel []tui.Selection) error {
+			return generateSelection(application, files, skipped, start, sel)
 		},
 		Delta: buildDeltaInfo(application, files),
 		OnDelta: func(sel tui.DeltaSelection) error {
@@ -146,4 +150,27 @@ func copySelection(application *app.App, files []format.FileEntry, selected []tu
 		return fmt.Errorf("nothing selected")
 	}
 	return application.RenderToClipboard(chosen)
+}
+
+// generateSelection renders the current selection to the output document
+// without leaving the picker (pressing g). The output file is truncated first
+// so repeated generates replace the previous dump instead of appending to it.
+func generateSelection(application *app.App, files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection) error {
+	chosen := applySelection(files, selected)
+	if len(chosen) == 0 {
+		return fmt.Errorf("nothing selected")
+	}
+	if f, ok := application.Output().(*os.File); ok {
+		if err := f.Truncate(0); err != nil {
+			return err
+		}
+		if _, err := f.Seek(0, 0); err != nil {
+			return err
+		}
+	}
+	if err := application.RenderFinal(chosen, skipped, time.Since(start), nil); err != nil {
+		return err
+	}
+	// Update the baseline so a later delta dump knows what was just rendered.
+	return recordDumpState(cfg.RootDir, chosen, "HEAD")
 }
