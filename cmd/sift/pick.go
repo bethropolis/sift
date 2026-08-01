@@ -89,9 +89,6 @@ func runPick(cmd *cobra.Command, args []string) error {
 	if len(selected) == 0 {
 		return fmt.Errorf("sift pick: no files selected")
 	}
-	if len(selected) == 0 {
-		return fmt.Errorf("sift pick: no files selected")
-	}
 
 	chosen := applySelection(files, selected)
 	if err := application.RenderFinal(chosen, skipped, time.Since(start), nil); err != nil {

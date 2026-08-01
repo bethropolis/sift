@@ -61,7 +61,15 @@ func (g *Git) ChangesFor(ref string) *Changes {
 
 	for _, line := range strings.Split(g.runRaw("status", "--porcelain"), "\n") {
 		if len(line) > 3 {
-			changes.Modified[strings.TrimSpace(line[3:])] = true
+			p := strings.TrimSpace(line[3:])
+			if idx := strings.Index(p, " -> "); idx != -1 {
+				// Rename entry: "old.go -> new.go". Register both sides so
+				// the new path is scored as modified.
+				changes.Modified[p[idx+4:]] = true
+				changes.Modified[p[:idx]] = true
+			} else {
+				changes.Modified[p] = true
+			}
 		}
 	}
 	for _, p := range g.runList("diff", "--name-only", ref+"^.."+ref) {

@@ -119,6 +119,30 @@ func TestModePropagation(t *testing.T) {
 	}
 }
 
+// TestMixedModeFolderTokens guards against the recompute override that used
+// to overwrite a selected folder's child-summed ActiveTokens with the uniform
+// TokensFull/TokensSig, which inflated the total when children had mixed modes.
+func TestMixedModeFolderTokens(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "internal/a.go", TokensFull: 20, TokensSig: 8},
+		{Path: "internal/b.go", TokensFull: 30, TokensSig: 12},
+	})
+	internal := root.findChild("internal")
+	internal.setSelected(true)
+
+	// Switch only one file to signatures so the folder holds mixed modes.
+	a := internal.findChild("a.go")
+	a.applyMode(ModeSignatures)
+	root.recompute()
+
+	if got := internal.TotalActiveTokens(); got != 38 {
+		t.Errorf("TotalActiveTokens = %d, want 38 (8 sig + 30 full)", got)
+	}
+	if got := root.TotalActiveTokens(); got != 38 {
+		t.Errorf("root TotalActiveTokens = %d, want 38", got)
+	}
+}
+
 func TestSmartSelectByRank(t *testing.T) {
 	root := BuildTree([]Item{
 		{Path: "low.go", TokensFull: 100, RankScore: 0.1},

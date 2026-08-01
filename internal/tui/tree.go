@@ -239,17 +239,6 @@ func (n *TreeNode) recompute() {
 	} else {
 		n.Mode = ModeFull
 	}
-
-	// Fast O(1) override for uniform directory states
-	if n.SelectState == Unselected || n.Mode == ModeSkip {
-		n.ActiveTokens = 0
-	} else if n.SelectState == Selected {
-		if n.Mode == ModeFull {
-			n.ActiveTokens = n.TokensFull
-		} else if n.Mode == ModeSignatures {
-			n.ActiveTokens = n.TokensSig
-		}
-	}
 }
 
 func (n *TreeNode) isLastSibling() bool {
