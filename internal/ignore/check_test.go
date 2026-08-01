@@ -175,3 +175,77 @@ func TestShouldIgnoreDisabled(t *testing.T) {
 		t.Error("ShouldIgnore(.hidden) = true, want false for disabled matcher")
 	}
 }
+
+func TestShouldIgnoreDefaults(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"main.go":             "package main",
+		"debug.log":           "log",
+		"package-lock.json":   "{}",
+		"vendor/dep.go":       "package dep",
+		"node_modules/dep.js": "x",
+		"data.csv":            "a,b",
+	})
+
+	m, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name  string
+		path  string
+		isDir bool
+		want  bool
+	}{
+		{name: "not in defaults", path: "main.go", want: false},
+		{name: "log file", path: "debug.log", want: true},
+		{name: "lock file", path: "package-lock.json", want: true},
+		{name: "vendor dir", path: "vendor", isDir: true, want: true},
+		{name: "node_modules dir", path: "node_modules", isDir: true, want: true},
+		{name: "csv data", path: "data.csv", want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := m.ShouldIgnore(tc.path, tc.isDir); got != tc.want {
+				t.Errorf("ShouldIgnore(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestShouldIgnoreRepoOverridesDefaults(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		".gitignore":    "!important.log\n",
+		"important.log": "important",
+		"other.log":     "log",
+		"main.go":       "package main",
+	})
+
+	m, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		// Repo negation wins over the default *.log rule.
+		{name: "negated by repo", path: "important.log", want: false},
+		// A log not covered by the repo rule falls through to defaults.
+		{name: "repo silent, defaults apply", path: "other.log", want: true},
+		{name: "not matched", path: "main.go", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := m.ShouldIgnore(tc.path, false); got != tc.want {
+				t.Errorf("ShouldIgnore(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+		})
+	}
+}

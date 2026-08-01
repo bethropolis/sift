@@ -108,7 +108,9 @@ func (n *TreeNode) SelectedCount() int {
 }
 
 // SelectByRank selects files in descending rank order until the cumulative
-// active tokens would exceed budget (0 = unlimited). Returns the number of
+// active tokens would exceed budget (0 = unlimited). Before charging each
+// file it assigns the smart mode: a history-derived preference wins, then a
+// signature summary when one exists, else full content. Returns the number of
 // files selected.
 func (n *TreeNode) SelectByRank(budget int) int {
 	var files []*TreeNode
@@ -123,6 +125,14 @@ func (n *TreeNode) SelectByRank(budget int) int {
 	used := 0
 	count := 0
 	for _, f := range files {
+		switch {
+		case f.PreferredMode != "":
+			f.Mode = f.PreferredMode
+		case len(f.SigContent) > 0:
+			f.Mode = ModeSignatures
+		default:
+			f.Mode = ModeFull
+		}
 		toks := f.TokensFull
 		if f.Mode == ModeSignatures {
 			toks = f.TokensSig

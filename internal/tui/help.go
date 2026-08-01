@@ -22,7 +22,7 @@ func (m model) renderHelpModal(view string, width, height int) string {
 
 	b.WriteString(titleStyle.Render("Selection & Context Density:\n"))
 	b.WriteString("  m                    Cycle Mode (FULL -> SIGS -> SKIP)\n")
-	b.WriteString("  s                    Smart Auto-Select by Git Rank\n")
+	b.WriteString("  s                    Smart Select (FULL/SIGS by git history)\n")
 	b.WriteString("  d                    Incremental Delta Dump Modal\n")
 	b.WriteString("  a                    Select All / Deselect All\n\n")
 

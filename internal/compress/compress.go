@@ -7,6 +7,7 @@ package compress
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/golang"
@@ -143,20 +144,39 @@ func stringSet(items ...string) map[string]bool {
 // Compressor produces signature summaries for a language.
 type Compressor struct {
 	grammars map[Language]*sitter.Language
+	// parsers holds one reusable parser per language. Tree-sitter parser
+	// creation/destruction crosses cgo, which is expensive per file; pooling
+	// them avoids that churn across worker goroutines.
+	parsers map[Language]*sync.Pool
 }
 
 // New returns a Compressor with all supported grammars loaded.
 func New() *Compressor {
+	grammars := map[Language]*sitter.Language{
+		Go:         golang.GetLanguage(),
+		Rust:       rust.GetLanguage(),
+		JavaScript: javascript.GetLanguage(),
+		TypeScript: typescript.GetLanguage(),
+		TSX:        tsx.GetLanguage(),
+		Python:     python.GetLanguage(),
+		PHP:        php.GetLanguage(),
+	}
+
+	parsers := make(map[Language]*sync.Pool, len(grammars))
+	for lang, grammar := range grammars {
+		grammar := grammar
+		parsers[lang] = &sync.Pool{
+			New: func() any {
+				p := sitter.NewParser()
+				p.SetLanguage(grammar)
+				return p
+			},
+		}
+	}
+
 	return &Compressor{
-		grammars: map[Language]*sitter.Language{
-			Go:         golang.GetLanguage(),
-			Rust:       rust.GetLanguage(),
-			JavaScript: javascript.GetLanguage(),
-			TypeScript: typescript.GetLanguage(),
-			TSX:        tsx.GetLanguage(),
-			Python:     python.GetLanguage(),
-			PHP:        php.GetLanguage(),
-		},
+		grammars: grammars,
+		parsers:  parsers,
 	}
 }
 
@@ -170,14 +190,13 @@ func (c *Compressor) LanguageForPath(path string) (Language, bool) {
 // result reports whether any declaration was emitted; false means the source
 // is returned unchanged (nothing to compress or a parse failure).
 func (c *Compressor) Compress(src []byte, lang Language) (string, bool) {
-	parser := sitter.NewParser()
-	defer parser.Close()
-
-	grammar, ok := c.grammars[lang]
+	pool, ok := c.parsers[lang]
 	if !ok {
 		return string(src), false
 	}
-	parser.SetLanguage(grammar)
+
+	parser := pool.Get().(*sitter.Parser)
+	defer pool.Put(parser)
 
 	tree := parser.Parse(nil, src)
 	if tree == nil {

@@ -2,7 +2,6 @@
 package walker
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 )
@@ -37,19 +36,20 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 		}
 	}
 
+	// Skip binary files before reading them, using extension fast-paths and
+	// magic-number sniffing as a fallback for unknown/extensionless files.
+	if !options.IncludeBinary && IsBinaryFile(path) {
+		options.Logger.Debug("processFile Skipping [%s]: Binary file detected", relativePath)
+		tracker.Track(relativePath, ReasonSkippedBinary, false)
+		return
+	}
+
 	// Read file content
 	content, err := os.ReadFile(path)
 	if err != nil {
 		options.Logger.Error("processFile Error [%s]: Failed to read file: %v", relativePath, err)
 		tracker.Track(relativePath, ReasonSkippedReadError, false)
 		walkFn(relativePath, nil, fmt.Errorf("failed to read file: %w", err))
-		return
-	}
-
-	// Skip binary files unless explicitly included
-	if !options.IncludeBinary && isBinary(content) {
-		options.Logger.Debug("processFile Skipping [%s]: Binary file detected", relativePath)
-		tracker.Track(relativePath, ReasonSkippedBinary, false)
 		return
 	}
 
@@ -60,14 +60,4 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	}
 
 	stats.processedFiles.Add(1)
-}
-
-// isBinary reports whether content looks like binary data by sniffing the
-// first 512 bytes for a NUL byte.
-func isBinary(content []byte) bool {
-	n := len(content)
-	if n > 512 {
-		n = 512
-	}
-	return bytes.IndexByte(content[:n], 0) != -1
 }

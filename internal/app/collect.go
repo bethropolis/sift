@@ -12,7 +12,6 @@ import (
 	"github.com/bethropolis/sift/internal/compress"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
-	"github.com/bethropolis/sift/internal/secrets"
 	"github.com/bethropolis/sift/internal/setup"
 	"github.com/bethropolis/sift/internal/smart"
 	"github.com/bethropolis/sift/internal/tokenize"
@@ -124,12 +123,6 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 		return nil, nil, err
 	}
 
-	// --- Create the secret scanner ---
-	var scanner *secrets.Scanner
-	if a.cfg.SecretScan && !a.cfg.ForceSecrets {
-		scanner = secrets.New()
-	}
-
 	// --- Create the signature compressor. The picker needs it for every file
 	// so it can offer per-file FULL/SIGS modes; dump/diff/watch only compress
 	// when the global mode requests signatures. ---
@@ -179,20 +172,9 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 			}
 		}
 
-		// Redact secrets before the content is stored for rendering.
-		var detections []secrets.Detection
-		if scanner != nil {
-			var redacted []byte
-			redacted, detections = scanner.Redact(content)
-			for _, d := range detections {
-				a.log.Warn("Redacted %s in %s", d.RuleName, relativePath)
-			}
-			content = redacted
-		}
-
 		// Smart filter: skip generated/lock/minified/oversized files. The
-		// token guardrail counts the raw (redacted) content, matching what
-		// would otherwise be stored. The count is reused as TokensFull when
+		// token guardrail counts the raw content, matching what would
+		// otherwise be stored. The count is reused as TokensFull when
 		// the picker runs to avoid counting twice.
 		smartTokens := -1
 		if smartEvaluator != nil {
@@ -207,10 +189,9 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 		}
 
 		entry := format.FileEntry{
-			Path:        relativePath,
-			Content:     content,
-			Tokens:      -1,
-			SecretCount: len(detections),
+			Path:    relativePath,
+			Content: content,
+			Tokens:  -1,
 		}
 
 		if picker {

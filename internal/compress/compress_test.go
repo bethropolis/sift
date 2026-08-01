@@ -2,6 +2,7 @@ package compress
 
 import (
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -192,5 +193,44 @@ func f() int {
 	}
 	if !strings.Contains(out, "func f() int") {
 		t.Errorf("missing func signature:\n%s", out)
+	}
+}
+
+// TestCompressConcurrent exercises the shared parser pool across goroutines;
+// run with -race to catch parser reuse hazards.
+func TestCompressConcurrent(t *testing.T) {
+	c := New()
+	src := []byte("package p\n\n// F does things.\nfunc F() int {\n\treturn 1\n}\n")
+
+	const workers = 8
+	const perWorker = 20
+	expected, didCompress := c.Compress(src, Go)
+	if !didCompress || !strings.Contains(expected, "func F() int") {
+		t.Fatalf("baseline compress failed: %q, %v", expected, didCompress)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan string, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < perWorker; j++ {
+				out, ok := c.Compress(src, Go)
+				if !ok {
+					errs <- "didCompress = false"
+					return
+				}
+				if out != expected {
+					errs <- "concurrent output differs from baseline"
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
 	}
 }

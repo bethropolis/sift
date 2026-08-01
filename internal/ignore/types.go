@@ -14,6 +14,10 @@ type IgnoreMatcher struct {
 	// Matcher built from custom patterns (e.g., -ignore flag)
 	customIgnore gitignore.GitIgnore
 
+	// Matcher built from the built-in default patterns. It is consulted last,
+	// only when neither custom nor repository rules decided the path.
+	defaultIgnore gitignore.GitIgnore
+
 	// Configuration flags
 	rootDir        string
 	ignoreHidden   bool

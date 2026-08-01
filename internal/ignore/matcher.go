@@ -76,5 +76,13 @@ func (m *IgnoreMatcher) init() error {
 		m.customIgnore = gitignore.New(strings.NewReader(strings.Join(m.customPatterns, "\n")), m.rootDir, nil)
 	}
 
+	// Build the default ignore matcher. It is a lowest-priority fallback that
+	// is only consulted when neither custom patterns nor repository rules
+	// decided the path, so user rules always win over built-in defaults.
+	if len(DefaultIgnorePatterns) > 0 {
+		m.logger.Debug("ignore.New: Building matcher from %d default patterns", len(DefaultIgnorePatterns))
+		m.defaultIgnore = gitignore.New(strings.NewReader(strings.Join(DefaultIgnorePatterns, "\n")), m.rootDir, nil)
+	}
+
 	return nil
 }

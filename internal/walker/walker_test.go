@@ -1,7 +1,6 @@
 package walker
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -162,24 +161,123 @@ func TestWalkBinaryFiles(t *testing.T) {
 	}
 }
 
-func TestIsBinary(t *testing.T) {
-	tests := []struct {
-		name    string
-		content []byte
-		want    bool
-	}{
-		{name: "empty", content: nil, want: false},
-		{name: "text", content: []byte("hello world"), want: false},
-		{name: "nul at start", content: []byte{0x00, 0x01}, want: true},
-		{name: "nul within first 512", content: append(bytes.Repeat([]byte("a"), 100), 0x00), want: true},
-		{name: "nul beyond 512 bytes not detected", content: append(bytes.Repeat([]byte("a"), 600), 0x00), want: false},
+func TestIsBinaryFile(t *testing.T) {
+	dir := t.TempDir()
+	// Extensionless text file: sniffed via magic numbers.
+	makefile := filepath.Join(dir, "Makefile")
+	if err := os.WriteFile(makefile, []byte("all:\n\tgo build\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Extensionless binary file: NUL-prefixed, sniffed as non-text.
+	data := filepath.Join(dir, "data")
+	if err := os.WriteFile(data, []byte{0x00, 0x01, 0x02}, 0o644); err != nil {
+		t.Fatal(err)
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := isBinary(tc.content); got != tc.want {
-				t.Errorf("isBinary(%q) = %v, want %v", tc.content, got, tc.want)
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "known text ext", path: filepath.Join(dir, "main.go"), want: false},
+		{name: "known text ext uppercase", path: filepath.Join(dir, "README.TXT"), want: false},
+		{name: "known binary ext", path: filepath.Join(dir, "img.png"), want: true},
+		{name: "known binary ext uppercase", path: filepath.Join(dir, "ARCHIVE.ZIP"), want: true},
+		{name: "extensionless text", path: makefile, want: false},
+		{name: "extensionless binary", path: data, want: true},
+		{name: "missing file", path: filepath.Join(dir, "nope"), want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsBinaryFile(tt.path); got != tt.want {
+				t.Errorf("IsBinaryFile(%q) = %v, want %v", tt.path, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestWalkPrunesIgnoredHeavyDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "node_modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "node_modules", "dep.js"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A heavy dir that is also covered by ignore rules is pruned at entry.
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("node_modules/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := collectWalk(t, root)
+	want := []string{"a.txt"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestWalkKeepsUnignoredHeavyDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "vendor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "vendor", "dep.go"), []byte("package dep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A heavy dir that is excluded by the built-in default ignore patterns but
+	// re-included by a repository rule must still be walked: repo rules (and
+	// their negations) take precedence over the default fallback.
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("!vendor/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := collectWalk(t, root)
+	want := []string{"a.txt", "vendor/dep.go"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestWalkDefaultIgnorePrunes(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "node_modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "node_modules", "dep.js"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "debug.log"), []byte("log"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// No .gitignore and no --ignore: files matching the built-in default
+	// patterns are still pruned.
+	got := collectWalk(t, root)
+	want := []string{"main.go"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+		}
 	}
 }

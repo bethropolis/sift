@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/mattn/go-isatty"
@@ -11,6 +12,7 @@ import (
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/tui"
 	"github.com/bethropolis/sift/internal/walker"
 )
@@ -61,16 +63,25 @@ func runPick(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Analyze the last five commits to hint preferred modes: bulk commits map
+	// to signatures, focused ones and working-tree edits to full content. An
+	// empty map (non-git or error) leaves every file with no preference.
+	var preferredModes map[string]string
+	if absRoot, err := filepath.Abs(cfg.RootDir); err == nil {
+		preferredModes = rank.New(absRoot).AnalyzeCommitHistory(5)
+	}
+
 	items := make([]tui.Item, len(files))
 	for i, f := range files {
 		items[i] = tui.Item{
-			Path:        f.Path,
-			Content:     f.Content,
-			SigContent:  f.SigContent,
-			TokensFull:  f.TokensFull,
-			TokensSig:   f.TokensSig,
-			SecretCount: f.SecretCount,
-			RankScore:   f.RankScore,
+			Path:          f.Path,
+			Content:       f.Content,
+			SigContent:    f.SigContent,
+			TokensFull:    f.TokensFull,
+			TokensSig:     f.TokensSig,
+			SecretCount:   f.SecretCount,
+			RankScore:     f.RankScore,
+			PreferredMode: tui.CompressMode(preferredModes[f.Path]),
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/secrets"
 	"github.com/bethropolis/sift/internal/summary"
 	"github.com/bethropolis/sift/internal/tokenize"
 	"github.com/bethropolis/sift/internal/walker"
@@ -35,6 +36,12 @@ func (a *App) RenderToClipboard(files []format.FileEntry) error {
 	renderer, err := format.NewRenderer(format.ParseStyle(a.cfg.EffectiveStyle()), a.cfg.UseColors)
 	if err != nil {
 		return err
+	}
+
+	// The picker's copy action bypasses render(); scan the selected files here
+	// so copied output is redacted just like rendered output.
+	if a.cfg.SecretScan && !a.cfg.ForceSecrets {
+		files = secrets.New().RedactSelectedFiles(files)
 	}
 
 	total := 0
@@ -64,6 +71,13 @@ func (a *App) render(files []format.FileEntry, skippedItems []walker.SkippedItem
 		return err
 	}
 	a.log.Debug("Output style: %s", a.cfg.EffectiveStyle())
+
+	// Scan secrets ONLY on the selected files, right before rendering.
+	// Scanning is deliberately kept out of the walker so the directory scan
+	// stays fast; only the files that will actually be emitted are inspected.
+	if a.cfg.SecretScan && !a.cfg.ForceSecrets {
+		files = secrets.New().RedactSelectedFiles(files)
+	}
 
 	// Apply the token budget, keeping the highest-priority files.
 	var usedTokens int

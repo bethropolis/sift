@@ -2,7 +2,13 @@
 package secrets
 
 import (
+	"bytes"
 	"regexp"
+	"runtime"
+	"strings"
+	"sync"
+
+	"github.com/bethropolis/sift/internal/format"
 )
 
 // Detection describes a single secret found in a file.
@@ -11,55 +17,55 @@ type Detection struct {
 	Match    string
 }
 
-// Rule is a named regex used to find secrets.
+// Rule is a named regex used to find secrets. When Keywords is non-empty, the
+// regex is only evaluated if at least one keyword appears in the content.
 type Rule struct {
-	Name  string
-	Regex *regexp.Regexp
+	Name     string
+	Keywords []string
+	Regex    *regexp.Regexp
 }
 
-// rules is a curated set of gitleaks-compatible patterns covering common
-// credential formats.
-var rules = []Rule{
-	{Name: "AWS Access Key", Regex: regexp.MustCompile(`AKIA[0-9A-Z]{16}`)},
-	{Name: "AWS Secret Key", Regex: regexp.MustCompile(`(?i)aws(.{0,20})?['"][0-9a-zA-Z/+]{40}['"]`)},
-	{Name: "GitHub Token", Regex: regexp.MustCompile(`gh[pousr]_[A-Za-z0-9_]{36,255}`)},
-	{Name: "Slack Token", Regex: regexp.MustCompile(`xox[baprs]-[0-9a-zA-Z-]{10,48}`)},
-	{Name: "Google API Key", Regex: regexp.MustCompile(`AIza[0-9A-Za-z_-]{35}`)},
-	{Name: "Stripe Secret Key", Regex: regexp.MustCompile(`(?i)(sk|pk)_(test|live)_[0-9a-zA-Z]{10,}`)},
-	{Name: "JWT", Regex: regexp.MustCompile(`eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_.+/=]+`)},
-	{Name: "Private Key", Regex: regexp.MustCompile(`-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----`)},
-	{Name: "Bearer Token", Regex: regexp.MustCompile(`(?i)bearer\s+[a-z0-9._\-~+/]+=*`)},
+// Scanner scans content against the compiled gitleaks rules.
+type Scanner struct {
+	rules []Rule
 }
 
-// Scanner scans content against the secret rules.
-type Scanner struct{}
-
-// New returns a Scanner.
+// New returns a Scanner backed by the generated gitleaks rules.
 func New() *Scanner {
-	return &Scanner{}
+	return &Scanner{rules: CompiledRules}
 }
 
-// Scan returns all secrets detected in content.
-func (s *Scanner) Scan(content []byte) []Detection {
-	var detections []Detection
-	for _, rule := range rules {
-		for _, match := range rule.Regex.FindAll(content, -1) {
-			detections = append(detections, Detection{RuleName: rule.Name, Match: string(match)})
-		}
+// RedactContent scans and sanitizes content for a single file. The keyword
+// fast-path skips a rule's regex unless at least one of its keywords appears
+// in the (case-folded) content.
+func (s *Scanner) RedactContent(content []byte) ([]byte, []Detection) {
+	if len(content) == 0 {
+		return content, nil
 	}
-	return detections
-}
 
-// Redact replaces detected secrets with a placeholder and returns the
-// sanitized content along with the detections.
-func (s *Scanner) Redact(content []byte) ([]byte, []Detection) {
+	contentLower := bytes.ToLower(content)
 	var detections []Detection
 	redacted := string(content)
-	for _, rule := range rules {
+
+	for _, rule := range s.rules {
+		if len(rule.Keywords) > 0 {
+			hasKeyword := false
+			for _, kw := range rule.Keywords {
+				if bytes.Contains(contentLower, []byte(strings.ToLower(kw))) {
+					hasKeyword = true
+					break
+				}
+			}
+			if !hasKeyword {
+				continue
+			}
+		}
+
 		matches := rule.Regex.FindAllStringIndex(redacted, -1)
 		if len(matches) == 0 {
 			continue
 		}
+
 		// Replace from the end so earlier indices stay valid.
 		for i := len(matches) - 1; i >= 0; i-- {
 			start, end := matches[i][0], matches[i][1]
@@ -68,5 +74,45 @@ func (s *Scanner) Redact(content []byte) ([]byte, []Detection) {
 			redacted = redacted[:start] + "[REDACTED_SECRET: " + rule.Name + "]" + redacted[end:]
 		}
 	}
+
 	return []byte(redacted), detections
+}
+
+// RedactSelectedFiles runs secret scanning concurrently over the given files.
+// Each worker sanitizes a disjoint slice of the returned copy, so no entry is
+// ever mutated concurrently. SecretCount is set to the number of detections.
+func (s *Scanner) RedactSelectedFiles(files []format.FileEntry) []format.FileEntry {
+	if len(files) == 0 {
+		return files
+	}
+
+	workers := runtime.NumCPU()
+	if workers > len(files) {
+		workers = len(files)
+	}
+
+	jobs := make(chan int, len(files))
+	for i := range files {
+		jobs <- i
+	}
+	close(jobs)
+
+	var wg sync.WaitGroup
+	out := make([]format.FileEntry, len(files))
+	copy(out, files)
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				sanitized, detections := s.RedactContent(out[idx].Content)
+				out[idx].Content = sanitized
+				out[idx].SecretCount = len(detections)
+			}
+		}()
+	}
+
+	wg.Wait()
+	return out
 }

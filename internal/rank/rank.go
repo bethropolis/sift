@@ -6,6 +6,7 @@ package rank
 
 import (
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -196,4 +197,34 @@ func (g *Git) ChangedSinceRef(ref string) []string {
 		paths = append(paths, p)
 	}
 	return paths
+}
+
+// AnalyzeCommitHistory inspects the last depth commits plus the working tree
+// and recommends an output mode per touched file. Bulk commits (>10 files)
+// yield signatures; focused commits (<=10 files) yield full content, and
+// working-tree edits force full. Newer commits override older ones. Returns
+// an empty map outside a git repository or on any git error, so callers can
+// fall back to full content.
+func (g *Git) AnalyzeCommitHistory(depth int) map[string]string {
+	modes := make(map[string]string)
+	if !g.Available() {
+		return modes
+	}
+	commits := g.CommitsBetween("HEAD~"+strconv.Itoa(depth), "HEAD")
+	for i := len(commits) - 1; i >= 0; i-- { // oldest first so newer wins.
+		c := commits[i]
+		changed := g.ChangedBetween(g.Parent(c.Hash), c.Hash)
+		preferred := "full"
+		if len(changed) > 10 {
+			preferred = "signatures"
+		}
+		for _, p := range changed {
+			modes[p] = preferred
+		}
+	}
+	// Uncommitted edits are the freshest signal; their files must stay full.
+	for _, p := range g.ChangedSinceRef("HEAD") {
+		modes[p] = "full"
+	}
+	return modes
 }

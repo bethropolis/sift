@@ -52,6 +52,9 @@ type TreeNode struct {
 
 	SelectState SelectState
 	Mode        CompressMode // Effective mode, default full.
+	// PreferredMode is the mode smart select should fall back to for this
+	// file, derived from git commit history. Empty means "no preference".
+	PreferredMode CompressMode
 
 	// TokensFull and TokensSig aggregate descendant token counts. For files
 	// they come straight from the item; for directories they are the sum of
@@ -88,6 +91,9 @@ type Item struct {
 	SecretCount int
 	// RankScore is the git relevance score.
 	RankScore float64
+	// PreferredMode is the git-history-backed mode preference for this file.
+	// Empty means no preference; BuildTree falls back to the default full.
+	PreferredMode CompressMode
 }
 
 // BuildTree assembles a repository tree from flat file items. Directories are
@@ -132,6 +138,10 @@ func BuildTree(items []Item) *TreeNode {
 				child.SecretCount = it.SecretCount
 				child.RankScore = it.RankScore
 				child.Mode = ModeFull
+				if it.PreferredMode != "" {
+					child.Mode = it.PreferredMode
+				}
+				child.PreferredMode = it.PreferredMode
 				child.Content = it.Content
 				child.SigContent = it.SigContent
 				child.Children = nil

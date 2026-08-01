@@ -14,6 +14,18 @@ import (
 	"github.com/bethropolis/sift/internal/ignore"
 )
 
+// heavyDirBasenames are directory basenames to prune immediately at entry
+// when the ignore rules also cover them, so we never descend into them.
+var heavyDirBasenames = map[string]bool{
+	"node_modules": true,
+	"target":       true,
+	".next":        true,
+	".nuxt":        true,
+	"vendor":       true,
+	"__pycache__":  true,
+	".gradle":      true,
+}
+
 // Walk traverses the directory tree starting from rootDir.
 // It returns a list of skipped items and any critical error that occurred.
 func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts ...Option) ([]SkippedItem, error) {
@@ -140,6 +152,17 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 		if path == absRootDir || relativePath == "." {
 			options.Logger.Debug("Walker: Skipping root entry '.'")
 			return nil, false
+		}
+
+		// Pre-prune common heavy build directories at entry, before the full
+		// ignore pass. Gated on the matcher so committed vendor/target dirs
+		// that are not ignored are still walked.
+		if isDir && heavyDirBasenames[filepath.Base(path)] &&
+			matcher != nil && matcher.ShouldIgnore(relativePath, true) {
+			options.Logger.Debug("Walker: Pruning heavy dir %q", relativePath)
+			tracker.Track(relativePath, ReasonIgnoredRule, true)
+			stats.skippedDirs.Add(1)
+			return filepath.SkipDir, false
 		}
 
 		// Check ignore status using the matcher

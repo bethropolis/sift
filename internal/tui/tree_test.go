@@ -198,3 +198,51 @@ func TestDirsPreCollapsed(t *testing.T) {
 		t.Errorf("initial visible rows = %d, want 2", len(rows))
 	}
 }
+
+func TestBuildTreeAppliesPreferredMode(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "a.go", PreferredMode: ModeSignatures, TokensFull: 10},
+		{Path: "b.go", TokensFull: 20},
+	})
+	if got := root.findChild("a.go").Mode; got != ModeSignatures {
+		t.Errorf("a.go Mode = %q, want signatures", got)
+	}
+	if got := root.findChild("b.go").Mode; got != ModeFull {
+		t.Errorf("b.go Mode = %q, want full", got)
+	}
+}
+
+func TestSmartSelectModeAssignment(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "pref.go", TokensFull: 100, TokensSig: 5, RankScore: 1.0, PreferredMode: ModeSignatures},
+		{Path: "sig.go", TokensFull: 50, TokensSig: 5, RankScore: 0.5, SigContent: []byte("sig")},
+		{Path: "plain.go", TokensFull: 30, RankScore: 0.1},
+	})
+	root.SelectByRank(1000)
+	got := map[string]CompressMode{}
+	for _, s := range root.Selections() {
+		got[s.Path] = s.Mode
+	}
+	if got["pref.go"] != ModeSignatures {
+		t.Errorf("pref.go mode = %q, want signatures", got["pref.go"])
+	}
+	if got["sig.go"] != ModeSignatures {
+		t.Errorf("sig.go mode = %q, want signatures (sig-content fallback)", got["sig.go"])
+	}
+	if got["plain.go"] != ModeFull {
+		t.Errorf("plain.go mode = %q, want full", got["plain.go"])
+	}
+}
+
+func TestSmartSelectBudgetUsesSigTokens(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "big.go", TokensFull: 100, TokensSig: 5, RankScore: 1.0, PreferredMode: ModeSignatures},
+		{Path: "small.go", TokensFull: 30, RankScore: 0.5},
+	})
+	if count := root.SelectByRank(35); count != 2 {
+		t.Fatalf("SelectByRank = %d, want 2 (big.go charged at sig tokens)", count)
+	}
+	if got := len(root.Selections()); got != 2 {
+		t.Fatalf("selected %d files, want 2", got)
+	}
+}

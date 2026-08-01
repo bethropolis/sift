@@ -50,8 +50,11 @@ func TestSmartFilterCollect(t *testing.T) {
 	}
 
 	withoutSmart := collect(false)
-	if len(withoutSmart) != 6 {
-		t.Errorf("without smart: got %d files, want 6 (%v)", len(withoutSmart), withoutSmart)
+	// package-lock.json is pruned by the built-in default ignore patterns
+	// before smart filtering, so the baseline is the remaining five files.
+	wantBaseline := []string{"app.min.js", "gen.go", "main.go", "sub/Cargo.lock", "user.pb.go"}
+	if !sameSet(withoutSmart, wantBaseline) {
+		t.Errorf("without smart: got %v, want %v", withoutSmart, wantBaseline)
 	}
 
 	withSmart := collect(true)
@@ -114,4 +117,22 @@ func TestSmartFilterMaxTokens(t *testing.T) {
 	if len(files) != 0 {
 		t.Errorf("files = %d, want 0 (big.go exceeds 1-token ceiling)", len(files))
 	}
+}
+
+// sameSet reports whether got and want contain the same paths, regardless of
+// order.
+func sameSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	wantSet := make(map[string]bool, len(want))
+	for _, w := range want {
+		wantSet[w] = true
+	}
+	for _, g := range got {
+		if !wantSet[g] {
+			return false
+		}
+	}
+	return true
 }

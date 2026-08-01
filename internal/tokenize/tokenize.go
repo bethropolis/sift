@@ -4,6 +4,7 @@ package tokenize
 import (
 	"fmt"
 	"strings"
+	"unsafe"
 
 	"github.com/tiktoken-go/tokenizer"
 
@@ -52,7 +53,13 @@ func parseEncoding(encoding string) (tokenizer.Encoding, error) {
 
 // Count returns the number of tokens in text.
 func (t *Tokenizer) Count(text []byte) (int, error) {
-	n, err := t.codec.Count(string(text))
+	if len(text) == 0 {
+		return 0, nil
+	}
+	// Zero-allocation string conversion: tiktoken only reads the input, so the
+	// caller's buffer can be reused instead of copying it to the heap.
+	str := unsafe.String(unsafe.SliceData(text), len(text))
+	n, err := t.codec.Count(str)
 	if err != nil {
 		return 0, fmt.Errorf("tokenize: count: %w", err)
 	}

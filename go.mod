@@ -8,6 +8,7 @@ require (
 	github.com/denormal/go-gitignore v0.0.0-20180930084346-ae8ad1d07817
 	github.com/fatih/color v1.18.0
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/gabriel-vasile/mimetype v1.4.15
 	github.com/mattn/go-isatty v0.0.20
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82

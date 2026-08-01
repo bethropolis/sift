@@ -46,20 +46,19 @@ func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 		return true
 	}
 
-	// Check custom ignore patterns first (these override repo rules)
+	// Custom ignore patterns first (highest priority). A match is definitive
+	// whether positive or negated: --ignore negations must win over every
+	// lower tier, including the built-in defaults.
 	absPath := filepath.Join(m.rootDir, relativePath)
 	if m.customIgnore != nil {
-		if m.customIgnore.Ignore(absPath) {
-			excluded := m.customIgnore.Include(absPath)
-			if !excluded {
-				m.logger.Debug("ignore.ShouldIgnore: Ignored %q (custom pattern)", relativePath)
-				return true
-			}
-			m.logger.Debug("ignore.ShouldIgnore: Path %q excluded by custom negation rule", relativePath)
+		if match := m.customIgnore.Match(absPath); match != nil {
+			m.logger.Debug("ignore.ShouldIgnore: Path %q matched custom rule (ignore=%v)", relativePath, match.Ignore())
+			return match.Ignore()
 		}
 	}
 
-	// Delegate to gitignore library for repo rules
+	// Delegate to gitignore library for repo rules. A repo match (including a
+	// negation) is definitive and takes precedence over the defaults below.
 	if m.repoIgnore != nil {
 		m.logger.Debug("ignore.ShouldIgnore: Checking repo rules for path %q", relativePath)
 
@@ -69,6 +68,16 @@ func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 		}
 	} else {
 		m.logger.Debug("ignore.ShouldIgnore: No repository ignore patterns loaded (m.repoIgnore is nil).", relativePath)
+	}
+
+	// Fall back to the built-in default patterns. They are the lowest-priority
+	// safety net and only apply when neither custom patterns nor repository
+	// rules matched the path.
+	if m.defaultIgnore != nil {
+		if match := m.defaultIgnore.Match(absPath); match != nil {
+			m.logger.Debug("ignore.ShouldIgnore: Path %q matched default rule (ignore=%v)", relativePath, match.Ignore())
+			return match.Ignore()
+		}
 	}
 
 	m.logger.Debug("ignore.ShouldIgnore: Path %q NOT ignored by any rule", relativePath)

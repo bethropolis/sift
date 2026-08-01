@@ -1,6 +1,7 @@
 package rank
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -191,5 +192,72 @@ func gitCmd(t *testing.T, dir string, args ...string) {
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestAnalyzeCommitHistory(t *testing.T) {
+	dir := initRepo(t)
+	g := New(dir)
+
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Focused commits touching a single file.
+	write("x.txt", "x")
+	gitCmd(t, dir, "add", "x.txt")
+	gitCmd(t, dir, "commit", "-q", "-m", "add x")
+	write("y.txt", "y")
+	gitCmd(t, dir, "add", "y.txt")
+	gitCmd(t, dir, "commit", "-q", "-m", "add y")
+
+	// Bulk commit: 1 edited file plus 11 added files (12 > 10 -> signatures).
+	write("a.txt", "edited")
+	for i := 0; i < 11; i++ {
+		write(fmt.Sprintf("f%d.txt", i), "f")
+	}
+	gitCmd(t, dir, "add", ".")
+	gitCmd(t, dir, "commit", "-q", "-m", "bulk")
+
+	// A newer focused commit edits a.txt alone, overriding the bulk hint.
+	write("a.txt", "edited again")
+	gitCmd(t, dir, "add", "a.txt")
+	gitCmd(t, dir, "commit", "-q", "-m", "focused")
+
+	// Extra focused commit so HEAD~5 resolves to the initial commit.
+	write("z.txt", "z")
+	gitCmd(t, dir, "add", "z.txt")
+	gitCmd(t, dir, "commit", "-q", "-m", "add z")
+
+	// Dirty working-tree edit forces full content.
+	write("b.txt", "dirty")
+
+	modes := g.AnalyzeCommitHistory(5)
+
+	if modes["a.txt"] != "full" {
+		t.Errorf("a.txt = %q, want full (newer focused commit wins)", modes["a.txt"])
+	}
+	if modes["b.txt"] != "full" {
+		t.Errorf("b.txt = %q, want full (dirty working tree)", modes["b.txt"])
+	}
+	if modes["f0.txt"] != "signatures" {
+		t.Errorf("f0.txt = %q, want signatures (bulk commit)", modes["f0.txt"])
+	}
+	if modes["f10.txt"] != "signatures" {
+		t.Errorf("f10.txt = %q, want signatures (bulk commit)", modes["f10.txt"])
+	}
+	if modes["x.txt"] != "full" {
+		t.Errorf("x.txt = %q, want full (focused commit)", modes["x.txt"])
+	}
+}
+
+func TestAnalyzeCommitHistoryNotAGitRepo(t *testing.T) {
+	dir := t.TempDir()
+	g := New(dir)
+	if modes := g.AnalyzeCommitHistory(5); len(modes) != 0 {
+		t.Errorf("AnalyzeCommitHistory = %v, want empty map", modes)
 	}
 }
