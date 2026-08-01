@@ -42,6 +42,10 @@ func runPick(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// The smart filter is always active in the picker so generated, lockfile,
+	// minified, and oversized files never clutter the tree.
+	cfg.SmartFilter = true
+
 	start := time.Now()
 	application := app.New(cfg)
 	defer application.Close()

@@ -22,6 +22,7 @@ const (
 	ReasonSkippedBinary     SkippedReason = "Skipped (Binary File)"
 	ReasonSkippedInfoError  SkippedReason = "Skipped (File Info Error)"
 	ReasonSkippedPathError  SkippedReason = "Skipped (Path Calculation Error)"
+	ReasonSkippedSmart      SkippedReason = "Skipped (Smart Filter)"
 )
 
 // SkippedItem holds information about a skipped path.

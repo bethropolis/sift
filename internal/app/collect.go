@@ -14,6 +14,7 @@ import (
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/secrets"
 	"github.com/bethropolis/sift/internal/setup"
+	"github.com/bethropolis/sift/internal/smart"
 	"github.com/bethropolis/sift/internal/tokenize"
 	"github.com/bethropolis/sift/internal/walker"
 )
@@ -138,8 +139,21 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 		a.log.Debug("Compression mode: signatures (tree-sitter)")
 	}
 
+	// --- Create the smart filter. It drops generated, lockfile, minified,
+	// and oversized files that are rarely useful context. ---
+	var smartEvaluator *smart.Evaluator
+	if a.cfg.SmartFilter {
+		smartEvaluator = smart.New(a.cfg.SmartMaxTokens)
+		a.log.Debug("Smart filter enabled (max %d tokens/file)", a.cfg.SmartMaxTokens)
+	}
+
 	var filesMu sync.Mutex
 	var files []format.FileEntry
+
+	// Smart-skipped items are tracked separately and appended to the walker's
+	// skip list so --show-skipped surfaces them.
+	var smartMu sync.Mutex
+	var smartSkipped []walker.SkippedItem
 
 	// --- Define walk function ---
 	printFunc := func(relativePath string, content []byte, err error) error {
@@ -176,6 +190,22 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 			content = redacted
 		}
 
+		// Smart filter: skip generated/lock/minified/oversized files. The
+		// token guardrail counts the raw (redacted) content, matching what
+		// would otherwise be stored. The count is reused as TokensFull when
+		// the picker runs to avoid counting twice.
+		smartTokens := -1
+		if smartEvaluator != nil {
+			smartTokens = a.countTokens(tokenizer, content, relativePath)
+			if skip, reason := smartEvaluator.ShouldSkip(relativePath, content, smartTokens); skip {
+				a.log.Debug("SmartFilter skipping %s: %s", relativePath, reason)
+				smartMu.Lock()
+				smartSkipped = append(smartSkipped, walker.SkippedItem{Path: relativePath, Reason: walker.ReasonSkippedSmart})
+				smartMu.Unlock()
+				return nil
+			}
+		}
+
 		entry := format.FileEntry{
 			Path:        relativePath,
 			Content:     content,
@@ -188,7 +218,10 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 			// counts so the TUI can switch modes without re-reading files.
 			// The active view is decided per file by the picker's Mode; the
 			// entry's Tokens/IsCompressed are recomputed at selection time.
-			entry.TokensFull = a.countTokens(tokenizer, entry.Content, relativePath)
+			entry.TokensFull = smartTokens
+			if smartTokens < 0 {
+				entry.TokensFull = a.countTokens(tokenizer, entry.Content, relativePath)
+			}
 			if compressor != nil {
 				if lang, ok := compressor.LanguageForPath(relativePath); ok {
 					compressed, didCompress := compressor.Compress(entry.Content, lang)
@@ -233,6 +266,13 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 	}
 
 	skippedItems, err := a.walkDirectory(absRootDir, matcher, printFunc, walkOptions)
+
+	// Fold smart-filtered files into the walker's skip list.
+	if len(smartSkipped) > 0 {
+		smartMu.Lock()
+		skippedItems = append(skippedItems, smartSkipped...)
+		smartMu.Unlock()
+	}
 
 	// Order files by git relevance so the most important context survives the
 	// token budget. Outside a git repository the order is left unchanged.

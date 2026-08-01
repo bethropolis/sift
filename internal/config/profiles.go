@@ -13,16 +13,18 @@ import (
 // Profile is a named set of configuration overrides loaded from TOML.
 // Pointer fields distinguish "not set" from an explicit value.
 type Profile struct {
-	Style         string   `toml:"style"`
-	TokenizeModel string   `toml:"tokenize_model"`
-	Budget        int      `toml:"budget"`
-	Mode          string   `toml:"compress_mode"`
-	Prompt        string   `toml:"prompt"`
-	SecretScan    *bool    `toml:"secret_scan"`
-	ForceSecrets  *bool    `toml:"force_secrets"`
-	IgnoreHidden  *bool    `toml:"ignore_hidden"`
-	IgnoreGit     *bool    `toml:"ignore_git"`
-	Extensions    []string `toml:"extensions"`
+	Style          string   `toml:"style"`
+	TokenizeModel  string   `toml:"tokenize_model"`
+	Budget         int      `toml:"budget"`
+	Mode           string   `toml:"compress_mode"`
+	Prompt         string   `toml:"prompt"`
+	SecretScan     *bool    `toml:"secret_scan"`
+	ForceSecrets   *bool    `toml:"force_secrets"`
+	IgnoreHidden   *bool    `toml:"ignore_hidden"`
+	IgnoreGit      *bool    `toml:"ignore_git"`
+	Extensions     []string `toml:"extensions"`
+	SmartFilter    *bool    `toml:"smart_filter"`
+	SmartMaxTokens int      `toml:"smart_max_tokens"`
 }
 
 type profilesFile struct {
@@ -143,6 +145,12 @@ func overlay(dst, src Profile) Profile {
 	if len(src.Extensions) > 0 {
 		dst.Extensions = src.Extensions
 	}
+	if src.SmartFilter != nil {
+		dst.SmartFilter = src.SmartFilter
+	}
+	if src.SmartMaxTokens != 0 {
+		dst.SmartMaxTokens = src.SmartMaxTokens
+	}
 	return dst
 }
 
@@ -178,5 +186,11 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	}
 	if len(p.Extensions) > 0 && !fs.Changed("ext") {
 		c.Extensions = strings.Join(p.Extensions, ",")
+	}
+	if p.SmartFilter != nil && !fs.Changed("smart") {
+		c.SmartFilter = *p.SmartFilter
+	}
+	if p.SmartMaxTokens != 0 && !fs.Changed("smart-max-tokens") {
+		c.SmartMaxTokens = p.SmartMaxTokens
 	}
 }

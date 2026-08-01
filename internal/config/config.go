@@ -7,6 +7,8 @@ import (
 
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/pflag"
+
+	"github.com/bethropolis/sift/internal/smart"
 )
 
 // Config holds all application configuration settings.
@@ -36,6 +38,9 @@ type Config struct {
 	CustomIgnore  string
 	Extensions    string
 	IncludeBinary bool
+	// SmartFilter skips generated/lock/minified artifacts and oversized files.
+	SmartFilter    bool
+	SmartMaxTokens int
 
 	// Output format
 	Style          string
@@ -67,13 +72,14 @@ type Config struct {
 // New returns a Config populated with built-in defaults.
 func New() *Config {
 	return &Config{
-		Version:      "1.0.4",
-		IgnoreHidden: true,
-		IgnoreGit:    true,
-		SecretScan:   true,
-		Style:        "markdown",
-		OutputFile:   "codebase.md",
-		MaxWorkers:   runtime.NumCPU(),
+		Version:        "1.0.4",
+		IgnoreHidden:   true,
+		IgnoreGit:      true,
+		SecretScan:     true,
+		Style:          "markdown",
+		OutputFile:     "codebase.md",
+		MaxWorkers:     runtime.NumCPU(),
+		SmartMaxTokens: smart.DefaultMaxTokens,
 	}
 }
 
@@ -112,6 +118,8 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.StringVar(&c.CustomIgnore, "ignore", c.CustomIgnore, "Custom ignore patterns (comma-separated, gitignore syntax)")
 	fs.StringVar(&c.Extensions, "ext", c.Extensions, "Only include files with these extensions (comma-separated, e.g., 'go,md,txt')")
 	fs.BoolVar(&c.IncludeBinary, "binary", c.IncludeBinary, "Include binary files in output (default: skipped)")
+	fs.BoolVar(&c.SmartFilter, "smart", c.SmartFilter, "Skip generated, lockfile, minified, and oversized files")
+	fs.IntVar(&c.SmartMaxTokens, "smart-max-tokens", c.SmartMaxTokens, "Per-file token ceiling for the smart filter (default: 15000)")
 	fs.BoolVar(&c.NoColor, "no-color", c.NoColor, "Disable color output")
 	fs.StringVar(&c.OutputFile, "output", c.OutputFile, "Output file (default \"codebase.md\", use \"-\" for stdout)")
 	fs.BoolVar(&c.ShowProgress, "progress", c.ShowProgress, "Show progress information")

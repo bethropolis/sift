@@ -73,6 +73,53 @@ func TestRegisterFlagsBindsValues(t *testing.T) {
 	}
 }
 
+func TestRegisterFlagsSmart(t *testing.T) {
+	c := New()
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c, fs)
+
+	if err := fs.Parse([]string{"--smart", "--smart-max-tokens", "3000"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if !c.SmartFilter {
+		t.Error("SmartFilter = false, want true")
+	}
+	if c.SmartMaxTokens != 3000 {
+		t.Errorf("SmartMaxTokens = %d, want 3000", c.SmartMaxTokens)
+	}
+}
+
+func TestSmartMaxTokensDefault(t *testing.T) {
+	c := New()
+	if c.SmartMaxTokens != 15000 {
+		t.Errorf("SmartMaxTokens default = %d, want 15000", c.SmartMaxTokens)
+	}
+	if c.SmartFilter {
+		t.Error("SmartFilter default = true, want false")
+	}
+}
+
+func TestApplyProfileSmart(t *testing.T) {
+	c := New()
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c, fs)
+
+	smart := true
+	p := Profile{
+		SmartFilter:    &smart,
+		SmartMaxTokens: 9000,
+	}
+	p.Apply(c, fs)
+
+	if !c.SmartFilter {
+		t.Error("SmartFilter = false, want true from profile")
+	}
+	if c.SmartMaxTokens != 9000 {
+		t.Errorf("SmartMaxTokens = %d, want 9000", c.SmartMaxTokens)
+	}
+}
+
 func TestApplyProfile(t *testing.T) {
 	c := New()
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
