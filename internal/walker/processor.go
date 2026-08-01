@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"sync"
 )
 
 // processFile handles reading a file and calling the walkFn with its content
@@ -71,29 +70,4 @@ func isBinary(content []byte) bool {
 		n = 512
 	}
 	return bytes.IndexByte(content[:n], 0) != -1
-}
-
-// fileProcessorWorker is the goroutine function for concurrent processing.
-func fileProcessorWorker(
-	id int,
-	filesChan <-chan struct{ path, relativePath string },
-	wg *sync.WaitGroup,
-	options WalkOptions,
-	walkFn WalkFunc,
-	tracker *SkippedTracker,
-	stats *walkStats,
-) {
-	defer wg.Done()
-	options.Logger.Debug("Worker %d: Started", id)
-
-	for item := range filesChan {
-		if err := options.Context.Err(); err != nil {
-			options.Logger.Debug("Worker %d: Received cancellation signal", id)
-			return
-		}
-		options.Logger.Debug("Worker %d: Processing file [%s]", id, item.relativePath)
-		processFile(item.path, item.relativePath, options, walkFn, tracker, stats)
-	}
-
-	options.Logger.Debug("Worker %d: Finished", id)
 }
