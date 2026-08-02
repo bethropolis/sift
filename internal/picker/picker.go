@@ -29,10 +29,25 @@ type Env struct {
 	CountTokens func(content []byte) int
 }
 
-// Run executes the picker workflow and returns the TUI's outcome. When the
-// user makes no selection the result carries empty Selections and DeltaDone
-// false; callers decide how to surface that.
-func Run(ctx context.Context, cfg *config.Config, env Env) (tui.Result, error) {
+// Result carries the picker workflow's outcome to the command layer.
+type Result struct {
+	// Selections is the user's file selection and modes, empty when the
+	// session ended via a delta dump, the user selected nothing, or no
+	// eligible files existed.
+	Selections []tui.Selection
+	// DeltaDone reports that the session ended by performing a delta dump,
+	// whose output replaces any picker selection.
+	DeltaDone bool
+	// NoEligible reports that no files survived the ignore, binary, size, and
+	// smart filters, so the picker never opened. The command surfaces this
+	// distinctly from a plain non-selection.
+	NoEligible bool
+}
+
+// Run executes the picker workflow and returns its outcome. When the user
+// makes no selection the result carries empty Selections and DeltaDone false;
+// callers distinguish "nothing eligible" via NoEligible.
+func Run(ctx context.Context, cfg *config.Config, env Env) (Result, error) {
 	s := &service{cfg: cfg, env: env}
 	return s.run(ctx)
 }
@@ -42,7 +57,7 @@ type service struct {
 	env Env
 }
 
-func (s *service) run(ctx context.Context) (tui.Result, error) {
+func (s *service) run(ctx context.Context) (Result, error) {
 	application := s.env.App
 	start := time.Now()
 
@@ -50,7 +65,7 @@ func (s *service) run(ctx context.Context) (tui.Result, error) {
 	// TUI shows instantly; a background walk then streams enriched entries in.
 	metas, skipped, err := application.SkeletonPicker(ctx)
 	if err != nil {
-		return tui.Result{}, err
+		return Result{}, err
 	}
 
 	// Analyze the last five commits to hint preferred modes before any
@@ -60,6 +75,14 @@ func (s *service) run(ctx context.Context) (tui.Result, error) {
 	absRoot, absErr := filepath.Abs(s.cfg.RootDir)
 	if absErr == nil {
 		preferredModes = rank.New(absRoot).AnalyzeCommitHistory(5)
+	}
+
+	skeletonItems, deltaFiles := buildSkeleton(metas, preferredModes)
+
+	// Nothing survived the ignore, binary, size, and smart metadata filters:
+	// do not open a picker that has nothing to choose.
+	if len(skeletonItems) == 0 {
+		return Result{NoEligible: true}, nil
 	}
 
 	// Shared collection state: the background walk fills it in and the
@@ -80,7 +103,6 @@ func (s *service) run(ctx context.Context) (tui.Result, error) {
 		return append([]walker.SkippedItem(nil), skipped...)
 	}
 
-	skeletonItems, deltaFiles := buildSkeleton(metas, preferredModes)
 	totalFiles, totalDirs := 0, 0
 	skeletonFilePaths := make([]string, 0, len(metas))
 	for _, m := range metas {
@@ -113,21 +135,21 @@ func (s *service) run(ctx context.Context) (tui.Result, error) {
 		},
 	}, stream.tuiStream())
 	if err != nil {
-		return tui.Result{}, err
+		return Result{}, err
 	}
 	if result.DeltaDone {
 		// The delta dump already wrote its own output and recorded state.
-		return result, nil
+		return Result{DeltaDone: true}, nil
 	}
 
 	selected := result.Selections
 	if len(selected) == 0 {
-		return result, nil
+		return Result{}, nil
 	}
 
 	chosen := applySelection(application, snapshotFiles(), selected)
 	if err := application.RenderFinal(chosen, snapshotSkipped(), time.Since(start), nil); err != nil {
-		return tui.Result{}, err
+		return Result{}, err
 	}
 
 	// Record the dump baseline so future delta dumps know what changed since
@@ -135,5 +157,5 @@ func (s *service) run(ctx context.Context) (tui.Result, error) {
 	if err := s.env.RecordDump(s.cfg.RootDir, chosen, "HEAD"); err != nil {
 		application.LogError("Failed to record dump state: %v", err)
 	}
-	return result, nil
+	return Result{Selections: selected}, nil
 }

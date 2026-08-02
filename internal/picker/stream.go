@@ -165,9 +165,11 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 		return
 	}
 
-	// Merge the walker's skip list into the skeleton's.
+	// Merge the walker's skip list into the skeleton's. Both passes now
+	// enforce the same size and binary rules, so the same path can appear
+	// twice; keep the first (metadata) reason.
 	skippedMu.Lock()
-	*skipped = append(*skipped, walkSkipped...)
+	mergeSkipped(skipped, walkSkipped)
 	skippedMu.Unlock()
 
 	// Patch unified relevance ranks now that every path is known. Non-git
@@ -223,5 +225,24 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 
 	if !sendProgress(tui.ProgressMsg{Files: totalFiles, Dirs: totalDirs, Processed: processed, Done: true}) {
 		return
+	}
+}
+
+// mergeSkipped appends src items whose path is not already present, preserving
+// the first-seen reason (the metadata pass runs first). Size and binary skips
+// produce identical reasons in both passes, so the first entry is sufficient.
+func mergeSkipped(dst *[]walker.SkippedItem, src []walker.SkippedItem) {
+	if len(src) == 0 {
+		return
+	}
+	seen := make(map[string]bool, len(*dst)+len(src))
+	for _, it := range *dst {
+		seen[it.Path] = true
+	}
+	for _, it := range src {
+		if !seen[it.Path] {
+			*dst = append(*dst, it)
+			seen[it.Path] = true
+		}
 	}
 }

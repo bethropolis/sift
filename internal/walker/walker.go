@@ -286,8 +286,10 @@ type FileMeta struct {
 }
 
 // WalkMeta enumerates a directory tree and returns file metadata only: no
-// file is read. It applies the same ignore, extension, heavy-dir, and path
-// filters as Walk, making it the cheap structure pass for progressive UIs.
+// full file read. It applies the same ignore, extension, heavy-dir, path,
+// size, and binary filters as Walk, making it the cheap structure pass for
+// progressive UIs. Binary detection may sniff a small bounded prefix of
+// unknown-extension files; nothing is read in full.
 func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]FileMeta, []SkippedItem, error) {
 	startTime := time.Now()
 
@@ -333,6 +335,19 @@ func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]
 		if infoErr != nil {
 			options.Logger.Error("Walker Error: Failed to stat meta %q: %v", relativePath, infoErr)
 			tracker.Track(relativePath, ReasonSkippedInfoError, false)
+			stats.skippedFiles.Add(1)
+			return nil
+		}
+
+		// Size and binary rules mirror processFile so the skeleton matches the
+		// later content walk: oversized and binary files are never advertised.
+		if options.MaxFileSize > 0 && info.Size() > options.MaxFileSize {
+			tracker.Track(relativePath, ReasonSkippedSizeLimit, false)
+			stats.skippedFiles.Add(1)
+			return nil
+		}
+		if !options.IncludeBinary && IsBinaryFile(path) {
+			tracker.Track(relativePath, ReasonSkippedBinary, false)
 			stats.skippedFiles.Add(1)
 			return nil
 		}

@@ -26,14 +26,18 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	if !info.Mode().IsRegular() {
 		options.Logger.Debug("processFile Skipping [%s]: Not a regular file.", relativePath)
 		tracker.Track(relativePath, ReasonSkippedNotRegular, false)
+		stats.skippedFiles.Add(1)
 		return
 	}
 
 	if options.MaxFileSize > 0 && info.Size() > options.MaxFileSize {
+		// Expected policy skip: recorded in the skipped items, never surfaced
+		// as a callback error so the app does not log it as a processing
+		// warning. Binary skips below use the same pattern.
 		options.Logger.Debug("processFile Skipping [%s]: Exceeds size limit (%d > %d bytes)",
 			relativePath, info.Size(), options.MaxFileSize)
 		tracker.Track(relativePath, ReasonSkippedSizeLimit, false)
-		walkFn(relativePath, nil, fmt.Errorf("file size %d exceeds limit %d bytes", info.Size(), options.MaxFileSize))
+		stats.skippedFiles.Add(1)
 		return
 	}
 
@@ -42,6 +46,7 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	if !options.IncludeBinary && IsBinaryFile(path) {
 		options.Logger.Debug("processFile Skipping [%s]: Binary file detected", relativePath)
 		tracker.Track(relativePath, ReasonSkippedBinary, false)
+		stats.skippedFiles.Add(1)
 		return
 	}
 

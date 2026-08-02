@@ -67,6 +67,12 @@ func runPick(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("sift pick: %w", err)
 	}
+	if result.NoEligible {
+		// Every file was filtered by ignore, binary, size, or smart rules, so
+		// the picker never opened. Report the cause instead of a selection
+		// mistake; --show-skipped still lists the filtered paths.
+		return fmt.Errorf("sift pick: no eligible files found after applying ignore, binary, size, and smart filters")
+	}
 	if result.DeltaDone {
 		// The delta dump already wrote its own output and recorded state.
 		return nil

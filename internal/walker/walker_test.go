@@ -161,6 +161,135 @@ func TestWalkBinaryFiles(t *testing.T) {
 	}
 }
 
+// TestWalkOversizedFileNotProcessed verifies an oversized file is recorded as
+// a size-limit skip without invoking the content callback, so the app never
+// logs an expected policy skip as a processing warning.
+func TestWalkOversizedFileNotProcessed(t *testing.T) {
+	root := t.TempDir()
+	big := filepath.Join(root, "big.iso")
+	if err := os.WriteFile(big, []byte("0123456789"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "ok.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	matcher, err := ignore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	callbacks := 0
+	skipped, err := Walk(root, matcher, func(relativePath string, content []byte, cbErr error) error {
+		if cbErr != nil {
+			return cbErr
+		}
+		callbacks++
+		return nil
+	}, WithMaxFileSize(4))
+	if err != nil {
+		t.Fatalf("Walk returned error: %v", err)
+	}
+
+	if callbacks != 1 {
+		t.Errorf("content callback invoked %d times, want 1 (ok.txt only)", callbacks)
+	}
+	var found bool
+	for _, s := range skipped {
+		if s.Path == "big.iso" {
+			found = true
+			if s.Reason != ReasonSkippedSizeLimit {
+				t.Errorf("reason = %q, want %q", s.Reason, ReasonSkippedSizeLimit)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("big.iso not recorded as a size-limit skip: %+v", skipped)
+	}
+}
+
+// TestWalkMetaSizeFilter verifies the metadata pass drops oversized files so
+// the picker skeleton never advertises files the content walk will reject.
+func TestWalkMetaSizeFilter(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "big.txt"), []byte("0123456789"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "small.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	matcher, err := ignore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metas, skipped, err := WalkMeta(root, matcher, WithMaxFileSize(4))
+	if err != nil {
+		t.Fatalf("WalkMeta returned error: %v", err)
+	}
+
+	if len(metas) != 1 || metas[0].Path != "small.txt" {
+		t.Errorf("metas = %v, want [small.txt]", metas)
+	}
+	var found bool
+	for _, s := range skipped {
+		if s.Path == "big.txt" {
+			found = true
+			if s.Reason != ReasonSkippedSizeLimit {
+				t.Errorf("reason = %q, want %q", s.Reason, ReasonSkippedSizeLimit)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("big.txt not in skipped items: %+v", skipped)
+	}
+}
+
+// TestWalkMetaBinaryFilter verifies the metadata pass drops binary files by
+// default and includes them with WithIncludeBinary(true).
+func TestWalkMetaBinaryFilter(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "data.iso"), []byte("iso"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "ok.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	matcher, err := ignore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	metas, skipped, err := WalkMeta(root, matcher)
+	if err != nil {
+		t.Fatalf("WalkMeta returned error: %v", err)
+	}
+	if len(metas) != 1 || metas[0].Path != "ok.txt" {
+		t.Errorf("metas = %v, want [ok.txt]", metas)
+	}
+	var found bool
+	for _, s := range skipped {
+		if s.Path == "data.iso" {
+			found = true
+			if s.Reason != ReasonSkippedBinary {
+				t.Errorf("reason = %q, want %q", s.Reason, ReasonSkippedBinary)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("data.iso not in skipped items: %+v", skipped)
+	}
+
+	metas, _, err = WalkMeta(root, matcher, WithIncludeBinary(true))
+	if err != nil {
+		t.Fatalf("WalkMeta(include binary) returned error: %v", err)
+	}
+	if len(metas) != 2 {
+		t.Errorf("metas with binary included = %v, want 2", metas)
+	}
+}
+
 func TestIsBinaryFile(t *testing.T) {
 	dir := t.TempDir()
 	// Extensionless text file: sniffed via magic numbers.

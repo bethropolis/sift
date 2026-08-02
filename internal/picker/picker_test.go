@@ -150,3 +150,80 @@ func TestStreamScanCancellationNoReceiver(t *testing.T) {
 		t.Fatal("streamScan blocked after cancellation with no receiver")
 	}
 }
+
+// TestRunNoEligible verifies the picker reports NoEligible when every file is
+// filtered by the binary or size rules, without opening the TUI (the skeleton
+// is empty, so no terminal is required).
+func TestRunNoEligible(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "data.iso"), []byte("zip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	big := filepath.Join(dir, "big.txt")
+	f, err := os.OpenFile(big, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(2 * 1024 * 1024); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.New()
+	cfg.RootDir = dir
+	cfg.SmartFilter = true
+	cfg.Quiet = true
+	cfg.MaxFileSizeMB = 1
+	application, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer application.Close()
+
+	result, err := Run(context.Background(), cfg, Env{
+		App:         application,
+		RecordDump:  func(string, []format.FileEntry, string) error { return nil },
+		RecordDelta: func(string, string, int, int) error { return nil },
+		CountTokens: func([]byte) int { return 0 },
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !result.NoEligible {
+		t.Error("NoEligible = false, want true for a fully filtered directory")
+	}
+	if len(result.Selections) != 0 {
+		t.Errorf("Selections = %v, want empty", result.Selections)
+	}
+}
+
+// TestMergeSkippedDedups verifies the stream's skipped-item merge keeps one
+// entry per path with the first-seen reason, so size and binary skips recorded
+// by both the metadata and content passes are not reported twice.
+func TestMergeSkippedDedups(t *testing.T) {
+	dst := []walker.SkippedItem{
+		{Path: "big.txt", Reason: walker.ReasonSkippedSizeLimit},
+		{Path: "data.iso", Reason: walker.ReasonSkippedBinary},
+	}
+	src := []walker.SkippedItem{
+		{Path: "big.txt", Reason: walker.ReasonSkippedSizeLimit},
+		{Path: "main.go", Reason: walker.ReasonSkippedSmart},
+	}
+	mergeSkipped(&dst, src)
+
+	if len(dst) != 3 {
+		t.Fatalf("merged length = %d, want 3", len(dst))
+	}
+	byPath := map[string]walker.SkippedItem{}
+	for _, s := range dst {
+		byPath[s.Path] = s
+	}
+	if byPath["big.txt"].Reason != walker.ReasonSkippedSizeLimit {
+		t.Errorf("big.txt reason = %q, want first-seen %q", byPath["big.txt"].Reason, walker.ReasonSkippedSizeLimit)
+	}
+	if _, ok := byPath["main.go"]; !ok {
+		t.Error("main.go missing from merged skipped items")
+	}
+}
