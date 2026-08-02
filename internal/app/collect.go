@@ -223,6 +223,7 @@ func (a *App) walkAndCollect(picker bool, ctx context.Context, emit func(format.
 					var didCompress bool
 					compressed, didCompress = compressor.Compress(content, lang)
 					content = []byte(compressed)
+					entry.Content = content
 					entry.IsCompressed = didCompress
 					entry.Language = lang.String()
 				}
@@ -428,21 +429,27 @@ func (a *App) walkerOptions(absRootDir string, ctx context.Context, picker bool)
 	return matcher, walkOptions, nil
 }
 
-// applyRank scores and sorts files by git relevance for the blocking collect
-// path. Outside a git repository picker files keep the baseline score.
+// applyRank scores and sorts files by the unified relevance score for the
+// blocking collect path. Outside a git repository picker files keep the
+// baseline score.
 func (a *App) applyRank(picker bool, absRootDir string, files *[]format.FileEntry) {
 	if g := rank.New(absRootDir); g.Available() {
 		a.log.Debug("Ranking %d files by git relevance", len(*files))
-		paths := make([]string, len(*files))
+		params := make([]rank.ScoringParams, len(*files))
 		for i, f := range *files {
-			paths[i] = f.Path
+			params[i] = rank.ScoringParams{
+				Path:        f.Path,
+				TokensFull:  f.TokensFull,
+				TokensSig:   f.TokensSig,
+				DidCompress: f.IsCompressed || f.SigContent != nil,
+			}
 		}
-		scores := g.Score(absRootDir, paths)
+		results := g.CalculateUnifiedScores(absRootDir, params)
 		for i := range *files {
-			(*files)[i].RankScore = scores[(*files)[i].Path]
+			(*files)[i].RankScore = results[(*files)[i].Path].Score
 		}
 		sort.SliceStable(*files, func(i, j int) bool {
-			return scores[(*files)[i].Path] > scores[(*files)[j].Path]
+			return results[(*files)[i].Path].Score > results[(*files)[j].Path].Score
 		})
 	} else if picker {
 		for i := range *files {

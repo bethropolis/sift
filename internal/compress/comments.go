@@ -45,7 +45,7 @@ func attachedComments(src []byte, n *sitter.Node) []string {
 	cur := n
 	for {
 		prev := cur.PrevNamedSibling()
-		if prev == nil || prev.Type() != "comment" {
+		if prev == nil || !isComment(prev.Type()) {
 			break
 		}
 		if !attached(src, prev, cur) {

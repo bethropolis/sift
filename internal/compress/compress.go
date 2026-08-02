@@ -75,11 +75,19 @@ var extToLang = map[string]Language{
 
 var declTypes = map[Language]map[string]bool{
 	Go: stringSet(
+		"package_clause",
+		"import_declaration",
+		"const_declaration",
+		"var_declaration",
 		"function_declaration",
 		"method_declaration",
 		"type_declaration",
 	),
 	Rust: stringSet(
+		"use_declaration",
+		"extern_crate_declaration",
+		"const_item",
+		"static_item",
 		"function_item",
 		"struct_item",
 		"enum_item",
@@ -87,6 +95,8 @@ var declTypes = map[Language]map[string]bool{
 		"type_item",
 	),
 	JavaScript: stringSet(
+		"import_statement",
+		"variable_declaration",
 		"function_declaration",
 		"generator_function_declaration",
 		"method_definition",
@@ -94,6 +104,8 @@ var declTypes = map[Language]map[string]bool{
 		"class_declaration",
 	),
 	TypeScript: stringSet(
+		"import_statement",
+		"variable_declaration",
 		"function_declaration",
 		"generator_function_declaration",
 		"method_definition",
@@ -107,6 +119,8 @@ var declTypes = map[Language]map[string]bool{
 		"abstract_method_signature",
 	),
 	TSX: stringSet(
+		"import_statement",
+		"variable_declaration",
 		"function_declaration",
 		"generator_function_declaration",
 		"method_definition",
@@ -120,10 +134,15 @@ var declTypes = map[Language]map[string]bool{
 		"abstract_method_signature",
 	),
 	Python: stringSet(
+		"import_statement",
+		"import_from_statement",
 		"function_definition",
 		"class_definition",
 	),
 	PHP: stringSet(
+		"namespace_definition",
+		"namespace_use_declaration",
+		"const_declaration",
 		"function_definition",
 		"method_declaration",
 		"class_declaration",

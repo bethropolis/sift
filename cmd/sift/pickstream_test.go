@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -20,7 +21,7 @@ func writeSmokeTree(t *testing.T) string {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(filepath.Join(dir, "src", "f"+string(rune('0'+i))+".go"),
-			[]byte("package src\nfunc F() {}\n"), 0o644); err != nil {
+			[]byte("package src\n\n// F does things.\nfunc F() int {\n\tx := 1\n\tfor i := 0; i < 10; i++ {\n\t\tx += i\n\t}\n\treturn x\n}\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -30,6 +31,112 @@ func writeSmokeTree(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// initGitTree commits every file already present in dir so the unified score
+// patch sees a real repository with diff/churn history.
+func initGitTree(t *testing.T, dir string) {
+	t.Helper()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "user.email", "t@t")
+	git("config", "user.name", "t")
+	git("add", ".")
+	git("commit", "-q", "-m", "initial")
+}
+
+// TestStreamScanPatchesUnifiedRanks confirms the post-walk patch replaces the
+// skeleton's provisional modes with unified-score-derived ranks and preferred
+// modes for every streamed file in a git repository.
+func TestStreamScanPatchesUnifiedRanks(t *testing.T) {
+	dir := writeSmokeTree(t)
+	initGitTree(t, dir)
+	prev := cfg.RootDir
+	prevSmart := cfg.SmartFilter
+	prevQuiet := cfg.Quiet
+	cfg.RootDir = dir
+	cfg.SmartFilter = true
+	cfg.Quiet = true
+	defer func() {
+		cfg.RootDir = prev
+		cfg.SmartFilter = prevSmart
+		cfg.Quiet = prevQuiet
+	}()
+
+	application := app.New(cfg)
+	defer application.Close()
+
+	ctx := context.Background()
+	metas, skipped, err := application.SkeletonPicker(ctx)
+	if err != nil {
+		t.Fatalf("SkeletonPicker: %v", err)
+	}
+	var skeletonFiles []string
+	for _, m := range metas {
+		if !m.IsDir {
+			skeletonFiles = append(skeletonFiles, m.Path)
+		}
+	}
+
+	var stateMu sync.Mutex
+	var collected []format.FileEntry
+	var skippedMu sync.Mutex
+	stream := newPickStream()
+
+	go streamScan(ctx, application, nil, dir, skeletonFiles,
+		&stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+
+	var items []tui.Item
+	for stream.nodes != nil || stream.progress != nil || stream.errCh != nil {
+		select {
+		case msg, ok := <-stream.nodes:
+			if !ok {
+				stream.nodes = nil
+				continue
+			}
+			items = append(items, msg.Items...)
+		case _, ok := <-stream.progress:
+			if !ok {
+				stream.progress = nil
+			}
+		case e, ok := <-stream.errCh:
+			if !ok {
+				stream.errCh = nil
+				continue
+			}
+			t.Fatalf("scan error: %v", e)
+		}
+	}
+
+	byPath := map[string]tui.Item{}
+	for _, it := range items {
+		byPath[it.Path] = it
+	}
+	// Every committed, compressible file is ranked by the unified score and
+	// gets a derived mode: mid-band here, so signatures.
+	for _, f := range []string{"src/f1.go", "src/f2.go", "src/f3.go"} {
+		it, ok := byPath[f]
+		if !ok {
+			t.Errorf("missing rank patch for %s", f)
+			continue
+		}
+		if it.RankScore <= 0 {
+			t.Errorf("%s: RankScore %v, want > 0", f, it.RankScore)
+		}
+		if it.PreferredMode != tui.ModeSignatures {
+			t.Errorf("%s: PreferredMode = %q, want %q", f, it.PreferredMode, tui.ModeSignatures)
+		}
+	}
 }
 
 func TestStreamScanStreamsAndRemoves(t *testing.T) {

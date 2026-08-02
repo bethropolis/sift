@@ -38,6 +38,10 @@ func TestCompressGo(t *testing.T) {
 	c := New()
 	src := `package main
 
+import "fmt"
+
+const greeting = "hi"
+
 // add returns the sum of a and b.
 func add(a, b int) int {
 	sum := a + b
@@ -62,28 +66,32 @@ func unexported() {
 	// body
 }
 `
-	out, _ := c.Compress([]byte(src), Go)
-	lines := strings.Split(strings.TrimSpace(out), "\n")
+	out, didCompress := c.Compress([]byte(src), Go)
+	if !didCompress {
+		t.Fatal("expected compression")
+	}
 
-	want := []string{
+	for _, w := range []string{
+		"package main",
+		`import "fmt"`,
+		`const greeting = "hi"`,
 		"// add returns the sum of a and b.",
-		"func add(a, b int) int",
-		"type user struct",
+		"func add(a, b int) int { /* ... */ }",
+		"type user struct {\n\tname string\n}",
 		"// Greeter greets people.",
-		"type Greeter interface",
-		"func (u *user) Greet(name string) string",
-		"func unexported()",
-	}
-	if len(lines) != len(want) {
-		t.Fatalf("got %d lines, want %d:\n%s", len(lines), len(want), out)
-	}
-	for i, w := range want {
-		if got := strings.TrimRight(lines[i], " \t"); got != w {
-			t.Errorf("line %d = %q, want %q", i, got, w)
+		"type Greeter interface {\n\tGreet(name string) string\n}",
+		"func (u *user) Greet(name string) string { /* ... */ }",
+		"func unexported() { /* ... */ }",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in output:\n%s", w, out)
 		}
 	}
 	if strings.Contains(out, "return a + b") || strings.Contains(out, "sum :=") {
 		t.Errorf("body leaked into signatures:\n%s", out)
+	}
+	if strings.Contains(out, `"hi " + name`) {
+		t.Errorf("method body leaked into signatures:\n%s", out)
 	}
 }
 
@@ -102,22 +110,20 @@ class Widget {
 	}
 }
 `
-	out, _ := c.Compress([]byte(src), JavaScript)
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-
-	want := []string{
-		"// config builds a config object.",
-		"function config(opts = { verbose: true, tags: [\"a\", \"b\"] })",
-		"class Widget",
-		"// render draws the widget.",
-		"render(width = 10, height = 20)",
+	out, didCompress := c.Compress([]byte(src), JavaScript)
+	if !didCompress {
+		t.Fatal("expected compression")
 	}
-	for i, w := range want {
-		if i >= len(lines) {
-			t.Fatalf("missing line %d (%q); got:\n%s", i, w, out)
-		}
-		if got := strings.TrimRight(lines[i], " \t"); got != w {
-			t.Errorf("line %d = %q, want %q", i, got, w)
+
+	for _, w := range []string{
+		"// config builds a config object.",
+		"export function config(opts = { verbose: true, tags: [\"a\", \"b\"] }) { /* ... */ }",
+		"class Widget {",
+		"  // render draws the widget.",
+		"  render(width = 10, height = 20) { /* ... */ }",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in output:\n%s", w, out)
 		}
 	}
 	if strings.Contains(out, "return width") || strings.Contains(out, "const v") {
@@ -138,24 +144,109 @@ class Server:
     def start(self) -> None:
         pass
 `
-	out, _ := c.Compress([]byte(src), Python)
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-
-	want := []string{
-		"def build(host: str, port: int = 8080, tags: list[str] = []) -> dict[str, str]:",
-		"class Server:",
-		"def start(self) -> None:",
+	out, didCompress := c.Compress([]byte(src), Python)
+	if !didCompress {
+		t.Fatal("expected compression")
 	}
-	for i, w := range want {
-		if i >= len(lines) {
-			t.Fatalf("missing line %d (%q); got:\n%s", i, w, out)
-		}
-		if got := strings.TrimRight(lines[i], " \t"); got != w {
-			t.Errorf("line %d = %q, want %q", i, got, w)
+
+	for _, w := range []string{
+		"import os",
+		"def build(host: str, port: int = 8080, tags: list[str] = []) -> dict[str, str]: ...",
+		"class Server:",
+		"def start(self) -> None: ...",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in output:\n%s", w, out)
 		}
 	}
 	if strings.Contains(out, "return") {
 		t.Errorf("body leaked into Python signatures:\n%s", out)
+	}
+}
+
+func TestCompressRust(t *testing.T) {
+	c := New()
+	src := `use std::collections::HashMap;
+
+const MAX: usize = 100;
+static NAME: &str = "sift";
+
+/// A user record.
+struct User {
+    name: String,
+    age: u32,
+}
+
+/// Builds a user.
+impl User {
+    pub fn new(name: String) -> Self {
+        Self { name, age: 0 }
+    }
+}
+
+fn greet(u: &User) -> String {
+    format!("hi {}", u.name)
+}
+`
+	out, didCompress := c.Compress([]byte(src), Rust)
+	if !didCompress {
+		t.Fatal("expected compression")
+	}
+
+	for _, w := range []string{
+		"use std::collections::HashMap;",
+		"const MAX: usize = 100;",
+		`static NAME: &str = "sift";`,
+		"/// A user record.",
+		"struct User {\n    name: String,\n    age: u32,\n}",
+		"pub fn new(name: String) -> Self { /* ... */ }",
+		"fn greet(u: &User) -> String { /* ... */ }",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in output:\n%s", w, out)
+		}
+	}
+	if strings.Contains(out, "Self { name") || strings.Contains(out, "format!") {
+		t.Errorf("body leaked into Rust signatures:\n%s", out)
+	}
+}
+
+func TestCompressPHP(t *testing.T) {
+	c := New()
+	src := `<?php
+
+namespace App;
+
+use App\Models\User;
+
+const VERSION = '1.0';
+
+class Service
+{
+    public function handle(User $u): string
+    {
+        return $u->name;
+    }
+}
+`
+	out, didCompress := c.Compress([]byte(src), PHP)
+	if !didCompress {
+		t.Fatal("expected compression")
+	}
+
+	for _, w := range []string{
+		"namespace App;",
+		"use App\\Models\\User;",
+		"const VERSION = '1.0';",
+		"class Service {",
+		"public function handle(User $u): string { /* ... */ }",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in output:\n%s", w, out)
+		}
+	}
+	if strings.Contains(out, "$u->name") {
+		t.Errorf("method body leaked into PHP signatures:\n%s", out)
 	}
 }
 

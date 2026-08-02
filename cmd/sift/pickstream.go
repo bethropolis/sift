@@ -129,20 +129,25 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 	*skipped = append(*skipped, walkSkipped...)
 	skippedMu.Unlock()
 
-	// Patch git relevance ranks now that every path is known. Non-git repos
-	// keep the skeleton's zero scores; the picker still works path-ordered.
+	// Patch unified relevance ranks now that every path is known. Non-git
+	// repos keep the skeleton's zero scores; the picker still works path-ordered.
 	if absRoot != "" {
 		if g := rank.New(absRoot); g.Available() {
 			stateMu.Lock()
 			snapshot := append([]format.FileEntry(nil), *collected...)
 			stateMu.Unlock()
-			paths := make([]string, len(snapshot))
+			params := make([]rank.ScoringParams, len(snapshot))
 			for i, f := range snapshot {
-				paths[i] = f.Path
+				params[i] = rank.ScoringParams{
+					Path:        f.Path,
+					TokensFull:  f.TokensFull,
+					TokensSig:   f.TokensSig,
+					DidCompress: f.SigContent != nil,
+				}
 			}
-			scores := g.Score(absRoot, paths)
+			scores := g.CalculateUnifiedScores(absRoot, params)
 			for i := range snapshot {
-				snapshot[i].RankScore = scores[snapshot[i].Path]
+				snapshot[i].RankScore = scores[snapshot[i].Path].Score
 			}
 			// Keep the collection ranked the way the blocking picker did.
 			sort.SliceStable(snapshot, func(i, j int) bool {
@@ -154,7 +159,12 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 
 			rankBatch := make([]tui.Item, 0, len(snapshot))
 			for _, f := range snapshot {
-				rankBatch = append(rankBatch, tui.Item{Path: f.Path, RankScore: f.RankScore})
+				res := scores[f.Path]
+				rankBatch = append(rankBatch, tui.Item{
+					Path:          f.Path,
+					RankScore:     f.RankScore,
+					PreferredMode: tui.CompressMode(res.PreferredMode),
+				})
 			}
 			if len(rankBatch) > 0 {
 				s.nodes <- tui.NodesMsg{Items: rankBatch}
