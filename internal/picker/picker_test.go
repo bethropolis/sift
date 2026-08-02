@@ -64,8 +64,9 @@ func TestApplySelectionFallbackRead(t *testing.T) {
 }
 
 // TestStreamScanCancellation verifies that cancelling the context terminates
-// the background scan promptly, surfaces context.Canceled on errCh, and
-// closes every channel so the TUI never blocks on a cancelled pick.
+// the background scan promptly and closes every channel so the TUI never
+// blocks on a cancelled pick. Any error that arrives must be context.Canceled;
+// on cancellation the error send is best-effort, so it may be dropped.
 func TestStreamScanCancellation(t *testing.T) {
 	dir := writeSmokeTree(t)
 	cfg := config.New()
@@ -89,7 +90,6 @@ func TestStreamScanCancellation(t *testing.T) {
 	cancel()
 
 	deadline := time.After(10 * time.Second)
-	sawCancel := false
 	for stream.nodes != nil || stream.progress != nil || stream.errCh != nil {
 		select {
 		case _, ok := <-stream.nodes:
@@ -105,14 +105,48 @@ func TestStreamScanCancellation(t *testing.T) {
 				stream.errCh = nil
 				continue
 			}
-			if errors.Is(e, context.Canceled) {
-				sawCancel = true
+			if !errors.Is(e, context.Canceled) {
+				t.Errorf("errCh = %v, want context.Canceled", e)
 			}
 		case <-deadline:
 			t.Fatal("streamScan did not terminate after cancellation")
 		}
 	}
-	if !sawCancel {
-		t.Error("errCh did not surface context.Canceled")
+}
+
+// TestStreamScanCancellationNoReceiver verifies the producer terminates
+// promptly when the context is cancelled and nobody is reading the channels.
+// Without cancellation-aware sends, a blocked send on a full channel would
+// hang the goroutine forever once the TUI stopped draining.
+func TestStreamScanCancellationNoReceiver(t *testing.T) {
+	dir := writeSmokeTree(t)
+	cfg := config.New()
+	cfg.RootDir = dir
+	cfg.SmartFilter = true
+	cfg.Quiet = true
+	application, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer application.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var stateMu sync.Mutex
+	var collected []format.FileEntry
+	var skippedMu sync.Mutex
+	var skipped []walker.SkippedItem
+	stream := newPickStream()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+	}()
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("streamScan blocked after cancellation with no receiver")
 	}
 }

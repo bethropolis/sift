@@ -62,14 +62,45 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 	var batch []tui.Item
 	processed := 0
 
-	flush := func(force bool) {
-		mu.Lock()
-		defer mu.Unlock()
-		if len(batch) == 0 || (!force && len(batch) < streamBatchSize) {
-			return
+	// Cancellation-aware sends: every send yields to ctx.Done so a picker that
+	// quit without draining can never leave the producer blocked on a full
+	// channel. Deferred closes are safe because no sender survives a cancelled
+	// context (each returns and unwinds to the deferred closes).
+	sendNodes := func(msg tui.NodesMsg) bool {
+		select {
+		case s.nodes <- msg:
+			return true
+		case <-ctx.Done():
+			return false
 		}
-		s.nodes <- tui.NodesMsg{Items: batch}
+	}
+	sendProgress := func(msg tui.ProgressMsg) bool {
+		select {
+		case s.progress <- msg:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+	sendErr := func(err error) bool {
+		select {
+		case s.errCh <- err:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	flush := func(force bool) bool {
+		mu.Lock()
+		if len(batch) == 0 || (!force && len(batch) < streamBatchSize) {
+			mu.Unlock()
+			return true
+		}
+		items := batch
 		batch = nil
+		mu.Unlock()
+		return sendNodes(tui.NodesMsg{Items: items})
 	}
 
 	// Throttled footer progress, independent of the walker.
@@ -83,11 +114,15 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 			select {
 			case <-stopProgress:
 				return
+			case <-ctx.Done():
+				return
 			case <-progressTicker.C:
 				mu.Lock()
 				p := processed
 				mu.Unlock()
-				s.progress <- tui.ProgressMsg{Files: totalFiles, Dirs: totalDirs, Processed: p}
+				if !sendProgress(tui.ProgressMsg{Files: totalFiles, Dirs: totalDirs, Processed: p}) {
+					return
+				}
 			}
 		}
 	}()
@@ -106,19 +141,27 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 		batch = append(batch, it)
 		processed++
 		mu.Unlock()
-		flush(false)
+		if !flush(false) {
+			// The picker is gone; abort the walk so the whole stream unwinds.
+			return ctx.Err()
+		}
 
 		stateMu.Lock()
 		*collected = append(*collected, e)
 		stateMu.Unlock()
 		return nil
 	})
-	flush(true)
+
+	// Flush any remaining batch; a false result means the context ended, which
+	// supersedes a nil walk error.
+	if !flush(true) {
+		scanErr = ctx.Err()
+	}
 	close(stopProgress)
 	<-progressDone
 
 	if scanErr != nil {
-		s.errCh <- scanErr
+		sendErr(scanErr)
 		return
 	}
 
@@ -150,7 +193,9 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 				})
 			}
 			if len(rankBatch) > 0 {
-				s.nodes <- tui.NodesMsg{Items: rankBatch}
+				if !sendNodes(tui.NodesMsg{Items: rankBatch}) {
+					return
+				}
 			}
 		}
 	}
@@ -171,8 +216,12 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 		}
 	}
 	if len(removed) > 0 {
-		s.nodes <- tui.NodesMsg{Remove: removed}
+		if !sendNodes(tui.NodesMsg{Remove: removed}) {
+			return
+		}
 	}
 
-	s.progress <- tui.ProgressMsg{Files: totalFiles, Dirs: totalDirs, Processed: processed, Done: true}
+	if !sendProgress(tui.ProgressMsg{Files: totalFiles, Dirs: totalDirs, Processed: processed, Done: true}) {
+		return
+	}
 }
