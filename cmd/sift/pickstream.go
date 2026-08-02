@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/format"
-	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/tui"
 	"github.com/bethropolis/sift/internal/walker"
 )
@@ -132,27 +130,12 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 	// Patch unified relevance ranks now that every path is known. Non-git
 	// repos keep the skeleton's zero scores; the picker still works path-ordered.
 	if absRoot != "" {
-		if g := rank.New(absRoot); g.Available() {
+		if r := app.NewRanker(absRoot); r.Available() {
 			stateMu.Lock()
 			snapshot := append([]format.FileEntry(nil), *collected...)
 			stateMu.Unlock()
-			params := make([]rank.ScoringParams, len(snapshot))
-			for i, f := range snapshot {
-				params[i] = rank.ScoringParams{
-					Path:        f.Path,
-					TokensFull:  f.TokensFull,
-					TokensSig:   f.TokensSig,
-					DidCompress: f.SigContent != nil,
-				}
-			}
-			scores := g.CalculateUnifiedScores(absRoot, params)
-			for i := range snapshot {
-				snapshot[i].RankScore = scores[snapshot[i].Path].Score
-			}
-			// Keep the collection ranked the way the blocking picker did.
-			sort.SliceStable(snapshot, func(i, j int) bool {
-				return snapshot[i].RankScore > snapshot[j].RankScore
-			})
+
+			scores := r.Rank(snapshot)
 			stateMu.Lock()
 			*collected = snapshot
 			stateMu.Unlock()

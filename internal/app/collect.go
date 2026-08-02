@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 	"time"
 
@@ -388,24 +387,10 @@ func (a *App) walkerOptions(absRootDir string, ctx context.Context, mode collect
 // blocking collect path. Outside a git repository picker files keep the
 // baseline score.
 func (a *App) applyRank(mode collectMode, absRootDir string, files *[]format.FileEntry) {
-	if g := rank.New(absRootDir); g.Available() {
+	r := NewRanker(absRootDir)
+	if r.Available() {
 		a.log.Debug("Ranking %d files by git relevance", len(*files))
-		params := make([]rank.ScoringParams, len(*files))
-		for i, f := range *files {
-			params[i] = rank.ScoringParams{
-				Path:        f.Path,
-				TokensFull:  f.TokensFull,
-				TokensSig:   f.TokensSig,
-				DidCompress: f.IsCompressed || f.SigContent != nil,
-			}
-		}
-		results := g.CalculateUnifiedScores(absRootDir, params)
-		for i := range *files {
-			(*files)[i].RankScore = results[(*files)[i].Path].Score
-		}
-		sort.SliceStable(*files, func(i, j int) bool {
-			return results[(*files)[i].Path].Score > results[(*files)[j].Path].Score
-		})
+		r.Rank(*files)
 	} else if mode == collectPicker {
 		for i := range *files {
 			(*files)[i].RankScore = rank.ScoreBaseline
