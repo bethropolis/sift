@@ -1,4 +1,4 @@
-package main
+package picker
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/bethropolis/sift/internal/app"
+	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/tui"
 )
@@ -61,17 +62,10 @@ func initGitTree(t *testing.T, dir string) {
 func TestStreamScanPatchesUnifiedRanks(t *testing.T) {
 	dir := writeSmokeTree(t)
 	initGitTree(t, dir)
-	prev := cfg.RootDir
-	prevSmart := cfg.SmartFilter
-	prevQuiet := cfg.Quiet
+	cfg := config.New()
 	cfg.RootDir = dir
 	cfg.SmartFilter = true
 	cfg.Quiet = true
-	defer func() {
-		cfg.RootDir = prev
-		cfg.SmartFilter = prevSmart
-		cfg.Quiet = prevQuiet
-	}()
 
 	application, err := app.New(cfg)
 	if err != nil {
@@ -144,17 +138,10 @@ func TestStreamScanPatchesUnifiedRanks(t *testing.T) {
 
 func TestStreamScanStreamsAndRemoves(t *testing.T) {
 	dir := writeSmokeTree(t)
-	prev := cfg.RootDir
-	prevSmart := cfg.SmartFilter
-	prevQuiet := cfg.Quiet
+	cfg := config.New()
 	cfg.RootDir = dir
 	cfg.SmartFilter = true
 	cfg.Quiet = true
-	defer func() {
-		cfg.RootDir = prev
-		cfg.SmartFilter = prevSmart
-		cfg.Quiet = prevQuiet
-	}()
 
 	application, err := app.New(cfg)
 	if err != nil {

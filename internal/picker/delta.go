@@ -1,4 +1,4 @@
-package main
+package picker
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
@@ -18,8 +17,8 @@ import (
 // buildDeltaInfo gathers the git delta state for the picker's delta modal.
 // It returns nil when the directory is not a git repository or no dump
 // baseline has been recorded for it.
-func buildDeltaInfo(application *app.App, files []format.FileEntry) *tui.DeltaInfo {
-	absRootDir, err := filepath.Abs(cfg.RootDir)
+func (s *service) buildDeltaInfo(files []format.FileEntry) *tui.DeltaInfo {
+	absRootDir, err := filepath.Abs(s.cfg.RootDir)
 	if err != nil {
 		return nil
 	}
@@ -67,14 +66,14 @@ func buildDeltaInfo(application *app.App, files []format.FileEntry) *tui.DeltaIn
 		if t, ok := tokensByPath[p]; ok {
 			info.FilesToken += t
 		} else {
-			info.FilesToken += estimateTokens(p)
+			info.FilesToken += s.estimateTokens(p)
 		}
 	}
 
 	// Raw patch token and line estimates.
 	patch := g.RawPatch(from, "HEAD")
 	if patch != "" {
-		info.PatchToken = countTokensString(cfg, []byte(patch))
+		info.PatchToken = s.env.CountTokens([]byte(patch))
 		info.PatchLines = strings.Count(patch, "\n")
 	}
 	return info
@@ -82,8 +81,8 @@ func buildDeltaInfo(application *app.App, files []format.FileEntry) *tui.DeltaIn
 
 // estimateTokens estimates a token count from the file on disk, used for
 // changed paths the walker did not collect (e.g. deleted or ignored files).
-func estimateTokens(path string) int {
-	fi, err := os.Stat(filepath.Join(cfg.RootDir, filepath.FromSlash(path)))
+func (s *service) estimateTokens(path string) int {
+	fi, err := os.Stat(filepath.Join(s.cfg.RootDir, filepath.FromSlash(path)))
 	if err != nil {
 		return 0
 	}
@@ -93,8 +92,8 @@ func estimateTokens(path string) int {
 // performDelta runs a delta dump for a selection confirmed in the picker's
 // delta modal. Full strategy renders only the changed files; patch strategy
 // emits the raw unified diff in a context_update block.
-func performDelta(application *app.App, files []format.FileEntry, sel tui.DeltaSelection) error {
-	absRootDir, err := filepath.Abs(cfg.RootDir)
+func (s *service) performDelta(files []format.FileEntry, sel tui.DeltaSelection) error {
+	absRootDir, err := filepath.Abs(s.cfg.RootDir)
 	if err != nil {
 		return err
 	}
@@ -119,11 +118,11 @@ func performDelta(application *app.App, files []format.FileEntry, sel tui.DeltaS
 				return err
 			}
 		} else {
-			if _, err := application.Output().Write(buf.Bytes()); err != nil {
+			if _, err := s.env.App.Output().Write(buf.Bytes()); err != nil {
 				return err
 			}
 		}
-		return recordDeltaState(absRootDir, sel.To, len(g.ChangedBetween(sel.From, sel.To)), countTokensString(cfg, buf.Bytes()))
+		return s.env.RecordDelta(absRootDir, sel.To, len(g.ChangedBetween(sel.From, sel.To)), s.env.CountTokens(buf.Bytes()))
 	}
 
 	// Full strategy: keep only files changed in the range.
@@ -145,10 +144,10 @@ func performDelta(application *app.App, files []format.FileEntry, sel tui.DeltaS
 	}
 
 	if sel.Clipboard {
-		return application.RenderToClipboard(chosen)
+		return s.env.App.RenderToClipboard(chosen)
 	}
-	if err := application.RenderFinal(chosen, nil, 0, nil); err != nil {
+	if err := s.env.App.RenderFinal(chosen, nil, 0, nil); err != nil {
 		return err
 	}
-	return recordDumpState(absRootDir, chosen, sel.To)
+	return s.env.RecordDump(absRootDir, chosen, sel.To)
 }
