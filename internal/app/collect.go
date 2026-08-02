@@ -139,7 +139,7 @@ func (a *App) walkAndCollect(mode collectMode, ctx context.Context, emit func(fo
 	// filtering, and signature compression. The tokenizer codec is safe for
 	// concurrent Count calls and the compressor pools its parsers, so the
 	// walker's workers share one instance. ---
-	processor, err := a.newProcessor()
+	processor, err := a.newProcessor(mode)
 	if err != nil {
 		return nil, err
 	}
@@ -168,12 +168,15 @@ func (a *App) walkAndCollect(mode collectMode, ctx context.Context, emit func(fo
 	return skippedItems, err
 }
 
-// newProcessor builds a per-file processor from the app's configuration.
-func (a *App) newProcessor() (*scan.Processor, error) {
+// newProcessor builds a per-file processor from the app's configuration. The
+// signature compressor is only constructed for flows that use it (picker and
+// signatures mode), so ordinary full-content scans never load tree-sitter.
+func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
 	processor, err := scan.New(scan.Options{
 		TokenizeModel:  a.cfg.TokenizeModel,
 		SmartFilter:    a.cfg.SmartFilter,
 		SmartMaxTokens: a.cfg.SmartMaxTokens,
+		Compress:       mode == collectPicker || (mode == collectBlocking && a.cfg.Mode == "signatures"),
 		Logger:         a.log,
 	})
 	if err != nil {
@@ -291,7 +294,7 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 	if err != nil {
 		return format.FileEntry{}, err
 	}
-	processor, err := a.newProcessor()
+	processor, err := a.newProcessor(collectPicker)
 	if err != nil {
 		return format.FileEntry{}, err
 	}

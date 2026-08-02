@@ -11,9 +11,15 @@ import (
 
 func newTestProcessor(t *testing.T, smartOn bool) *Processor {
 	t.Helper()
+	return newTestProcessorC(t, smartOn, true)
+}
+
+func newTestProcessorC(t *testing.T, smartOn, compressOn bool) *Processor {
+	t.Helper()
 	p, err := New(Options{
 		SmartFilter:    smartOn,
 		SmartMaxTokens: 0,
+		Compress:       compressOn,
 		Logger:         logger.New(discardWriter{}, false, false),
 	})
 	if err != nil {
@@ -120,6 +126,60 @@ func TestProcessUnsupportedLanguageFallback(t *testing.T) {
 	}
 	if e.TokensFull != e.TokensSig {
 		t.Errorf("TokensFull=%d TokensSig=%d, want equal", e.TokensFull, e.TokensSig)
+	}
+}
+
+// TestProcessFullWithoutCompression verifies full mode is unaffected when the
+// compressor is disabled (the default for ordinary scans).
+func TestProcessFullWithoutCompression(t *testing.T) {
+	p := newTestProcessorC(t, false, false)
+	e, err := p.Process("main.go", []byte(goSource), ModeFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(e.Content) != goSource || e.IsCompressed {
+		t.Error("full mode with compression disabled must keep raw content")
+	}
+	if e.Tokens <= 0 {
+		t.Errorf("Tokens = %d, want > 0", e.Tokens)
+	}
+}
+
+// TestProcessSignaturesWithoutCompression verifies signatures mode falls back
+// to raw content instead of panicking when the compressor is disabled.
+func TestProcessSignaturesWithoutCompression(t *testing.T) {
+	p := newTestProcessorC(t, false, false)
+	e, err := p.Process("main.go", []byte(goSource), ModeSignatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(e.Content) != goSource {
+		t.Error("signatures mode with compression disabled must keep raw content")
+	}
+	if e.IsCompressed {
+		t.Error("IsCompressed set despite disabled compressor")
+	}
+	if e.TokensFull != e.Tokens || e.TokensSig != e.Tokens {
+		t.Errorf("counts must match without compression: full=%d sig=%d tok=%d", e.TokensFull, e.TokensSig, e.Tokens)
+	}
+}
+
+// TestProcessPickerWithoutCompression verifies picker mode leaves SigContent
+// nil and falls back to the full token count when the compressor is disabled.
+func TestProcessPickerWithoutCompression(t *testing.T) {
+	p := newTestProcessorC(t, false, false)
+	e, err := p.Process("main.go", []byte(goSource), ModePicker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.SigContent != nil {
+		t.Error("SigContent set despite disabled compressor")
+	}
+	if e.Tokens != -1 {
+		t.Errorf("Tokens = %d, want -1 until the view is chosen", e.Tokens)
+	}
+	if e.TokensSig != e.TokensFull || e.TokensFull <= 0 {
+		t.Errorf("counts must equal the full count without compression: full=%d sig=%d", e.TokensFull, e.TokensSig)
 	}
 }
 

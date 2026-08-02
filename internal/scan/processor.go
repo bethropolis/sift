@@ -41,7 +41,11 @@ type Options struct {
 	TokenizeModel  string
 	SmartFilter    bool
 	SmartMaxTokens int
-	Logger         *logger.Logger
+	// Compress enables signature compression. It is off for ordinary
+	// full-content scans, which never touch the compressor, so the tree-sitter
+	// grammars and parser pools are not loaded unnecessarily.
+	Compress bool
+	Logger   *logger.Logger
 }
 
 // Processor transforms a file's content into an enriched FileEntry.
@@ -65,9 +69,11 @@ func New(opts Options) (*Processor, error) {
 		return nil, err
 	}
 	p := &Processor{
-		tokenizer:  tokenizer,
-		compressor: compress.New(),
-		log:        opts.Logger,
+		tokenizer: tokenizer,
+		log:       opts.Logger,
+	}
+	if opts.Compress {
+		p.compressor = compress.New()
 	}
 	if opts.SmartFilter {
 		p.evaluator = smart.New(opts.SmartMaxTokens)
@@ -107,10 +113,12 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 		if smartTokens < 0 {
 			entry.TokensFull = p.countTokens(content, path)
 		}
-		if lang, ok := p.compressor.LanguageForPath(path); ok {
-			if compressed, didCompress := p.compressor.Compress(content, lang); didCompress {
-				entry.SigContent = []byte(compressed)
-				entry.Language = lang.String()
+		if p.compressor != nil {
+			if lang, ok := p.compressor.LanguageForPath(path); ok {
+				if compressed, didCompress := p.compressor.Compress(content, lang); didCompress {
+					entry.SigContent = []byte(compressed)
+					entry.Language = lang.String()
+				}
 			}
 		}
 		if entry.SigContent != nil {
@@ -120,12 +128,14 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 		}
 
 	case ModeSignatures:
-		if lang, ok := p.compressor.LanguageForPath(path); ok {
-			if compressed, didCompress := p.compressor.Compress(content, lang); didCompress {
-				content = []byte(compressed)
-				entry.Content = content
-				entry.IsCompressed = true
-				entry.Language = lang.String()
+		if p.compressor != nil {
+			if lang, ok := p.compressor.LanguageForPath(path); ok {
+				if compressed, didCompress := p.compressor.Compress(content, lang); didCompress {
+					content = []byte(compressed)
+					entry.Content = content
+					entry.IsCompressed = true
+					entry.Language = lang.String()
+				}
 			}
 		}
 		entry.Tokens = p.countTokens(content, path)
