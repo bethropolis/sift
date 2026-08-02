@@ -109,6 +109,17 @@ func (m model) renderPreviewBox(width, height int) string {
 		}
 	} else {
 		content := n.Preview()
+		if len(content) == 0 {
+			// Structure-only node whose content has not streamed in yet.
+			b.WriteString("\n")
+			if m.stream.active() && !m.scanDone {
+				b.WriteString(hintStyle.Render("Scanning… content not loaded yet"))
+			} else {
+				b.WriteString(hintStyle.Render("No content available"))
+			}
+			return boxStyle.Render(b.String())
+		}
+
 		lines := previewLines(content)
 
 		innerRows := max(1, height-3)

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/compress"
 	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/ignore"
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/setup"
 	"github.com/bethropolis/sift/internal/smart"
@@ -22,6 +24,10 @@ import (
 // limit is set. The smart filter would drop oversized files anyway, but this
 // avoids reading them into memory in the first place.
 const pickDefaultMaxFileSizeMB int64 = 10
+
+// ErrFileSkipped is returned by ReadEntry when the smart filter rejects the
+// requested file (e.g. a lockfile or generated artifact).
+var ErrFileSkipped = errors.New("file skipped by smart filter")
 
 // Run executes the main application logic.
 // It returns a non-nil error when the scan failed, including on timeout.
@@ -71,86 +77,56 @@ func (a *App) CollectPicker() ([]format.FileEntry, []walker.SkippedItem, error) 
 }
 
 func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, error) {
-	// Handle timeout if specified
-	var ctx context.Context
-	var cancel context.CancelFunc
-
-	if a.cfg.Timeout > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), a.cfg.Timeout)
-	} else {
-		ctx, cancel = context.WithCancel(context.Background())
-	}
+	ctx, cancel := a.scanContext()
 	defer cancel()
 
-	// --- Directory validation ---
-	absRootDir, err := filepath.Abs(a.cfg.RootDir)
+	var mu sync.Mutex
+	var files []format.FileEntry
+	skipped, err := a.walkAndCollect(picker, ctx, func(e format.FileEntry) error {
+		mu.Lock()
+		files = append(files, e)
+		mu.Unlock()
+		return nil
+	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid root directory path '%s': %w", a.cfg.RootDir, err)
+		return files, skipped, err
 	}
 
-	// Check if directory exists
-	dirInfo, err := os.Stat(absRootDir)
+	// Order files by git relevance so the most important context survives the
+	// token budget. Outside a git repository the order is left unchanged.
+	absRootDir, absErr := a.absRoot()
+	if absErr == nil {
+		a.applyRank(picker, absRootDir, &files)
+	}
+	return files, skipped, nil
+}
+
+// scanContext builds a cancellable context honoring the configured timeout.
+func (a *App) scanContext() (context.Context, context.CancelFunc) {
+	if a.cfg.Timeout > 0 {
+		return context.WithTimeout(context.Background(), a.cfg.Timeout)
+	}
+	return context.WithCancel(context.Background())
+}
+
+// walkAndCollect runs the walk and per-file processing, calling emit for every
+// accepted file. It never sorts or ranks; the blocking collectors do that
+// after the walk, and streaming callers patch ranks asynchronously.
+func (a *App) walkAndCollect(picker bool, ctx context.Context, emit func(format.FileEntry) error) ([]walker.SkippedItem, error) {
+	absRootDir, err := a.absRoot()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil, fmt.Errorf("root directory '%s' not found", absRootDir)
-		}
-		return nil, nil, fmt.Errorf("could not access root directory '%s': %w", absRootDir, err)
-	}
-	if !dirInfo.IsDir() {
-		return nil, nil, fmt.Errorf("specified path '%s' is not a directory", absRootDir)
+		return nil, err
 	}
 
-	// Configure the walker using the setup package
-	maxFileSizeMB := a.cfg.MaxFileSizeMB
-	if picker && maxFileSizeMB <= 0 {
-		// The picker's smart filter would reject oversized files anyway, but
-		// reading them into memory first is wasted work. Cap the read so huge
-		// files are skipped by the walker before content is loaded.
-		maxFileSizeMB = pickDefaultMaxFileSizeMB
-	}
-	walkerConfig := setup.WalkerConfig{
-		RootDir:       absRootDir,
-		Concurrent:    a.cfg.Concurrent,
-		MaxWorkers:    a.cfg.MaxWorkers,
-		MaxFileSizeMB: maxFileSizeMB,
-		Extensions:    a.cfg.Extensions,
-		IgnoreHidden:  a.cfg.IgnoreHidden,
-		IgnoreGit:     a.cfg.IgnoreGit,
-		CustomIgnore:  a.cfg.CustomIgnore,
-		IncludeBinary: a.cfg.IncludeBinary,
-		ShowProgress:  a.cfg.ShowProgress,
-		Ctx:           ctx,
-		Quiet:         a.cfg.Quiet,
-		Logger:        a.log,
-	}
-
-	matcher, walkOptions, err := setup.ConfigureWalker(walkerConfig, a.infoLog)
+	matcher, walkOptions, err := a.walkerOptions(absRootDir, ctx, picker)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to configure walker: %w", err)
-	}
-
-	// Skip OnlyPaths and the output document before any file is read. These
-	// path-only rules belong in the walker decision stage so excluded files
-	// never cost disk I/O or token work.
-	if a.OnlyPaths != nil || a.outputPath != "" {
-		walkOptions = append(walkOptions, walker.WithPathFilter(func(relativePath string) bool {
-			if a.OnlyPaths != nil && !a.OnlyPaths[filepath.ToSlash(relativePath)] {
-				return false
-			}
-			if a.outputPath != "" {
-				absFile := filepath.Join(absRootDir, filepath.FromSlash(relativePath))
-				if filepath.Clean(absFile) == filepath.Clean(a.outputPath) {
-					return false
-				}
-			}
-			return true
-		}))
+		return nil, err
 	}
 
 	// --- Create the token counter ---
 	tokenizer, err := tokenize.New(a.cfg.TokenizeModel)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// --- Create the signature compressor. The picker needs it for every file
@@ -169,9 +145,6 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 		smartEvaluator = smart.New(a.cfg.SmartMaxTokens)
 		a.log.Debug("Smart filter enabled (max %d tokens/file)", a.cfg.SmartMaxTokens)
 	}
-
-	var filesMu sync.Mutex
-	var files []format.FileEntry
 
 	// Smart-skipped items are tracked separately and appended to the walker's
 	// skip list so --show-skipped surfaces them.
@@ -260,10 +233,7 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 			entry.TokensSig = entry.Tokens
 		}
 
-		filesMu.Lock()
-		files = append(files, entry)
-		filesMu.Unlock()
-		return nil // Indicate success to walker
+		return emit(entry)
 	}
 
 	// --- Start the directory walk ---
@@ -280,29 +250,205 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 		skippedItems = append(skippedItems, smartSkipped...)
 		smartMu.Unlock()
 	}
+	return skippedItems, err
+}
 
-	// Order files by git relevance so the most important context survives the
-	// token budget. Outside a git repository the order is left unchanged.
-	if g := rank.New(absRootDir); g.Available() {
-		a.log.Debug("Ranking %d files by git relevance", len(files))
-		paths := make([]string, len(files))
-		for i, f := range files {
-			paths[i] = f.Path
+// StreamPicker walks the directory for the interactive picker without
+// blocking: emit is called for each accepted file as soon as it is processed
+// (possibly concurrently), and rank scores are not applied here so the caller
+// can patch them asynchronously. The returned skip list is complete only
+// after the walk finishes.
+func (a *App) StreamPicker(ctx context.Context, emit func(format.FileEntry) error) ([]walker.SkippedItem, error) {
+	return a.walkAndCollect(true, ctx, emit)
+}
+
+// SkeletonPicker returns file metadata (no content) for the picker's
+// structure-first launch. It applies the same ignore, extension, prune, and
+// smart name rules as the full walk so the skeleton matches the files that
+// will later be enriched. Smart-skipped entries are folded into the skip list.
+func (a *App) SkeletonPicker(ctx context.Context) ([]walker.FileMeta, []walker.SkippedItem, error) {
+	absRootDir, err := a.absRoot()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	matcher, walkOptions, err := a.walkerOptions(absRootDir, ctx, true)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	metas, skipped, err := walker.WalkMeta(absRootDir, matcher, walkOptions...)
+	if err != nil {
+		return metas, skipped, err
+	}
+
+	var smartEvaluator *smart.Evaluator
+	if a.cfg.SmartFilter {
+		smartEvaluator = smart.New(a.cfg.SmartMaxTokens)
+	}
+
+	if smartEvaluator != nil {
+		kept := metas[:0]
+		for _, m := range metas {
+			// Approximate token guardrail (bytes/4) mirrors the content-phase
+			// check so skeleton and enrichment agree on which files survive.
+			if skip, _ := smartEvaluator.ShouldSkipMeta(m.Path, int(m.Size/4)); skip {
+				skipped = append(skipped, walker.SkippedItem{Path: m.Path, Reason: walker.ReasonSkippedSmart})
+				continue
+			}
+			kept = append(kept, m)
 		}
-		scores := g.Score(absRootDir, paths)
-		for i := range files {
-			files[i].RankScore = scores[files[i].Path]
+		metas = kept
+	}
+
+	return metas, skipped, nil
+}
+
+// ReadEntry reads and processes a single relative path exactly as the picker
+// would, returning a fully enriched entry. It backs the picker's fallback when
+// a selected file has not finished streaming in yet, and returns ErrFileSkipped
+// when the smart filter rejects the file.
+func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
+	absRootDir, err := a.absRoot()
+	if err != nil {
+		return format.FileEntry{}, err
+	}
+	tokenizer, err := tokenize.New(a.cfg.TokenizeModel)
+	if err != nil {
+		return format.FileEntry{}, err
+	}
+	content, err := os.ReadFile(filepath.Join(absRootDir, filepath.FromSlash(relativePath)))
+	if err != nil {
+		return format.FileEntry{}, err
+	}
+
+	if a.cfg.SmartFilter {
+		evaluator := smart.New(a.cfg.SmartMaxTokens)
+		if skip, reason := evaluator.ShouldSkipPath(relativePath); skip {
+			return format.FileEntry{}, fmt.Errorf("%w: %s", ErrFileSkipped, reason)
 		}
-		sort.SliceStable(files, func(i, j int) bool {
-			return scores[files[i].Path] > scores[files[j].Path]
-		})
-	} else if picker {
-		for i := range files {
-			files[i].RankScore = rank.ScoreBaseline
+		tokens := a.countTokens(tokenizer, content, relativePath)
+		if skip, reason := evaluator.ShouldSkip(relativePath, content, tokens); skip {
+			return format.FileEntry{}, fmt.Errorf("%w: %s", ErrFileSkipped, reason)
 		}
 	}
 
-	return files, skippedItems, err
+	entry := format.FileEntry{
+		Path:       relativePath,
+		Content:    content,
+		Tokens:     -1,
+		TokensFull: a.countTokens(tokenizer, content, relativePath),
+	}
+	entry.Tokens = entry.TokensFull
+
+	compressor := compress.New()
+	if lang, ok := compressor.LanguageForPath(relativePath); ok {
+		if compressed, didCompress := compressor.Compress(content, lang); didCompress {
+			entry.SigContent = []byte(compressed)
+			entry.Language = lang.String()
+		}
+	}
+	if entry.SigContent != nil {
+		entry.TokensSig = a.countTokens(tokenizer, entry.SigContent, relativePath)
+	} else {
+		entry.TokensSig = entry.TokensFull
+	}
+	return entry, nil
+}
+
+// absRoot resolves and validates the scan root directory.
+func (a *App) absRoot() (string, error) {
+	absRootDir, err := filepath.Abs(a.cfg.RootDir)
+	if err != nil {
+		return "", fmt.Errorf("invalid root directory path '%s': %w", a.cfg.RootDir, err)
+	}
+
+	dirInfo, err := os.Stat(absRootDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("root directory '%s' not found", absRootDir)
+		}
+		return "", fmt.Errorf("could not access root directory '%s': %w", absRootDir, err)
+	}
+	if !dirInfo.IsDir() {
+		return "", fmt.Errorf("specified path '%s' is not a directory", absRootDir)
+	}
+	return absRootDir, nil
+}
+
+// walkerOptions assembles the ignore matcher and walker options for the scan
+// root, including the picker's default size cap and the OnlyPaths/output-path
+// path filter.
+func (a *App) walkerOptions(absRootDir string, ctx context.Context, picker bool) (*ignore.IgnoreMatcher, []walker.Option, error) {
+	maxFileSizeMB := a.cfg.MaxFileSizeMB
+	if picker && maxFileSizeMB <= 0 {
+		// The picker's smart filter would reject oversized files anyway, but
+		// reading them into memory first is wasted work. Cap the read so huge
+		// files are skipped by the walker before content is loaded.
+		maxFileSizeMB = pickDefaultMaxFileSizeMB
+	}
+	walkerConfig := setup.WalkerConfig{
+		RootDir:       absRootDir,
+		Concurrent:    a.cfg.Concurrent,
+		MaxWorkers:    a.cfg.MaxWorkers,
+		MaxFileSizeMB: maxFileSizeMB,
+		Extensions:    a.cfg.Extensions,
+		IgnoreHidden:  a.cfg.IgnoreHidden,
+		IgnoreGit:     a.cfg.IgnoreGit,
+		CustomIgnore:  a.cfg.CustomIgnore,
+		IncludeBinary: a.cfg.IncludeBinary,
+		ShowProgress:  a.cfg.ShowProgress,
+		Ctx:           ctx,
+		Quiet:         a.cfg.Quiet,
+		Logger:        a.log,
+	}
+
+	matcher, walkOptions, err := setup.ConfigureWalker(walkerConfig, a.infoLog)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to configure walker: %w", err)
+	}
+
+	// Skip OnlyPaths and the output document before any file is read. These
+	// path-only rules belong in the walker decision stage so excluded files
+	// never cost disk I/O or token work.
+	if a.OnlyPaths != nil || a.outputPath != "" {
+		walkOptions = append(walkOptions, walker.WithPathFilter(func(relativePath string) bool {
+			if a.OnlyPaths != nil && !a.OnlyPaths[filepath.ToSlash(relativePath)] {
+				return false
+			}
+			if a.outputPath != "" {
+				absFile := filepath.Join(absRootDir, filepath.FromSlash(relativePath))
+				if filepath.Clean(absFile) == filepath.Clean(a.outputPath) {
+					return false
+				}
+			}
+			return true
+		}))
+	}
+	return matcher, walkOptions, nil
+}
+
+// applyRank scores and sorts files by git relevance for the blocking collect
+// path. Outside a git repository picker files keep the baseline score.
+func (a *App) applyRank(picker bool, absRootDir string, files *[]format.FileEntry) {
+	if g := rank.New(absRootDir); g.Available() {
+		a.log.Debug("Ranking %d files by git relevance", len(*files))
+		paths := make([]string, len(*files))
+		for i, f := range *files {
+			paths[i] = f.Path
+		}
+		scores := g.Score(absRootDir, paths)
+		for i := range *files {
+			(*files)[i].RankScore = scores[(*files)[i].Path]
+		}
+		sort.SliceStable(*files, func(i, j int) bool {
+			return scores[(*files)[i].Path] > scores[(*files)[j].Path]
+		})
+	} else if picker {
+		for i := range *files {
+			(*files)[i].RankScore = rank.ScoreBaseline
+		}
+	}
 }
 
 // countTokens counts tokens for content, logging a warning on failure and

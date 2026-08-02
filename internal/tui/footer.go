@@ -50,6 +50,10 @@ func (m model) renderFooter(width int) string {
 		statusLine = noticeStyle.Render(m.notice)
 	case m.filtering:
 		statusLine = fmt.Sprintf("/ Filter (%d matches): %s▌", len(m.rows), m.filter)
+	case m.stream.active() && !m.scanDone:
+		actions := "[?] Help  [g] Generate  [y] Copy  [q] Exit"
+		statusLine = fmt.Sprintf("%sScanning… %d files · %d dirs (%d processed) | %s",
+			budget, m.scanFiles, m.scanDirs, m.scanProcessed, actions)
 	default:
 		actions := "[?] Help  [g] Generate  [y] Copy  [q] Exit"
 		statusLine = fmt.Sprintf("%sStyle: %s | %d selected (%d tok) | %s", budget, m.style, selected, active, actions)

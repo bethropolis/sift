@@ -49,6 +49,17 @@ func (e *Evaluator) ShouldSkipPath(path string) (bool, string) {
 	return false, ""
 }
 
+// ShouldSkipMeta reports whether a file should be excluded using only its
+// path and an approximate token count (e.g. size/4). It backs the picker's
+// structure-first pass, letting the skeleton skip files that name rules or
+// the token guardrail would drop, without reading any content.
+func (e *Evaluator) ShouldSkipMeta(path string, approxTokens int) (bool, string) {
+	if approxTokens > e.maxTokens {
+		return true, fmt.Sprintf("Exceeds smart token limit (%d tokens)", e.maxTokens)
+	}
+	return e.ShouldSkipPath(path)
+}
+
 // ShouldSkip reports whether a file should be excluded by the smart filter,
 // along with a human-readable reason. Name-based rules run here too, but
 // callers that already ran ShouldSkipPath can avoid the redundant check by

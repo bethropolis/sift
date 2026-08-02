@@ -246,3 +246,180 @@ func TestSmartSelectBudgetUsesSigTokens(t *testing.T) {
 		t.Fatalf("selected %d files, want 2", got)
 	}
 }
+
+func TestSkeletonEmptyDirRendersAsDir(t *testing.T) {
+	// A leaf directory with no readable files must be a folder, not a file.
+	root := BuildTree([]Item{
+		{Path: "src", IsDir: true, ApproxTokens: 0},
+		{Path: "src/a.go", ApproxTokens: 25},
+	})
+	src := root.findChild("src")
+	if src == nil {
+		t.Fatal("missing src node")
+	}
+	if src.Kind != KindDir {
+		t.Errorf("src Kind = %v, want KindDir", src.Kind)
+	}
+	aGo := src.findChild("a.go")
+	if aGo == nil || aGo.Kind != KindFile {
+		t.Fatalf("src/a.go Kind = %v, want KindFile", aGo)
+	}
+	if aGo.ApproxTokens != 25 {
+		t.Errorf("a.go ApproxTokens = %d, want 25", aGo.ApproxTokens)
+	}
+	// The empty leaf directory is not selectable as a file.
+	if got := len(root.Selections()); got != 0 {
+		t.Errorf("selections = %d, want 0", got)
+	}
+}
+
+func TestPatchOnlyBatchRecomputesDirAggregates(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "internal/b.go", ApproxTokens: 10},
+		{Path: "internal/c.go", ApproxTokens: 20},
+	})
+	m := newModel(root, Options{})
+
+	// Enrichment patches existing nodes without inserting any new ones; the
+	// directory totals must still track the exact token counts.
+	m.upsertItems([]Item{
+		{Path: "internal/b.go", Content: []byte("b"), TokensFull: 4, TokensSig: 2},
+		{Path: "internal/c.go", Content: []byte("c"), TokensFull: 6, TokensSig: 3},
+	})
+
+	internal := m.root.findChild("internal")
+	if internal.TokensFull != 10 {
+		t.Errorf("dir TokensFull = %d, want 10", internal.TokensFull)
+	}
+	if internal.TokensSig != 5 {
+		t.Errorf("dir TokensSig = %d, want 5", internal.TokensSig)
+	}
+	if internal.findChild("b.go").ApproxTokens != 0 {
+		t.Errorf("b.go ApproxTokens not cleared: %d", internal.findChild("b.go").ApproxTokens)
+	}
+}
+
+func TestSkeletonRankPatchDoesNotReorderRows(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "b.go"},
+		{Path: "a.go"},
+	})
+	m := newModel(root, Options{})
+	m.stream = Stream{Nodes: make(chan NodesMsg, 16), Progress: make(chan ProgressMsg, 4)}
+	m.cursor = 0 // on a.go after sort
+
+	// Rank-only patch: path order must not change, cursor must stay put.
+	updated, cmd := m.Update(NodesMsg{Items: []Item{{Path: "a.go", RankScore: 0.9}, {Path: "b.go", RankScore: 0.1}}})
+	mm := updated.(model)
+	if mm.node() == nil || mm.node().Path != "a.go" {
+		t.Fatalf("cursor drifted to %v, want a.go", mm.node())
+	}
+	if len(mm.rows) != 2 || mm.rows[0].Path != "a.go" {
+		t.Errorf("rows reordered by rank: %v", mm.rows)
+	}
+	if cmd == nil {
+		t.Error("expected listener re-arm cmd")
+	}
+}
+
+func TestRemoveNodesDropsRejectedFiles(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "gen.pb.go", ApproxTokens: 50},
+		{Path: "keep.go", ApproxTokens: 10},
+	})
+	m := newModel(root, Options{})
+	m.stream = Stream{Nodes: make(chan NodesMsg, 16), Progress: make(chan ProgressMsg, 4)}
+
+	// The full walk later rejected gen.pb.go (generated header), so it must
+	// disappear from the tree and the index.
+	updated, cmd := m.Update(NodesMsg{Remove: []string{"gen.pb.go"}})
+	mm := updated.(model)
+
+	if mm.nodeIndex["gen.pb.go"] != nil {
+		t.Error("removed node still in index")
+	}
+	if mm.root.findChild("gen.pb.go") != nil {
+		t.Error("removed node still in tree")
+	}
+	if mm.nodeIndex["keep.go"] == nil {
+		t.Error("unrelated node dropped from index")
+	}
+	if got := len(mm.rows); got != 1 {
+		t.Errorf("rows = %d, want 1", got)
+	}
+	if cmd == nil {
+		t.Error("expected listener re-arm cmd")
+	}
+}
+
+func TestRemoveNodesUnknownPathIsNoop(t *testing.T) {
+	root := BuildTree([]Item{{Path: "a.go"}})
+	m := newModel(root, Options{})
+	m.removeNodes([]string{"nope.go"})
+	if len(m.rows) != 1 {
+		t.Errorf("rows = %d, want 1", len(m.rows))
+	}
+	if m.nodeIndex["a.go"] == nil {
+		t.Error("existing node dropped")
+	}
+}
+
+func TestEnrichmentThenRemovalSequence(t *testing.T) {
+	// Simulates the full stream: skeleton -> enrichment patches -> rank
+	// patches -> removal of a content-skipped file.
+	root := BuildTree([]Item{
+		{Path: "src/f1.go", ApproxTokens: 10},
+		{Path: "src/f2.go", ApproxTokens: 10},
+		{Path: "src/helper.go", ApproxTokens: 15},
+	})
+	var m model
+	m = newModel(root, Options{})
+	m.stream = Stream{Nodes: make(chan NodesMsg, 16), Progress: make(chan ProgressMsg, 4)}
+
+	// 1. Enrichment patch.
+	var cmd tea.Cmd
+	var updated tea.Model
+	updated, cmd = m.Update(NodesMsg{Items: []Item{
+		{Path: "src/f1.go", Content: []byte("package src"), TokensFull: 3},
+		{Path: "src/f2.go", Content: []byte("package src"), TokensFull: 4},
+	}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("no re-arm after enrichment")
+	}
+	if m.nodeIndex["src/helper.go"] == nil {
+		t.Fatal("skeleton helper.go missing before removal")
+	}
+
+	// 2. Rank patches.
+	updated, cmd = m.Update(NodesMsg{Items: []Item{
+		{Path: "src/f1.go", RankScore: 0.9},
+		{Path: "src/f2.go", RankScore: 0.5},
+	}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("no re-arm after rank patch")
+	}
+	if m.nodeIndex["src/helper.go"] == nil {
+		t.Fatal("helper.go dropped by rank patches")
+	}
+
+	// 3. Removal of the content-skipped file.
+	updated, _ = m.Update(NodesMsg{Remove: []string{"src/helper.go"}})
+	m = updated.(model)
+
+	if m.nodeIndex["src/helper.go"] != nil {
+		t.Error("helper.go still in index after removal")
+	}
+	if m.root.findChild("src").findChild("helper.go") != nil {
+		t.Error("helper.go still a child of src after removal")
+	}
+	// The dir aggregate must no longer count the removed file.
+	src := m.root.findChild("src")
+	if src.FileCount() != 2 {
+		t.Errorf("src file count = %d, want 2", src.FileCount())
+	}
+	if src.TokensFull != 7 {
+		t.Errorf("src TokensFull = %d, want 7", src.TokensFull)
+	}
+}

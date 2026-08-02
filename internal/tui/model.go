@@ -67,6 +67,21 @@ type model struct {
 	onDelta       func(DeltaSelection) error
 	deltaDone     bool
 
+	// Progressive scan state. stream is the background scan's channels;
+	// nodeIndex maps relative paths to nodes for O(1) merges; scan* fields
+	// feed the footer's progress line until scanDone.
+	stream        Stream
+	nodeIndex     map[string]*TreeNode
+	scanFiles     int
+	scanDirs      int
+	scanProcessed int
+	scanDone      bool
+	// stream*Closed track which scan channels have been closed, so the
+	// listener stops only once every channel is exhausted.
+	streamNodesClosed    bool
+	streamProgressClosed bool
+	streamErrClosed      bool
+
 	quit bool
 }
 
@@ -94,6 +109,8 @@ func newModel(root *TreeNode, opts Options) model {
 	if opts.UseNerd {
 		glyphs = NewNerdFontGlyphs()
 	}
+	nodeIndex := make(map[string]*TreeNode, 256)
+	indexTree(root, nodeIndex)
 	m := model{
 		root:       root,
 		height:     24,
@@ -105,6 +122,7 @@ func newModel(root *TreeNode, opts Options) model {
 		onGenerate: opts.OnGenerate,
 		delta:      opts.Delta,
 		onDelta:    opts.OnDelta,
+		nodeIndex:  nodeIndex,
 	}
 	m.recomputeRows()
 	return m
@@ -129,7 +147,9 @@ func (m *model) node() *TreeNode {
 	return m.rows[m.cursor]
 }
 
-func (m model) Init() tea.Cmd { return nil }
+func (m model) Init() tea.Cmd {
+	return m.listenStream()
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -145,6 +165,58 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateKey(msg)
 	case tea.MouseMsg:
 		return m.updateMouse(msg)
+	case NodesMsg:
+		// Keep the cursor pinned to the same path while new nodes arrive.
+		keepPath := ""
+		if n := m.node(); n != nil {
+			keepPath = n.Path
+		}
+		if len(msg.Remove) > 0 {
+			m.removeNodes(msg.Remove)
+		}
+		if len(msg.Items) > 0 {
+			m.upsertItems(msg.Items)
+		}
+		m.recomputeRows()
+		if keepPath != "" {
+			if idx := m.findRow(keepPath); idx >= 0 {
+				m.cursor = idx
+				m.clampOffset()
+			} else {
+				// The pinned node was removed; fall back to the first row.
+				m.cursor = 0
+				m.clampOffset()
+			}
+		}
+		return m, m.listenStream()
+	case ProgressMsg:
+		m.scanFiles = msg.Files
+		m.scanDirs = msg.Dirs
+		m.scanProcessed = msg.Processed
+		if msg.Done {
+			m.scanDone = true
+		}
+		// Keep draining: removal messages may still be in flight on the nodes
+		// channel after Done arrives. The listener only stops once a channel
+		// closes (buffered values are drained before ok=false).
+		return m, m.listenStream()
+	case streamClosedMsg:
+		switch msg.channel {
+		case streamNodesClosed:
+			m.streamNodesClosed = true
+		case streamProgressClosed:
+			m.streamProgressClosed = true
+		case streamErrClosed:
+			m.streamErrClosed = true
+		}
+		if m.streamNodesClosed && m.streamProgressClosed && m.streamErrClosed {
+			m.scanDone = true
+			return m, nil
+		}
+		return m, m.listenStream()
+	case ErrMsg:
+		m.scanDone = true
+		return m, m.setNotice("Scan error: " + msg.Err.Error())
 	}
 	return m, nil
 }

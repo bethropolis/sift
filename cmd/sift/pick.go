@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/mattn/go-isatty"
@@ -56,50 +58,75 @@ func runPick(cmd *cobra.Command, args []string) error {
 	application := app.New(cfg)
 	defer application.Close()
 
-	// CollectPicker keeps both full and signature-only content so the TUI can
-	// offer per-file modes and live token tallies.
-	files, skipped, err := application.CollectPicker()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Structure-first launch: a cheap metadata pass builds the skeleton the
+	// TUI shows instantly; a background walk then streams enriched entries in.
+	metas, skipped, err := application.SkeletonPicker(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Analyze the last five commits to hint preferred modes: bulk commits map
-	// to signatures, focused ones and working-tree edits to full content. An
-	// empty map (non-git or error) leaves every file with no preference.
+	// Analyze the last five commits to hint preferred modes before any
+	// enrichment streams in. An empty map (non-git or error) leaves every
+	// file with no preference.
 	var preferredModes map[string]string
-	if absRoot, err := filepath.Abs(cfg.RootDir); err == nil {
+	absRoot, absErr := filepath.Abs(cfg.RootDir)
+	if absErr == nil {
 		preferredModes = rank.New(absRoot).AnalyzeCommitHistory(5)
 	}
 
-	items := make([]tui.Item, len(files))
-	for i, f := range files {
-		items[i] = tui.Item{
-			Path:          f.Path,
-			Content:       f.Content,
-			SigContent:    f.SigContent,
-			TokensFull:    f.TokensFull,
-			TokensSig:     f.TokensSig,
-			SecretCount:   f.SecretCount,
-			RankScore:     f.RankScore,
-			PreferredMode: tui.CompressMode(preferredModes[f.Path]),
+	// Shared collection state: the background walk fills it in and the
+	// selection callbacks snapshot it on demand, so a slow walk never blocks
+	// the picker and quitting early still sees every streamed file.
+	var stateMu sync.Mutex
+	var collected []format.FileEntry
+	var skippedMu sync.Mutex
+
+	snapshotFiles := func() []format.FileEntry {
+		stateMu.Lock()
+		defer stateMu.Unlock()
+		return append([]format.FileEntry(nil), collected...)
+	}
+	snapshotSkipped := func() []walker.SkippedItem {
+		skippedMu.Lock()
+		defer skippedMu.Unlock()
+		return append([]walker.SkippedItem(nil), skipped...)
+	}
+
+	skeletonItems, deltaFiles := buildSkeleton(metas, preferredModes)
+	totalFiles, totalDirs := 0, 0
+	skeletonFilePaths := make([]string, 0, len(metas))
+	for _, m := range metas {
+		if m.IsDir {
+			totalDirs++
+		} else {
+			totalFiles++
+			skeletonFilePaths = append(skeletonFilePaths, m.Path)
 		}
 	}
 
-	result, err := tui.Run(items, tui.Options{
+	stream := newPickStream()
+	go streamScan(ctx, application, preferredModes, absRoot, skeletonFilePaths,
+		&stateMu, &collected, &skippedMu, &skipped,
+		totalFiles, totalDirs, stream)
+
+	result, err := tui.RunStreaming(skeletonItems, tui.Options{
 		Budget:  cfg.Budget,
 		Style:   cfg.EffectiveStyle(),
 		UseNerd: !cfg.NoNerdFonts,
 		OnCopy: func(sel []tui.Selection) error {
-			return copySelection(application, files, sel)
+			return copySelection(application, snapshotFiles(), sel)
 		},
 		OnGenerate: func(sel []tui.Selection) error {
-			return generateSelection(application, files, skipped, start, sel)
+			return generateSelection(application, snapshotFiles(), snapshotSkipped(), start, sel)
 		},
-		Delta: buildDeltaInfo(application, files),
+		Delta: buildDeltaInfo(application, deltaFiles),
 		OnDelta: func(sel tui.DeltaSelection) error {
-			return performDelta(application, files, sel)
+			return performDelta(application, snapshotFiles(), sel)
 		},
-	})
+	}, stream.tuiStream())
 	if err != nil {
 		return fmt.Errorf("sift pick: %w", err)
 	}
@@ -113,8 +140,8 @@ func runPick(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("sift pick: no files selected")
 	}
 
-	chosen := applySelection(files, selected)
-	if err := application.RenderFinal(chosen, skipped, time.Since(start), nil); err != nil {
+	chosen := applySelection(application, snapshotFiles(), selected)
+	if err := application.RenderFinal(chosen, snapshotSkipped(), time.Since(start), nil); err != nil {
 		return err
 	}
 
@@ -126,10 +153,34 @@ func runPick(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// buildSkeleton maps the metadata walk into the TUI's initial items and a
+// token-estimate entry list used by the delta modal. Files carry a byte-based
+// token estimate (size/4) shown with a "~" until exact counts stream in.
+func buildSkeleton(metas []walker.FileMeta, preferredModes map[string]string) ([]tui.Item, []format.FileEntry) {
+	items := make([]tui.Item, 0, len(metas))
+	deltaFiles := make([]format.FileEntry, 0, len(metas))
+	for _, m := range metas {
+		approx := int(m.Size / 4)
+		items = append(items, tui.Item{
+			Path:          m.Path,
+			IsDir:         m.IsDir,
+			ApproxTokens:  approx,
+			PreferredMode: tui.CompressMode(preferredModes[m.Path]),
+		})
+		deltaFiles = append(deltaFiles, format.FileEntry{
+			Path:       m.Path,
+			TokensFull: approx,
+			Tokens:     approx,
+		})
+	}
+	return items, deltaFiles
+}
+
 // applySelection maps the TUI's per-file modes onto the collected entries. A
 // file in FULL mode keeps its raw content; SIGS uses the signature summary;
-// SKIP entries are dropped.
-func applySelection(files []format.FileEntry, selected []tui.Selection) []format.FileEntry {
+// SKIP entries are dropped. Selections whose content has not streamed in yet
+// fall back to a fresh read.
+func applySelection(application *app.App, files []format.FileEntry, selected []tui.Selection) []format.FileEntry {
 	byPath := make(map[string]format.FileEntry, len(files))
 	for _, f := range files {
 		byPath[f.Path] = f
@@ -139,7 +190,12 @@ func applySelection(files []format.FileEntry, selected []tui.Selection) []format
 	for _, sel := range selected {
 		f, ok := byPath[sel.Path]
 		if !ok {
-			continue
+			e, err := application.ReadEntry(sel.Path)
+			if err != nil {
+				application.LogError("Failed to read %s: %v", sel.Path, err)
+				continue
+			}
+			f = e
 		}
 		switch sel.Mode {
 		case tui.ModeSignatures:
@@ -164,7 +220,7 @@ func applySelection(files []format.FileEntry, selected []tui.Selection) []format
 // copySelection renders the current selection to the system clipboard without
 // touching the picker's output destination.
 func copySelection(application *app.App, files []format.FileEntry, selected []tui.Selection) error {
-	chosen := applySelection(files, selected)
+	chosen := applySelection(application, files, selected)
 	if len(chosen) == 0 {
 		return fmt.Errorf("nothing selected")
 	}
@@ -175,7 +231,7 @@ func copySelection(application *app.App, files []format.FileEntry, selected []tu
 // without leaving the picker (pressing g). The output file is truncated first
 // so repeated generates replace the previous dump instead of appending to it.
 func generateSelection(application *app.App, files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection) error {
-	chosen := applySelection(files, selected)
+	chosen := applySelection(application, files, selected)
 	if len(chosen) == 0 {
 		return fmt.Errorf("nothing selected")
 	}

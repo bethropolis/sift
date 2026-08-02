@@ -114,8 +114,56 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 	options.Logger.Debug("walker.Walk started. Root: %s, Concurrent: %v, Workers: %d",
 		absRootDir, options.Concurrent, options.MaxWorkers)
 
-	// Define the core logic for a single entry (used by both sequential and concurrent modes)
-	processEntry := func(path string, d fs.DirEntry, err error) (error, bool) {
+	processEntry := newProcessEntry(absRootDir, options, matcher, tracker, stats)
+
+	// Choose between concurrent and sequential processing
+	if options.Concurrent {
+		return walkConcurrent(absRootDir, options, walkFn, tracker, stats, processEntry, startTime)
+	}
+
+	// Sequential processing
+	options.Logger.Debug("Walker: Starting sequential walk.")
+	walkErr := filepath.WalkDir(absRootDir, func(path string, d fs.DirEntry, err error) error {
+		processDecisionErr, shouldProcess := processEntry(path, d, err)
+		if processDecisionErr != nil {
+			return processDecisionErr
+		}
+
+		if shouldProcess {
+			relativePath, relErr := filepath.Rel(absRootDir, path)
+			if relErr != nil {
+				options.Logger.Error("Walker Error: Calculating relative path for processing %q: %v", path, relErr)
+				tracker.Track(path, ReasonSkippedPathError, false)
+				stats.skippedFiles.Add(1)
+				return nil
+			}
+
+			// Triple check - make sure this isn't the root dir or "."
+			if path != absRootDir && relativePath != "." {
+				options.Logger.Debug("Walker Processing Sequentially: File [%s]", relativePath)
+				processFile(path, relativePath, options, walkFn, tracker, stats)
+			}
+		}
+		return nil
+	})
+
+	duration := time.Since(startTime)
+	options.Logger.Debug("Walker: Total walk and processing time: %s", duration)
+
+	return tracker.Items(), walkErr
+}
+
+// newProcessEntry builds the per-entry decision closure shared by Walk (full
+// content) and WalkMeta (structure only). It reports whether an entry should
+// be processed, or an error to stop the walk (e.g. SkipDir).
+func newProcessEntry(
+	absRootDir string,
+	options WalkOptions,
+	matcher *ignore.IgnoreMatcher,
+	tracker *SkippedTracker,
+	stats *walkStats,
+) func(path string, d fs.DirEntry, err error) (error, bool) {
+	return func(path string, d fs.DirEntry, err error) (error, bool) {
 		// Check context before processing anything
 		select {
 		case <-options.Context.Done():
@@ -226,40 +274,78 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 		options.Logger.Debug("Walker: File %q PASSED all checks, will be processed", relativePath)
 		return nil, true
 	}
+}
 
-	// Choose between concurrent and sequential processing
-	if options.Concurrent {
-		return walkConcurrent(absRootDir, options, walkFn, tracker, stats, processEntry, startTime)
+// FileMeta describes a file without its content, backing the picker's
+// structure-first skeleton so the TUI can open before any reads happen.
+type FileMeta struct {
+	Path    string
+	Size    int64
+	IsDir   bool
+	ModTime time.Time
+}
+
+// WalkMeta enumerates a directory tree and returns file metadata only: no
+// file is read. It applies the same ignore, extension, heavy-dir, and path
+// filters as Walk, making it the cheap structure pass for progressive UIs.
+func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]FileMeta, []SkippedItem, error) {
+	startTime := time.Now()
+
+	options := defaultOptions()
+	for _, opt := range opts {
+		opt(&options)
 	}
 
-	// Sequential processing
-	options.Logger.Debug("Walker: Starting sequential walk.")
+	absRootDir, err := filepath.Abs(rootDir)
+	if err != nil {
+		return nil, []SkippedItem{{Path: rootDir, Reason: ReasonSkippedPathError, IsDir: true}},
+			fmt.Errorf("walker: failed to get absolute path for '%s': %w", rootDir, err)
+	}
+
+	tracker := NewSkippedTracker(100)
+	stats := &walkStats{}
+	processEntry := newProcessEntry(absRootDir, options, matcher, tracker, stats)
+
+	options.Logger.Debug("walker.WalkMeta started. Root: %s", absRootDir)
+
+	metas := make([]FileMeta, 0, 128)
 	walkErr := filepath.WalkDir(absRootDir, func(path string, d fs.DirEntry, err error) error {
 		processDecisionErr, shouldProcess := processEntry(path, d, err)
 		if processDecisionErr != nil {
 			return processDecisionErr
 		}
-
-		if shouldProcess {
-			relativePath, relErr := filepath.Rel(absRootDir, path)
-			if relErr != nil {
-				options.Logger.Error("Walker Error: Calculating relative path for processing %q: %v", path, relErr)
-				tracker.Track(path, ReasonSkippedPathError, false)
-				stats.skippedFiles.Add(1)
-				return nil
-			}
-
-			// Triple check - make sure this isn't the root dir or "."
-			if path != absRootDir && relativePath != "." {
-				options.Logger.Debug("Walker Processing Sequentially: File [%s]", relativePath)
-				processFile(path, relativePath, options, walkFn, tracker, stats)
-			}
+		if !shouldProcess {
+			return nil
 		}
+
+		relativePath, relErr := filepath.Rel(absRootDir, path)
+		if relErr != nil {
+			options.Logger.Error("Walker Error: Calculating relative path for meta %q: %v", path, relErr)
+			tracker.Track(path, ReasonSkippedPathError, false)
+			stats.skippedFiles.Add(1)
+			return nil
+		}
+		if path == absRootDir || relativePath == "." {
+			return nil
+		}
+
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			options.Logger.Error("Walker Error: Failed to stat meta %q: %v", relativePath, infoErr)
+			tracker.Track(relativePath, ReasonSkippedInfoError, false)
+			stats.skippedFiles.Add(1)
+			return nil
+		}
+
+		metas = append(metas, FileMeta{
+			Path:    filepath.ToSlash(relativePath),
+			Size:    info.Size(),
+			IsDir:   info.IsDir(),
+			ModTime: info.ModTime(),
+		})
 		return nil
 	})
 
-	duration := time.Since(startTime)
-	options.Logger.Debug("Walker: Total walk and processing time: %s", duration)
-
-	return tracker.Items(), walkErr
+	options.Logger.Debug("Walker: Meta walk took %s, %d files", time.Since(startTime), len(metas))
+	return metas, tracker.Items(), walkErr
 }

@@ -26,8 +26,22 @@ func Run(items []Item, opts Options) (Result, error) {
 	if len(items) == 0 {
 		return Result{}, nil
 	}
-	root := BuildTree(items)
+	return runProgram(BuildTree(items), opts, Stream{})
+}
+
+// RunStreaming is the progressive variant of Run: it opens the picker
+// immediately on a structure-only skeleton and merges items streamed over
+// scan's channels as the background walk enriches them.
+func RunStreaming(skeleton []Item, opts Options, stream Stream) (Result, error) {
+	if len(skeleton) == 0 {
+		return Result{}, nil
+	}
+	return runProgram(BuildTree(skeleton), opts, stream)
+}
+
+func runProgram(root *TreeNode, opts Options, stream Stream) (Result, error) {
 	m := newModel(root, opts)
+	m.stream = stream
 	final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
 	if err != nil {
 		return Result{}, err

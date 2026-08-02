@@ -66,6 +66,9 @@ type TreeNode struct {
 	SelectedCountVal int // Cached selected file count for O(1) lookup
 	SecretCount      int
 	RankScore        float64
+	// ApproxTokens is a byte-based token estimate shown with a "~" until the
+	// exact count arrives via the scan stream. Zero once TokensFull is known.
+	ApproxTokens int
 
 	// Content and SigContent are the file's two renderings (only set on file
 	// nodes). They are nil on directories.
@@ -80,6 +83,10 @@ type TreeNode struct {
 type Item struct {
 	// Path is the file's path relative to the scanned root.
 	Path string
+	// IsDir marks a directory for the structure skeleton. BuildTree forces a
+	// KindDir leaf so empty directories render as folders, not files. Files
+	// never set it.
+	IsDir bool
 	// Content is the full (redacted) content, used for the preview pane.
 	Content []byte
 	// SigContent is the signature-only summary when available.
@@ -87,6 +94,9 @@ type Item struct {
 	// TokensFull and TokensSig are the token counts of the two variants.
 	TokensFull int
 	TokensSig  int
+	// ApproxTokens is a byte-based estimate shown as "~n tok" until the exact
+	// count lands. Skeleton items carry it; enriched items do not.
+	ApproxTokens int
 	// SecretCount is the number of secrets detected in the file.
 	SecretCount int
 	// RankScore is the git relevance score.
@@ -114,7 +124,7 @@ func BuildTree(items []Item) *TreeNode {
 				path += "/"
 			}
 			path += part
-			isFile := i == len(parts)-1
+			isFile := i == len(parts)-1 && !it.IsDir
 			child := cur.findChild(part)
 			if child == nil {
 				child = &TreeNode{
@@ -137,6 +147,7 @@ func BuildTree(items []Item) *TreeNode {
 				child.TokensSig = it.TokensSig
 				child.SecretCount = it.SecretCount
 				child.RankScore = it.RankScore
+				child.ApproxTokens = it.ApproxTokens
 				child.Mode = ModeFull
 				if it.PreferredMode != "" {
 					child.Mode = it.PreferredMode
@@ -163,6 +174,173 @@ func (n *TreeNode) findChild(name string) *TreeNode {
 		}
 	}
 	return nil
+}
+
+// indexTree records every node in the subtree into idx by path.
+func indexTree(n *TreeNode, idx map[string]*TreeNode) {
+	if n.Path != "" {
+		idx[n.Path] = n
+	}
+	for _, c := range n.Children {
+		indexTree(c, idx)
+	}
+}
+
+// upsertItems merges a batch of items into the tree, inserting missing nodes
+// and patching existing ones. It reorders the display and refreshes aggregates
+// when anything changed, keeping the cursor's node stable.
+func (m *model) upsertItems(items []Item) {
+	changed := false
+	for i := range items {
+		it := &items[i]
+		if m.applyItem(it) {
+			changed = true
+		}
+	}
+	if changed {
+		sortTree(m.root)
+		m.root.recompute()
+	}
+}
+
+// applyItem inserts or patches a single item, returning true when the tree
+// needs a recompute (a node was inserted or its scalar data changed). Patch-only
+// batches still recompute so directory aggregates track incoming tokens.
+func (m *model) applyItem(it *Item) bool {
+	path := filepath.ToSlash(it.Path)
+	if n, ok := m.nodeIndex[path]; ok {
+		return m.patchNode(n, it)
+	}
+
+	parts := strings.Split(path, "/")
+	cur := m.root
+	p := ""
+	changed := false
+	for i, part := range parts {
+		if i > 0 {
+			p += "/"
+		}
+		p += part
+		isFile := i == len(parts)-1 && !it.IsDir
+		child := cur.findChild(part)
+		if child == nil {
+			child = &TreeNode{Name: part, Path: p, Parent: cur}
+			if isFile {
+				child.Kind = KindFile
+			} else {
+				child.Kind = KindDir
+				child.Expanded = false
+			}
+			cur.Children = append(cur.Children, child)
+			m.nodeIndex[p] = child
+			changed = true
+		}
+		if isFile {
+			if m.patchNode(child, it) {
+				changed = true
+			}
+		}
+		cur = child
+	}
+	return changed
+}
+
+// patchNode applies the non-zero fields of an item onto an existing node
+// without disturbing content that has not arrived yet. It reports whether any
+// field was applied.
+func (m *model) patchNode(n *TreeNode, it *Item) bool {
+	changed := false
+	if len(it.Content) > 0 {
+		n.Content = it.Content
+		changed = true
+	}
+	if len(it.SigContent) > 0 {
+		n.SigContent = it.SigContent
+		changed = true
+	}
+	if it.TokensFull > 0 {
+		n.TokensFull = it.TokensFull
+		n.ApproxTokens = 0 // Exact count supersedes the estimate.
+		changed = true
+	}
+	if it.TokensSig > 0 {
+		n.TokensSig = it.TokensSig
+		changed = true
+	}
+	if it.SecretCount > 0 {
+		n.SecretCount = it.SecretCount
+		changed = true
+	}
+	if it.RankScore != 0 {
+		n.RankScore = it.RankScore
+		changed = true
+	}
+	if it.PreferredMode != "" {
+		n.PreferredMode = it.PreferredMode
+		if n.Mode == "" || n.Mode == ModeFull {
+			n.Mode = it.PreferredMode
+		}
+		changed = true
+	}
+	if it.ApproxTokens > 0 && n.TokensFull == 0 {
+		n.ApproxTokens = it.ApproxTokens
+		changed = true
+	}
+	return changed
+}
+
+// findRow returns the index of the first visible row whose path matches, or
+// -1. It backs cursor stability when streaming inserts reorder the tree.
+func (m model) findRow(path string) int {
+	for i, r := range m.rows {
+		if r.Path == path {
+			return i
+		}
+	}
+	return -1
+}
+
+// removeNodes deletes the given paths from the tree, reindexing and
+// recomputing when anything was removed. It backs dropping skeleton files the
+// full walk later rejected (e.g. generated headers), so the picker never
+// offers files that can never be enriched.
+func (m *model) removeNodes(paths []string) {
+	removed := false
+	for _, p := range paths {
+		if m.removeNode(filepath.ToSlash(p)) {
+			removed = true
+		}
+	}
+	if removed {
+		sortTree(m.root)
+		m.root.recompute()
+	}
+}
+
+// removeNode unlinks a single node (and its subtree) from the tree and drops
+// it from the index. It returns false when the path is unknown.
+func (m *model) removeNode(path string) bool {
+	n, ok := m.nodeIndex[path]
+	if !ok {
+		return false
+	}
+	if n.Parent != nil {
+		for i, c := range n.Parent.Children {
+			if c == n {
+				n.Parent.Children = append(n.Parent.Children[:i], n.Parent.Children[i+1:]...)
+				break
+			}
+		}
+	}
+	var unindex func(x *TreeNode)
+	unindex = func(x *TreeNode) {
+		delete(m.nodeIndex, x.Path)
+		for _, c := range x.Children {
+			unindex(c)
+		}
+	}
+	unindex(n)
+	return true
 }
 
 // sortTree orders children: directories first, then files, alphabetically.

@@ -98,6 +98,10 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	treeGuide := treeGuideStyle.Render(prefix)
 	left := fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
 	right := fmt.Sprintf("%6d tok", tokens)
+	if n.Kind == KindFile && n.TokensFull == 0 && n.ApproxTokens > 0 {
+		// Byte-based estimate shown until the exact count streams in.
+		right = fmt.Sprintf("~%6d tok", n.ApproxTokens)
+	}
 
 	leftWidth := lipgloss.Width(left)
 	rightWidth := lipgloss.Width(right)
