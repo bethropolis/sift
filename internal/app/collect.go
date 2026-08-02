@@ -10,13 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bethropolis/sift/internal/compress"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/ignore"
 	"github.com/bethropolis/sift/internal/rank"
+	"github.com/bethropolis/sift/internal/scan"
 	"github.com/bethropolis/sift/internal/setup"
 	"github.com/bethropolis/sift/internal/smart"
-	"github.com/bethropolis/sift/internal/tokenize"
 	"github.com/bethropolis/sift/internal/walker"
 )
 
@@ -26,8 +25,9 @@ import (
 const pickDefaultMaxFileSizeMB int64 = 10
 
 // ErrFileSkipped is returned by ReadEntry when the smart filter rejects the
-// requested file (e.g. a lockfile or generated artifact).
-var ErrFileSkipped = errors.New("file skipped by smart filter")
+// requested file (e.g. a lockfile or generated artifact). It aliases the
+// processor's sentinel so callers can unwrap the underlying reason.
+var ErrFileSkipped = scan.ErrFileSkipped
 
 // Run executes the main application logic.
 // It returns a non-nil error when the scan failed, including on timeout.
@@ -123,27 +123,24 @@ func (a *App) walkAndCollect(picker bool, ctx context.Context, emit func(format.
 		return nil, err
 	}
 
-	// --- Create the token counter ---
-	tokenizer, err := tokenize.New(a.cfg.TokenizeModel)
+	// --- Create the per-file processor. It owns token counting, smart
+	// filtering, and signature compression. The tokenizer codec is safe for
+	// concurrent Count calls and the compressor pools its parsers, so the
+	// walker's workers share one instance. ---
+	processor, err := scan.New(scan.Options{
+		TokenizeModel:  a.cfg.TokenizeModel,
+		SmartFilter:    a.cfg.SmartFilter,
+		SmartMaxTokens: a.cfg.SmartMaxTokens,
+		Logger:         a.log,
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	// --- Create the signature compressor. The picker needs it for every file
-	// so it can offer per-file FULL/SIGS modes; dump/diff/watch only compress
-	// when the global mode requests signatures. ---
-	var compressor *compress.Compressor
-	if picker || a.cfg.Mode == "signatures" {
-		compressor = compress.New()
-		a.log.Debug("Compression mode: signatures (tree-sitter)")
-	}
-
-	// --- Create the smart filter. It drops generated, lockfile, minified,
-	// and oversized files that are rarely useful context. ---
-	var smartEvaluator *smart.Evaluator
 	if a.cfg.SmartFilter {
-		smartEvaluator = smart.New(a.cfg.SmartMaxTokens)
 		a.log.Debug("Smart filter enabled (max %d tokens/file)", a.cfg.SmartMaxTokens)
+	}
+	if picker || a.cfg.Mode == "signatures" {
+		a.log.Debug("Compression mode: signatures (tree-sitter)")
 	}
 
 	// Smart-skipped items are tracked separately and appended to the walker's
@@ -164,76 +161,25 @@ func (a *App) walkAndCollect(picker bool, ctx context.Context, emit func(format.
 			return nil
 		}
 
-		// Smart filter: skip generated/lock/minified/oversized files. Name and
-		// language rules run before any tokenizing so lockfiles and generated
-		// bundles never cost tiktoken work. Surviving candidates are counted,
-		// reusing the count as TokensFull in the picker to avoid counting twice.
-		smartTokens := -1
-		if smartEvaluator != nil {
-			if skip, reason := smartEvaluator.ShouldSkipPath(relativePath); skip {
-				a.log.Debug("SmartFilter skipping %s: %s", relativePath, reason)
-				smartMu.Lock()
-				smartSkipped = append(smartSkipped, walker.SkippedItem{Path: relativePath, Reason: walker.ReasonSkippedSmart})
-				smartMu.Unlock()
-				return nil
-			}
-			smartTokens = a.countTokens(tokenizer, content, relativePath)
-			if skip, reason := smartEvaluator.ShouldSkip(relativePath, content, smartTokens); skip {
-				a.log.Debug("SmartFilter skipping %s: %s", relativePath, reason)
-				smartMu.Lock()
-				smartSkipped = append(smartSkipped, walker.SkippedItem{Path: relativePath, Reason: walker.ReasonSkippedSmart})
-				smartMu.Unlock()
-				return nil
-			}
-		}
-
-		entry := format.FileEntry{
-			Path:    relativePath,
-			Content: content,
-			Tokens:  -1,
-		}
-
+		mode := scan.ModeFull
 		if picker {
-			// Keep both full and signature-only variants plus their token
-			// counts so the TUI can switch modes without re-reading files.
-			// The active view is decided per file by the picker's Mode; the
-			// entry's Tokens/IsCompressed are recomputed at selection time.
-			entry.TokensFull = smartTokens
-			if smartTokens < 0 {
-				entry.TokensFull = a.countTokens(tokenizer, entry.Content, relativePath)
-			}
-			if compressor != nil {
-				if lang, ok := compressor.LanguageForPath(relativePath); ok {
-					compressed, didCompress := compressor.Compress(entry.Content, lang)
-					if didCompress {
-						entry.SigContent = []byte(compressed)
-						entry.Language = lang.String()
-					}
-				}
-			}
-			if entry.SigContent != nil {
-				entry.TokensSig = a.countTokens(tokenizer, entry.SigContent, relativePath)
-			} else {
-				entry.TokensSig = entry.TokensFull
-			}
-		} else {
-			if compressor != nil {
-				if lang, ok := compressor.LanguageForPath(relativePath); ok {
-					var compressed string
-					var didCompress bool
-					compressed, didCompress = compressor.Compress(content, lang)
-					content = []byte(compressed)
-					entry.Content = content
-					entry.IsCompressed = didCompress
-					entry.Language = lang.String()
-				}
-			}
-
-			entry.Tokens = a.countTokens(tokenizer, content, relativePath)
-			entry.TokensFull = entry.Tokens
-			entry.TokensSig = entry.Tokens
+			mode = scan.ModePicker
+		} else if a.cfg.Mode == "signatures" {
+			mode = scan.ModeSignatures
 		}
 
+		entry, err := processor.Process(relativePath, content, mode)
+		if err != nil {
+			if errors.Is(err, scan.ErrFileSkipped) {
+				a.log.Debug("SmartFilter skipping %s: %v", relativePath, err)
+				smartMu.Lock()
+				smartSkipped = append(smartSkipped, walker.SkippedItem{Path: relativePath, Reason: walker.ReasonSkippedSmart})
+				smartMu.Unlock()
+				return nil
+			}
+			a.log.Warn("Processing %s failed: %v", relativePath, err)
+			return nil
+		}
 		return emit(entry)
 	}
 
@@ -314,7 +260,12 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 	if err != nil {
 		return format.FileEntry{}, err
 	}
-	tokenizer, err := tokenize.New(a.cfg.TokenizeModel)
+	processor, err := scan.New(scan.Options{
+		TokenizeModel:  a.cfg.TokenizeModel,
+		SmartFilter:    a.cfg.SmartFilter,
+		SmartMaxTokens: a.cfg.SmartMaxTokens,
+		Logger:         a.log,
+	})
 	if err != nil {
 		return format.FileEntry{}, err
 	}
@@ -326,38 +277,11 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 	if err != nil {
 		return format.FileEntry{}, err
 	}
-
-	if a.cfg.SmartFilter {
-		evaluator := smart.New(a.cfg.SmartMaxTokens)
-		if skip, reason := evaluator.ShouldSkipPath(relativePath); skip {
-			return format.FileEntry{}, fmt.Errorf("%w: %s", ErrFileSkipped, reason)
-		}
-		tokens := a.countTokens(tokenizer, content, relativePath)
-		if skip, reason := evaluator.ShouldSkip(relativePath, content, tokens); skip {
-			return format.FileEntry{}, fmt.Errorf("%w: %s", ErrFileSkipped, reason)
-		}
-	}
-
-	entry := format.FileEntry{
-		Path:       relativePath,
-		Content:    content,
-		Tokens:     -1,
-		TokensFull: a.countTokens(tokenizer, content, relativePath),
+	entry, err := processor.Process(relativePath, content, scan.ModePicker)
+	if err != nil {
+		return format.FileEntry{}, err
 	}
 	entry.Tokens = entry.TokensFull
-
-	compressor := compress.New()
-	if lang, ok := compressor.LanguageForPath(relativePath); ok {
-		if compressed, didCompress := compressor.Compress(content, lang); didCompress {
-			entry.SigContent = []byte(compressed)
-			entry.Language = lang.String()
-		}
-	}
-	if entry.SigContent != nil {
-		entry.TokensSig = a.countTokens(tokenizer, entry.SigContent, relativePath)
-	} else {
-		entry.TokensSig = entry.TokensFull
-	}
 	return entry, nil
 }
 
@@ -460,15 +384,4 @@ func (a *App) applyRank(picker bool, absRootDir string, files *[]format.FileEntr
 			(*files)[i].RankScore = rank.ScoreBaseline
 		}
 	}
-}
-
-// countTokens counts tokens for content, logging a warning on failure and
-// returning 0 so a counting error never aborts the scan.
-func (a *App) countTokens(tokenizer *tokenize.Tokenizer, content []byte, path string) int {
-	tokens, err := tokenizer.Count(content)
-	if err != nil {
-		a.log.Warn("Failed to count tokens for %s: %v", path, err)
-		return 0
-	}
-	return tokens
 }
