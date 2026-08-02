@@ -6,6 +6,41 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// updateMouse routes mouse events to the pane under the cursor: the wheel
+// moves the tree cursor on the left or scrolls the preview on the right, and
+// a click switches focus to the clicked pane.
+func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// While a modal or filter is open, ignore pointer input entirely.
+	if m.deltaOpen || m.helpOpen || m.filtering {
+		return m, nil
+	}
+
+	leftWidth := m.leftPaneWidth()
+	onPreview := msg.X > leftWidth
+
+	switch msg.Type {
+	case tea.MouseWheelUp:
+		if onPreview {
+			m.scrollPreview(-3)
+		} else {
+			m.move(-1)
+		}
+	case tea.MouseWheelDown:
+		if onPreview {
+			m.scrollPreview(3)
+		} else {
+			m.move(1)
+		}
+	case tea.MouseRelease:
+		if onPreview {
+			m.focus = FocusPreview
+		} else {
+			m.focus = FocusTree
+		}
+	}
+	return m, nil
+}
+
 func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.deltaOpen {
 		return m.updateDeltaKey(msg)
@@ -44,7 +79,20 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.Type {
-	case tea.KeyCtrlC, tea.KeyCtrlQ, tea.KeyEsc:
+	case tea.KeyTab:
+		if m.focus == FocusTree {
+			m.focus = FocusPreview
+		} else {
+			m.focus = FocusTree
+		}
+	case tea.KeyCtrlC, tea.KeyCtrlQ:
+		m.quit = true
+		return m, tea.Quit
+	case tea.KeyEsc:
+		if m.focus == FocusPreview {
+			m.focus = FocusTree
+			return m, nil
+		}
 		m.quit = true
 		return m, tea.Quit
 	case tea.KeyEnter:
@@ -57,9 +105,17 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case tea.KeyUp, tea.KeyShiftTab:
-		m.move(-1)
-	case tea.KeyDown, tea.KeyTab:
-		m.move(1)
+		if m.focus == FocusPreview {
+			m.scrollPreview(-1)
+		} else {
+			m.move(-1)
+		}
+	case tea.KeyDown:
+		if m.focus == FocusPreview {
+			m.scrollPreview(1)
+		} else {
+			m.move(1)
+		}
 	case tea.KeyPgUp:
 		m.scrollPreview(-m.previewPageSize())
 	case tea.KeyPgDown:
@@ -73,6 +129,10 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			n.Toggle()
 		}
 	case tea.KeyLeft:
+		if m.focus == FocusPreview {
+			m.focus = FocusTree
+			return m, nil
+		}
 		m.collapseOrParent()
 	case tea.KeyRight:
 		if n := m.node(); n != nil && n.Kind == KindDir {
@@ -82,16 +142,32 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyRunes:
 		switch string(msg.Runes) {
 		case "j":
-			m.move(1)
+			if m.focus == FocusPreview {
+				m.scrollPreview(1)
+			} else {
+				m.move(1)
+			}
 		case "k":
-			m.move(-1)
+			if m.focus == FocusPreview {
+				m.scrollPreview(-1)
+			} else {
+				m.move(-1)
+			}
 		case "h":
+			if m.focus == FocusPreview {
+				m.focus = FocusTree
+				return m, nil
+			}
 			m.collapseOrParent()
 		case "l":
 			if n := m.node(); n != nil && n.Kind == KindDir {
 				n.Expanded = true
 				m.recomputeRows()
 			}
+		case "J":
+			m.scrollPreview(1)
+		case "K":
+			m.scrollPreview(-1)
 		case "[":
 			m.scrollPreview(-m.previewPageSize())
 		case "]":

@@ -30,7 +30,9 @@ func (m model) renderHelpModal(view string, width, height int) string {
 	b.WriteString("  g                    Generate output document (stays in TUI)\n")
 	b.WriteString("  y                    Copy selection to Clipboard\n")
 	b.WriteString("  /                    Fuzzy path search\n")
+	b.WriteString("  Tab                  Toggle focus between Tree and Preview pane\n")
 	b.WriteString("  PgUp / PgDn, [ / ]   Scroll preview pane\n")
+	b.WriteString("  J / K                Scroll preview down / up 1 line\n")
 	b.WriteString("  q / Esc              Exit picker\n\n")
 
 	b.WriteString(hintStyle.Render("Press [Esc], [?], or [q] to close help"))

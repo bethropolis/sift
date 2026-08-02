@@ -20,11 +20,15 @@ func (m *model) clampOffset() {
 }
 
 func (m model) renderTreeBox(width, height int) string {
+	borderColor := lipgloss.Color("62")
+	if m.focus == FocusTree {
+		borderColor = lipgloss.Color("12") // Active bright blue border
+	}
 	boxStyle := lipgloss.NewStyle().
 		Width(max(1, width-2)).
 		Height(max(1, height-2)).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62"))
+		BorderForeground(borderColor)
 
 	var b strings.Builder
 	title := fmt.Sprintf(" Explorer (%d files, %d tok) ",

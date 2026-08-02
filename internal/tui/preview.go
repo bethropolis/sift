@@ -65,11 +65,15 @@ func (m *model) scrollPreview(delta int) {
 }
 
 func (m model) renderPreviewBox(width, height int) string {
+	borderColor := lipgloss.Color("62")
+	if m.focus == FocusPreview {
+		borderColor = lipgloss.Color("12") // Active bright blue border
+	}
 	boxStyle := lipgloss.NewStyle().
 		Width(max(1, width-2)).
 		Height(max(1, height-2)).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(borderColor).
 		Padding(0, 1)
 
 	var b strings.Builder

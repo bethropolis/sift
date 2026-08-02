@@ -13,6 +13,14 @@ type clearNoticeMsg struct {
 	id int
 }
 
+// PaneFocus identifies which pane currently owns keyboard input.
+type PaneFocus int
+
+const (
+	FocusTree PaneFocus = iota
+	FocusPreview
+)
+
 // model is the BubbleTea state for the dual-pane picker: a foldable tree on
 // the left and a live file preview on the right, with a budget footer.
 type model struct {
@@ -20,6 +28,10 @@ type model struct {
 	rows   []*TreeNode // cached visible rows.
 	cursor int
 	offset int
+
+	// focus selects the active pane. FocusTree routes arrows/j/k to the tree;
+	// FocusPreview routes them to scrolling the preview text.
+	focus PaneFocus
 
 	// previewOffset is the first line shown in the preview pane, and
 	// previewNode the node it belongs to. Scrolling is reset whenever the
@@ -131,6 +143,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampOffset()
 	case tea.KeyMsg:
 		return m.updateKey(msg)
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
 	}
 	return m, nil
 }
@@ -146,10 +160,11 @@ func (m *model) setNotice(text string) tea.Cmd {
 	})
 }
 
-func (m model) View() string {
+// leftPaneWidth returns the rendered width of the explorer pane. The mouse
+// hit-test for pane focus must agree with this, so both View and updateMouse
+// derive the boundary from the same helper.
+func (m model) leftPaneWidth() int {
 	width := max(20, m.width)
-	height := max(10, m.height)
-
 	leftWidth := width * 42 / 100
 	if leftWidth < 32 {
 		leftWidth = 32
@@ -160,6 +175,14 @@ func (m model) View() string {
 	if leftWidth < 20 {
 		leftWidth = width / 2
 	}
+	return leftWidth
+}
+
+func (m model) View() string {
+	width := max(20, m.width)
+	height := max(10, m.height)
+
+	leftWidth := m.leftPaneWidth()
 	rightWidth := width - leftWidth
 
 	bodyHeight := max(5, height-m.footerHeight())
