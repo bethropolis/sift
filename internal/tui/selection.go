@@ -1,6 +1,11 @@
 package tui
 
-import "sort"
+import (
+	"path/filepath"
+
+	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/selection"
+)
 
 // Toggle flips the node's selection. Files flip between selected and not;
 // directories recursively select or deselect all descendants. Selection
@@ -115,37 +120,43 @@ func (n *TreeNode) SelectedCount() int {
 func (n *TreeNode) SelectByRank(budget int) int {
 	var files []*TreeNode
 	n.collectFiles(&files)
-	sort.SliceStable(files, func(i, j int) bool {
-		if files[i].RankScore != files[j].RankScore {
-			return files[i].RankScore > files[j].RankScore
-		}
-		return files[i].Path < files[j].Path
-	})
-
-	used := 0
-	count := 0
+	candidates := make([]selection.Candidate, 0, len(files))
+	byPath := make(map[string]*TreeNode, len(files))
 	for _, f := range files {
-		switch {
-		case f.PreferredMode != "":
-			f.Mode = f.PreferredMode
-		case len(f.SigContent) > 0:
+		candidates = append(candidates, selection.Candidate{
+			File: format.FileEntry{
+				Path:       filepath.ToSlash(f.Path),
+				Content:    f.Content,
+				SigContent: f.SigContent,
+				TokensFull: f.TokensFull,
+				TokensSig:  f.TokensSig,
+				RankScore:  f.RankScore,
+			},
+			PreferredMode: string(f.PreferredMode),
+		})
+		byPath[filepath.ToSlash(f.Path)] = f
+	}
+	result := selection.Select(candidates, selection.Request{Budget: budget})
+	n.ClearSelection()
+	for _, decision := range result.Decisions {
+		f := byPath[decision.Path]
+		if f == nil {
+			continue
+		}
+		switch decision.Mode {
+		case selection.ModeSignatures:
 			f.Mode = ModeSignatures
+		case selection.ModeSkip:
+			f.Mode = ModeSkip
 		default:
 			f.Mode = ModeFull
 		}
-		toks := f.TokensFull
-		if f.Mode == ModeSignatures {
-			toks = f.TokensSig
+		if decision.Selected {
+			f.setSelectedSubtree(true)
 		}
-		if budget > 0 && used+toks > budget {
-			continue
-		}
-		f.setSelectedSubtree(true)
-		used += toks
-		count++
 	}
 	n.recompute()
-	return count
+	return len(result.Selected)
 }
 
 // ClearSelection deselects every file.

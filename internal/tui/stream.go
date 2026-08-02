@@ -75,6 +75,40 @@ func (m model) listenStream() tea.Cmd {
 		if m.streamErrClosed {
 			errCh = nil
 		}
+		// Prefer already-buffered messages over a concurrently closed channel.
+		// A plain select treats a closed channel as permanently ready and can
+		// therefore report stream closure before draining a message buffered on
+		// another channel.
+		if nodes != nil {
+			select {
+			case msg, ok := <-nodes:
+				if !ok {
+					return streamClosedMsg{channel: streamNodesClosed}
+				}
+				return msg
+			default:
+			}
+		}
+		if progress != nil {
+			select {
+			case msg, ok := <-progress:
+				if !ok {
+					return streamClosedMsg{channel: streamProgressClosed}
+				}
+				return msg
+			default:
+			}
+		}
+		if errCh != nil {
+			select {
+			case err, ok := <-errCh:
+				if !ok {
+					return streamClosedMsg{channel: streamErrClosed}
+				}
+				return ErrMsg{Err: err}
+			default:
+			}
+		}
 		select {
 		case msg, ok := <-nodes:
 			if !ok {
