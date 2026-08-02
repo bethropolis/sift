@@ -73,7 +73,10 @@ func TestStreamScanPatchesUnifiedRanks(t *testing.T) {
 		cfg.Quiet = prevQuiet
 	}()
 
-	application := app.New(cfg)
+	application, err := app.New(cfg)
+	if err != nil {
+		t.Fatalf("app.New: %v", err)
+	}
 	defer application.Close()
 
 	ctx := context.Background()
@@ -153,7 +156,10 @@ func TestStreamScanStreamsAndRemoves(t *testing.T) {
 		cfg.Quiet = prevQuiet
 	}()
 
-	application := app.New(cfg)
+	application, err := app.New(cfg)
+	if err != nil {
+		t.Fatalf("app.New: %v", err)
+	}
 	defer application.Close()
 
 	ctx := context.Background()

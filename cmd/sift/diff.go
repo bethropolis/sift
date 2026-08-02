@@ -61,7 +61,10 @@ restricted to them, so the output contains exactly the edited surface.`,
 			return err
 		}
 
-		application := app.New(cfg)
+		application, err := app.New(cfg)
+		if err != nil {
+			return err
+		}
 		defer application.Close()
 		application.OnlyPaths = only
 

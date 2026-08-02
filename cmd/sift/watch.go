@@ -43,7 +43,10 @@ var watchCmd = &cobra.Command{
 		// A watch is persistent; a per-collect timeout would abort renders.
 		cfg.Timeout = 0
 
-		application := app.New(cfg)
+		application, err := app.New(cfg)
+		if err != nil {
+			return err
+		}
 		defer application.Close()
 
 		// First render.

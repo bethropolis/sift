@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fatih/color"
-
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/logger"
 )
@@ -28,13 +26,13 @@ type App struct {
 	OnlyPaths map[string]bool
 }
 
-// New creates a new App instance
-func New(cfg *config.Config) *App {
+// New creates a new App instance. It resolves color usage from the terminal
+// and output destination and opens the configured output file; an error is
+// returned when the output file cannot be created. Color decisions are passed
+// explicitly to the logger and renderer rather than mutating global state.
+func New(cfg *config.Config) (*App, error) {
 	// Resolve color usage from the terminal and output destination
 	cfg.ResolveColors()
-
-	// Configure color globally
-	color.NoColor = !cfg.UseColors
 
 	// Set up output destination. A dash means stdout; otherwise the dump is
 	// written to a file (codebase.md by default). Relative paths resolve
@@ -55,8 +53,7 @@ func New(cfg *config.Config) *App {
 		outputPath, _ = filepath.Abs(outputPath)
 		file, err := os.Create(outputPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: Failed to create output file: %v\n", err)
-			os.Exit(1)
+			return nil, fmt.Errorf("failed to create output file: %w", err)
 		}
 		// Note: file will be closed by main function
 		output = file
@@ -78,7 +75,7 @@ func New(cfg *config.Config) *App {
 		log:        log,
 		output:     output,
 		outputPath: outputPath,
-	}
+	}, nil
 }
 
 // Close performs cleanup, such as closing the output file if one was opened.

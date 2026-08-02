@@ -318,7 +318,11 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 	if err != nil {
 		return format.FileEntry{}, err
 	}
-	content, err := os.ReadFile(filepath.Join(absRootDir, filepath.FromSlash(relativePath)))
+	absFile, err := resolveWithinRoot(absRootDir, relativePath)
+	if err != nil {
+		return format.FileEntry{}, err
+	}
+	content, err := os.ReadFile(absFile)
 	if err != nil {
 		return format.FileEntry{}, err
 	}
@@ -418,8 +422,8 @@ func (a *App) walkerOptions(absRootDir string, ctx context.Context, picker bool)
 				return false
 			}
 			if a.outputPath != "" {
-				absFile := filepath.Join(absRootDir, filepath.FromSlash(relativePath))
-				if filepath.Clean(absFile) == filepath.Clean(a.outputPath) {
+				absFile, err := resolveWithinRoot(absRootDir, relativePath)
+				if err == nil && filepath.Clean(absFile) == filepath.Clean(a.outputPath) {
 					return false
 				}
 			}

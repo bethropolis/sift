@@ -30,7 +30,10 @@ func main() {
 	cfg.Quiet = true
 	cfg.OutputFile = "-"
 	cfg.Mode = "signatures"
-	a := New(cfg)
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer a.Close()
 
 	files, _, err := a.Collect()
@@ -62,7 +65,10 @@ func TestCollectFullModeKeepsRaw(t *testing.T) {
 	cfg.Quiet = true
 	cfg.OutputFile = "-"
 	cfg.Mode = "full"
-	a := New(cfg)
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer a.Close()
 
 	files, _, err := a.Collect()

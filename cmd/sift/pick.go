@@ -55,7 +55,10 @@ func runPick(cmd *cobra.Command, args []string) error {
 	cfg.Quiet = true
 
 	start := time.Now()
-	application := app.New(cfg)
+	application, err := app.New(cfg)
+	if err != nil {
+		return err
+	}
 	defer application.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())

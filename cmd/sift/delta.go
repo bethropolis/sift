@@ -101,7 +101,10 @@ diff, or delta for this project, or --since to override it.`,
 
 // runDeltaFull renders the full content of the files changed since from.
 func runDeltaFull(absRootDir, from, to string, changed []string) error {
-	application := app.New(cfg)
+	application, err := app.New(cfg)
+	if err != nil {
+		return err
+	}
 	defer application.Close()
 
 	only := make(map[string]bool, len(changed))
@@ -145,7 +148,10 @@ func runDeltaPatch(g *rank.Git, absRootDir, from, to string, changed []string) e
 			return fmt.Errorf("sift delta: %w", err)
 		}
 	} else {
-		application := app.New(cfg)
+		application, err := app.New(cfg)
+		if err != nil {
+			return err
+		}
 		defer application.Close()
 		if _, err := application.Output().Write(body); err != nil {
 			return fmt.Errorf("sift delta: %w", err)

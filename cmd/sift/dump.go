@@ -28,7 +28,10 @@ var dumpCmd = &cobra.Command{
 			return err
 		}
 
-		application := app.New(cfg)
+		application, err := app.New(cfg)
+		if err != nil {
+			return err
+		}
 		defer application.Close()
 
 		start := time.Now()

@@ -36,7 +36,10 @@ func TestSmartFilterCollect(t *testing.T) {
 		cfg.Quiet = true
 		cfg.OutputFile = "-"
 		cfg.SmartFilter = smartFilter
-		a := New(cfg)
+		a, err := New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
 		defer a.Close()
 		files, _, err := a.Collect()
 		if err != nil {
@@ -73,7 +76,10 @@ func TestSmartFilterRecordsSkipped(t *testing.T) {
 	cfg.Quiet = true
 	cfg.OutputFile = "-"
 	cfg.SmartFilter = true
-	a := New(cfg)
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer a.Close()
 
 	files, skipped, err := a.Collect()
@@ -107,7 +113,10 @@ func TestSmartFilterMaxTokens(t *testing.T) {
 	cfg.OutputFile = "-"
 	cfg.SmartFilter = true
 	cfg.SmartMaxTokens = 1
-	a := New(cfg)
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer a.Close()
 
 	files, _, err := a.Collect()
