@@ -10,6 +10,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/selection"
 )
 
@@ -66,22 +67,26 @@ func runSelect(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	preferred := map[string]string{}
+	preferred := map[string]rank.FileScoreResult{}
 	if root, rootErr := filepath.Abs(cfg.RootDir); rootErr == nil {
 		ranker := app.NewRanker(root)
 		results := ranker.Rank(files)
-		for path, score := range results {
-			preferred[path] = score.PreferredMode
-		}
+		preferred = results
 	}
 	candidates := make([]selection.Candidate, 0, len(files))
 	for _, file := range files {
 		candidates = append(candidates, selection.Candidate{
 			File:          file,
-			PreferredMode: preferred[file.Path],
+			PreferredMode: preferred[file.Path].PreferredMode,
+			Signals: selection.Signals{
+				Recency:    preferred[file.Path].Signals.Recency,
+				Churn:      preferred[file.Path].Signals.Churn,
+				Centrality: preferred[file.Path].Signals.Centrality,
+				Role:       preferred[file.Path].Signals.Role,
+			},
 		})
 	}
-	result := selection.Select(candidates, selection.Request{Budget: cfg.Budget})
+	result := selection.Select(candidates, selection.Request{Budget: cfg.Budget, Prompt: cfg.Prompt})
 	if printSelection || selectionOnly {
 		writer := os.Stderr
 		if selectionOnly {

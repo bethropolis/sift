@@ -59,3 +59,45 @@ func TestSelectDoesNotMutateInput(t *testing.T) {
 		t.Errorf("selected file was not finalized to signatures: %+v", result.Selected)
 	}
 }
+
+func TestUnlimitedSelectionTreatsSkipAsSoftPreference(t *testing.T) {
+	result := Select([]Candidate{
+		candidate("implementation.go", 0.05, 100, 20, "skip", true),
+	}, Request{})
+	if len(result.Selected) != 1 {
+		t.Fatalf("selected %d files, want 1", len(result.Selected))
+	}
+	if result.Decisions[0].Mode != ModeSignatures {
+		t.Fatalf("mode = %q, want signatures", result.Decisions[0].Mode)
+	}
+}
+
+func TestUnlimitedSelectionKeepsTestFilesSkippable(t *testing.T) {
+	result := Select([]Candidate{
+		candidate("implementation_test.go", 0.05, 100, 20, "skip", true),
+	}, Request{})
+	if len(result.Selected) != 0 || result.Decisions[0].Mode != ModeSkip {
+		t.Fatalf("test decision = %+v, want skipped", result.Decisions[0])
+	}
+}
+
+func TestSelectBeatsGreedyFullFile(t *testing.T) {
+	result := Select([]Candidate{
+		candidate("large.go", 1.0, 100, 60, "", true),
+		candidate("related.go", 0.8, 40, 20, "", true),
+	}, Request{Budget: 100})
+
+	if len(result.Selected) != 2 || result.UsedTokens != 100 {
+		t.Fatalf("selected %d files using %d tokens, want two files using 100", len(result.Selected), result.UsedTokens)
+	}
+	byPath := map[string]Decision{}
+	for _, d := range result.Decisions {
+		byPath[d.Path] = d
+	}
+	if byPath["large.go"].Mode != ModeSignatures {
+		t.Errorf("large.go mode = %q, want signatures to make room for related.go", byPath["large.go"].Mode)
+	}
+	if !byPath["related.go"].Selected {
+		t.Error("related.go was not selected by the optimized combination")
+	}
+}

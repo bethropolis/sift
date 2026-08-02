@@ -223,11 +223,11 @@ func TestSmartSelectModeAssignment(t *testing.T) {
 	for _, s := range root.Selections() {
 		got[s.Path] = s.Mode
 	}
-	if got["pref.go"] != ModeSignatures {
-		t.Errorf("pref.go mode = %q, want signatures", got["pref.go"])
+	if got["pref.go"] != ModeFull {
+		t.Errorf("pref.go mode = %q, want full when budget permits higher-utility content", got["pref.go"])
 	}
-	if got["sig.go"] != ModeSignatures {
-		t.Errorf("sig.go mode = %q, want signatures (sig-content fallback)", got["sig.go"])
+	if got["sig.go"] != ModeFull {
+		t.Errorf("sig.go mode = %q, want full when budget permits higher-utility content", got["sig.go"])
 	}
 	if got["plain.go"] != ModeFull {
 		t.Errorf("plain.go mode = %q, want full", got["plain.go"])

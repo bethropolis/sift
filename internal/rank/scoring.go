@@ -11,6 +11,18 @@ type FileScoreResult struct {
 	Score         float64
 	PreferredMode string // "full", "signatures", or "skip"
 	Reason        string
+	Signals       ScoreSignals
+}
+
+// ScoreSignals exposes the normalized inputs to the composite score. Keeping
+// these values alongside the result makes selection reports explainable and
+// gives callers enough detail to tune the weights without reverse-engineering
+// a single opaque score.
+type ScoreSignals struct {
+	Recency    float64 `json:"recency"`
+	Churn      float64 `json:"churn"`
+	Centrality float64 `json:"centrality"`
+	Role       float64 `json:"role"`
 }
 
 // ScoringParams is the per-file input to CalculateUnifiedScores.
@@ -116,6 +128,10 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams) map
 			Score:         compositeScore,
 			PreferredMode: mode,
 			Reason:        reason,
+			Signals: ScoreSignals{
+				Recency: recencyScore, Churn: churnScore,
+				Centrality: centralityScore, Role: roleModifier,
+			},
 		}
 	}
 

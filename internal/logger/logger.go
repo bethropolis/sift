@@ -31,9 +31,11 @@ type Logger struct {
 	VerboseMode bool // Legacy flag, maps to Debug level
 }
 
-// New creates a new Logger with the given settings
+// New creates a new Logger with the given settings. Normal CLI operation is
+// warning-oriented; verbose mode enables debug and info diagnostics. Callers
+// can explicitly request info with SetLevel("info").
 func New(out io.Writer, verbose bool, useColors bool) *Logger {
-	level := LevelInfo
+	level := LevelWarn
 	if verbose {
 		level = LevelDebug
 	}
