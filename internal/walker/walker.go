@@ -17,13 +17,31 @@ import (
 // heavyDirBasenames are directory basenames to prune immediately at entry
 // when the ignore rules also cover them, so we never descend into them.
 var heavyDirBasenames = map[string]bool{
-	"node_modules": true,
-	"target":       true,
-	".next":        true,
-	".nuxt":        true,
-	"vendor":       true,
-	"__pycache__":  true,
-	".gradle":      true,
+	"node_modules":     true,
+	"target":           true,
+	".next":            true,
+	".nuxt":            true,
+	"vendor":           true,
+	"__pycache__":      true,
+	".gradle":          true,
+	"dist":             true,
+	"build":            true,
+	"out":              true,
+	".venv":            true,
+	"venv":             true,
+	"coverage":         true,
+	".turbo":           true,
+	".cache":           true,
+	"Pods":             true,
+	"DerivedData":      true,
+	"bower_components": true,
+	".pnpm-store":      true,
+	"site-packages":    true,
+	".tox":             true,
+	".nox":             true,
+	".pytest_cache":    true,
+	".eggs":            true,
+	".mypy_cache":      true,
 }
 
 // Walk traverses the directory tree starting from rootDir.
@@ -194,6 +212,15 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 				stats.skippedFiles.Add(1)
 				return nil, false
 			}
+		}
+
+		// Path filter: drop files that the caller knows are unwanted before
+		// any I/O happens.
+		if options.PathFilter != nil && !options.PathFilter(relativePath) {
+			options.Logger.Debug("Walker: File %q excluded by path filter", relativePath)
+			tracker.Track(relativePath, ReasonFilteredPath, false)
+			stats.skippedFiles.Add(1)
+			return nil, false
 		}
 
 		options.Logger.Debug("Walker: File %q PASSED all checks, will be processed", relativePath)

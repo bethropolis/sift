@@ -11,29 +11,30 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	options.Logger.Debug("processFile: Reading [%s]", relativePath)
 	stats.currentFile.Store(&relativePath)
 
-	// Only perform file stats if we have a size limit configured
-	if options.MaxFileSize > 0 {
-		info, err := os.Lstat(path)
-		if err != nil {
-			options.Logger.Error("processFile Error [%s]: Failed to get file info: %v", relativePath, err)
-			tracker.Track(relativePath, ReasonSkippedInfoError, false)
-			walkFn(relativePath, nil, fmt.Errorf("failed to get file info: %w", err))
-			return
-		}
+	// Always stat the file so non-regular entries (sockets, devices, …) are
+	// dropped before they can block a read, and oversized files skip the read
+	// when a size cap is configured. Stat follows symlinks, preserving the
+	// historical behavior of reading symlinked files.
+	info, err := os.Stat(path)
+	if err != nil {
+		options.Logger.Error("processFile Error [%s]: Failed to get file info: %v", relativePath, err)
+		tracker.Track(relativePath, ReasonSkippedInfoError, false)
+		walkFn(relativePath, nil, fmt.Errorf("failed to get file info: %w", err))
+		return
+	}
 
-		if !info.Mode().IsRegular() {
-			options.Logger.Debug("processFile Skipping [%s]: Not a regular file.", relativePath)
-			tracker.Track(relativePath, ReasonSkippedNotRegular, false)
-			return
-		}
+	if !info.Mode().IsRegular() {
+		options.Logger.Debug("processFile Skipping [%s]: Not a regular file.", relativePath)
+		tracker.Track(relativePath, ReasonSkippedNotRegular, false)
+		return
+	}
 
-		if info.Size() > options.MaxFileSize {
-			options.Logger.Debug("processFile Skipping [%s]: Exceeds size limit (%d > %d bytes)",
-				relativePath, info.Size(), options.MaxFileSize)
-			tracker.Track(relativePath, ReasonSkippedSizeLimit, false)
-			walkFn(relativePath, nil, fmt.Errorf("file size %d exceeds limit %d bytes", info.Size(), options.MaxFileSize))
-			return
-		}
+	if options.MaxFileSize > 0 && info.Size() > options.MaxFileSize {
+		options.Logger.Debug("processFile Skipping [%s]: Exceeds size limit (%d > %d bytes)",
+			relativePath, info.Size(), options.MaxFileSize)
+		tracker.Track(relativePath, ReasonSkippedSizeLimit, false)
+		walkFn(relativePath, nil, fmt.Errorf("file size %d exceeds limit %d bytes", info.Size(), options.MaxFileSize))
+		return
 	}
 
 	// Skip binary files before reading them, using extension fast-paths and

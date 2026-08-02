@@ -281,3 +281,132 @@ func TestWalkDefaultIgnorePrunes(t *testing.T) {
 		}
 	}
 }
+
+func TestWalkPathFilter(t *testing.T) {
+	root := t.TempDir()
+	writeTestTree(t, root)
+
+	excluded := map[string]bool{"b.txt": true, "sub/c.md": true}
+	var mu sync.Mutex
+	var walked []string
+	walkFn := func(relativePath string, content []byte, err error) error {
+		mu.Lock()
+		defer mu.Unlock()
+		walked = append(walked, relativePath)
+		return nil
+	}
+
+	matcher, err := ignore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Walk(root, matcher, walkFn, WithPathFilter(func(rel string) bool {
+		return !excluded[rel]
+	})); err != nil {
+		t.Fatalf("Walk returned error: %v", err)
+	}
+
+	if len(walked) != 1 || walked[0] != "a.txt" {
+		t.Fatalf("walked %v, want [a.txt]", walked)
+	}
+}
+
+func TestWalkPathFilterAppliesToConcurrent(t *testing.T) {
+	root := t.TempDir()
+	writeTestTree(t, root)
+
+	excluded := map[string]bool{"b.txt": true}
+	var mu sync.Mutex
+	var walked []string
+	walkFn := func(relativePath string, content []byte, err error) error {
+		mu.Lock()
+		defer mu.Unlock()
+		walked = append(walked, relativePath)
+		return nil
+	}
+
+	matcher, err := ignore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Walk(root, matcher, walkFn, WithConcurrency(true), WithMaxWorkers(4),
+		WithPathFilter(func(rel string) bool { return !excluded[rel] })); err != nil {
+		t.Fatalf("Walk returned error: %v", err)
+	}
+	sort.Strings(walked)
+	want := []string{"a.txt", "sub/c.md"}
+	if len(walked) != len(want) {
+		t.Fatalf("walked %v, want %v", walked, want)
+	}
+	for i := range want {
+		if walked[i] != want[i] {
+			t.Errorf("walked %v, want %v", walked, want)
+		}
+	}
+}
+
+func TestWalkPrunesNewHeavyDirs(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"Pods", "DerivedData", "site-packages"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, dir, "gen.js"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("Pods/\nDerivedData/\nsite-packages/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := collectWalk(t, root)
+	want := []string{"a.txt"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestWalkKeepsUnignoredNewHeavyDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "Pods"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Pods", "dep.swift"), []byte("// dep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// No ignore rule covers Pods, so it is still walked.
+	got := collectWalk(t, root)
+	want := []string{"Pods/dep.swift", "a.txt"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestWalkFollowsSymlinkFiles(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "real.txt"), []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "real.txt"), filepath.Join(root, "link.txt")); err != nil {
+		t.Skipf("cannot create symlink: %v", err)
+	}
+
+	// The always-stat change must not regress symlinked files: they are
+	// followed and still walked.
+	got := collectWalk(t, root)
+	want := []string{"link.txt", "real.txt"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}

@@ -14,6 +14,7 @@ type SkippedReason string
 const (
 	ReasonIgnoredRule       SkippedReason = "Ignored (Gitignore/Custom Rule)"
 	ReasonFilteredExtension SkippedReason = "Filtered (Extension Mismatch)"
+	ReasonFilteredPath      SkippedReason = "Filtered (Path Rule)"
 	ReasonSkippedSizeLimit  SkippedReason = "Skipped (Size Limit Exceeded)"
 	ReasonSkippedNotRegular SkippedReason = "Skipped (Not a Regular File)"
 	ReasonSkippedPermError  SkippedReason = "Skipped (Permission Error)"

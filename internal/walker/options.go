@@ -18,6 +18,10 @@ type WalkOptions struct {
 	IncludeBinary bool
 	Context       context.Context
 	ProgressFn    ProgressCallback // Add progress callback function
+	// PathFilter, when set, is consulted before a file is read. Returning
+	// false excludes the file from processing, so filtered paths never cost
+	// I/O or token work.
+	PathFilter func(relativePath string) bool
 }
 
 // ProgressCallback is a function that receives progress updates
@@ -126,5 +130,14 @@ func WithIncludeBinary(include bool) Option {
 func WithProgress(fn ProgressCallback) Option {
 	return func(o *WalkOptions) {
 		o.ProgressFn = fn
+	}
+}
+
+// WithPathFilter sets a predicate deciding whether a relative path is
+// processed. It runs after all other skip rules (ignore, extension) but
+// before any file is read, so excluded paths never hit the disk.
+func WithPathFilter(fn func(relativePath string) bool) Option {
+	return func(o *WalkOptions) {
+		o.PathFilter = fn
 	}
 }

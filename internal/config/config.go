@@ -78,6 +78,7 @@ func New() *Config {
 		SecretScan:     true,
 		Style:          "markdown",
 		OutputFile:     "codebase.md",
+		Concurrent:     true,
 		MaxWorkers:     runtime.NumCPU(),
 		SmartMaxTokens: smart.DefaultMaxTokens,
 	}

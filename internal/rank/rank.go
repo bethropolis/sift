@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Git runs git against rootDir.
@@ -54,35 +55,49 @@ func (g *Git) Available() bool {
 //   - Modified: uncommitted working-tree or staged changes.
 //   - Diffed:   files touched between ref and its first parent.
 //   - Committed: files in the latest commit at ref.
+//
+// The three git invocations run concurrently since they are independent.
 func (g *Git) ChangesFor(ref string) *Changes {
 	if ref == "" {
 		ref = "HEAD"
 	}
 	changes := NewChanges()
 
-	for _, line := range strings.Split(g.runRaw("status", "--porcelain"), "\n") {
-		if len(line) > 3 {
-			p := strings.TrimSpace(line[3:])
-			if idx := strings.Index(p, " -> "); idx != -1 {
-				// Rename entry: "old.go -> new.go". Register both sides so
-				// the new path is scored as modified.
-				changes.Modified[p[idx+4:]] = true
-				changes.Modified[p[:idx]] = true
-			} else {
-				changes.Modified[p] = true
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		for _, line := range strings.Split(g.runRaw("status", "--porcelain"), "\n") {
+			if len(line) > 3 {
+				p := strings.TrimSpace(line[3:])
+				if idx := strings.Index(p, " -> "); idx != -1 {
+					// Rename entry: "old.go -> new.go". Register both sides so
+					// the new path is scored as modified.
+					changes.Modified[p[idx+4:]] = true
+					changes.Modified[p[:idx]] = true
+				} else {
+					changes.Modified[p] = true
+				}
 			}
 		}
-	}
-	for _, p := range g.runList("diff", "--name-only", ref+"^.."+ref) {
-		if p = strings.TrimSpace(p); p != "" {
-			changes.Diffed[p] = true
+	}()
+	go func() {
+		defer wg.Done()
+		for _, p := range g.runList("diff", "--name-only", ref+"^.."+ref) {
+			if p = strings.TrimSpace(p); p != "" {
+				changes.Diffed[p] = true
+			}
 		}
-	}
-	for _, p := range g.runList("log", "-n", "5", "--name-only", "--format=", ref) {
-		if p = strings.TrimSpace(p); p != "" {
-			changes.Committed[p] = true
+	}()
+	go func() {
+		defer wg.Done()
+		for _, p := range g.runList("log", "-n", "5", "--name-only", "--format=", ref) {
+			if p = strings.TrimSpace(p); p != "" {
+				changes.Committed[p] = true
+			}
 		}
-	}
+	}()
+	wg.Wait()
 	return changes
 }
 

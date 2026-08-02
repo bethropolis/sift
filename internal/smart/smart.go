@@ -34,8 +34,25 @@ func New(maxTokens int) *Evaluator {
 	}
 }
 
+// ShouldSkipPath reports whether a file should be excluded based on its name
+// alone, without reading or tokenizing its content. It lets callers drop
+// lockfiles, generated artifacts, and bundles before any I/O or CPU work.
+func (e *Evaluator) ShouldSkipPath(path string) (bool, string) {
+	filename := strings.ToLower(filepath.Base(path))
+	normPath := strings.ToLower(filepath.ToSlash(path))
+
+	for _, rule := range e.rules {
+		if rule(normPath, filename, nil) {
+			return true, "Matched smart language filter"
+		}
+	}
+	return false, ""
+}
+
 // ShouldSkip reports whether a file should be excluded by the smart filter,
-// along with a human-readable reason.
+// along with a human-readable reason. Name-based rules run here too, but
+// callers that already ran ShouldSkipPath can avoid the redundant check by
+// only invoking ShouldSkip on surviving candidates.
 func (e *Evaluator) ShouldSkip(path string, content []byte, tokens int) (bool, string) {
 	// 1. Token threshold guardrail.
 	if tokens > e.maxTokens {
@@ -47,14 +64,9 @@ func (e *Evaluator) ShouldSkip(path string, content []byte, tokens int) (bool, s
 		return true, "Auto-generated file header detected"
 	}
 
-	filename := strings.ToLower(filepath.Base(path))
-	normPath := strings.ToLower(filepath.ToSlash(path))
-
 	// 3. Language-specific rules.
-	for _, rule := range e.rules {
-		if rule(normPath, filename, content) {
-			return true, "Matched smart language filter"
-		}
+	if skip, reason := e.ShouldSkipPath(path); skip {
+		return true, reason
 	}
 
 	return false, ""

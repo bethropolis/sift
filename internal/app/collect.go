@@ -18,6 +18,11 @@ import (
 	"github.com/bethropolis/sift/internal/walker"
 )
 
+// pickDefaultMaxFileSizeMB caps per-file reads in the picker when no explicit
+// limit is set. The smart filter would drop oversized files anyway, but this
+// avoids reading them into memory in the first place.
+const pickDefaultMaxFileSizeMB int64 = 10
+
 // Run executes the main application logic.
 // It returns a non-nil error when the scan failed, including on timeout.
 func (a *App) Run() error {
@@ -96,11 +101,18 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 	}
 
 	// Configure the walker using the setup package
+	maxFileSizeMB := a.cfg.MaxFileSizeMB
+	if picker && maxFileSizeMB <= 0 {
+		// The picker's smart filter would reject oversized files anyway, but
+		// reading them into memory first is wasted work. Cap the read so huge
+		// files are skipped by the walker before content is loaded.
+		maxFileSizeMB = pickDefaultMaxFileSizeMB
+	}
 	walkerConfig := setup.WalkerConfig{
 		RootDir:       absRootDir,
 		Concurrent:    a.cfg.Concurrent,
 		MaxWorkers:    a.cfg.MaxWorkers,
-		MaxFileSizeMB: a.cfg.MaxFileSizeMB,
+		MaxFileSizeMB: maxFileSizeMB,
 		Extensions:    a.cfg.Extensions,
 		IgnoreHidden:  a.cfg.IgnoreHidden,
 		IgnoreGit:     a.cfg.IgnoreGit,
@@ -115,6 +127,24 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 	matcher, walkOptions, err := setup.ConfigureWalker(walkerConfig, a.infoLog)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to configure walker: %w", err)
+	}
+
+	// Skip OnlyPaths and the output document before any file is read. These
+	// path-only rules belong in the walker decision stage so excluded files
+	// never cost disk I/O or token work.
+	if a.OnlyPaths != nil || a.outputPath != "" {
+		walkOptions = append(walkOptions, walker.WithPathFilter(func(relativePath string) bool {
+			if a.OnlyPaths != nil && !a.OnlyPaths[filepath.ToSlash(relativePath)] {
+				return false
+			}
+			if a.outputPath != "" {
+				absFile := filepath.Join(absRootDir, filepath.FromSlash(relativePath))
+				if filepath.Clean(absFile) == filepath.Clean(a.outputPath) {
+					return false
+				}
+			}
+			return true
+		}))
 	}
 
 	// --- Create the token counter ---
@@ -161,23 +191,19 @@ func (a *App) collect(picker bool) ([]format.FileEntry, []walker.SkippedItem, er
 			return nil
 		}
 
-		if a.OnlyPaths != nil && !a.OnlyPaths[filepath.ToSlash(relativePath)] {
-			return nil
-		}
-
-		if a.outputPath != "" {
-			absFile := filepath.Join(absRootDir, filepath.FromSlash(relativePath))
-			if filepath.Clean(absFile) == filepath.Clean(a.outputPath) {
-				return nil
-			}
-		}
-
-		// Smart filter: skip generated/lock/minified/oversized files. The
-		// token guardrail counts the raw content, matching what would
-		// otherwise be stored. The count is reused as TokensFull when
-		// the picker runs to avoid counting twice.
+		// Smart filter: skip generated/lock/minified/oversized files. Name and
+		// language rules run before any tokenizing so lockfiles and generated
+		// bundles never cost tiktoken work. Surviving candidates are counted,
+		// reusing the count as TokensFull in the picker to avoid counting twice.
 		smartTokens := -1
 		if smartEvaluator != nil {
+			if skip, reason := smartEvaluator.ShouldSkipPath(relativePath); skip {
+				a.log.Debug("SmartFilter skipping %s: %s", relativePath, reason)
+				smartMu.Lock()
+				smartSkipped = append(smartSkipped, walker.SkippedItem{Path: relativePath, Reason: walker.ReasonSkippedSmart})
+				smartMu.Unlock()
+				return nil
+			}
 			smartTokens = a.countTokens(tokenizer, content, relativePath)
 			if skip, reason := smartEvaluator.ShouldSkip(relativePath, content, smartTokens); skip {
 				a.log.Debug("SmartFilter skipping %s: %s", relativePath, reason)
