@@ -7,6 +7,7 @@ import (
 	"github.com/bethropolis/sift/internal/highlight"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // clearNoticeMsg is dispatched after a timer to restore the standard footer
@@ -319,7 +320,10 @@ func (m model) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 	footer := m.renderFooter(width)
-	view := body + "\n" + footer
+	// Lipgloss may leave a terminal newline when a fixed-height box is
+	// rendered. Normalize it before adding the single body/footer separator so
+	// the footer stays on the final terminal row.
+	view := strings.TrimRight(body, "\n") + "\n" + footer
 
 	if m.deltaOpen {
 		view = m.renderDeltaModal(view, width, height)
@@ -327,5 +331,26 @@ func (m model) View() string {
 	if m.helpOpen {
 		view = m.renderHelpModal(view, width, height)
 	}
-	return view
+	return clampViewHeight(view, width, height)
+}
+
+// clampViewHeight keeps every rendered frame at the terminal height. Bubble
+// Tea's line-diff renderer relies on a stable frame size; an oversized pane
+// or modal can otherwise leave stale borders and titles behind after rapid
+// input.
+func clampViewHeight(view string, width, height int) string {
+	view = strings.TrimRight(view, "\n")
+	lines := strings.Split(view, "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	for i, line := range lines {
+		if ansi.StringWidth(line) > width {
+			lines[i] = ansi.Truncate(line, width, "")
+		}
+	}
+	return strings.Join(lines, "\n")
 }

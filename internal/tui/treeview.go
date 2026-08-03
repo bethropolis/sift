@@ -27,7 +27,11 @@ func (m model) renderTreeBox(width, height int) string {
 	}
 	boxStyle := lipgloss.NewStyle().
 		Width(max(1, width-2)).
+		// Width is the content width; the border adds two columns. The max
+		// bounds therefore apply to the complete rendered card width.
+		MaxWidth(max(1, width)).
 		Height(max(1, height-2)).
+		MaxHeight(max(1, height)).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor)
 
@@ -38,7 +42,7 @@ func (m model) renderTreeBox(width, height int) string {
 		title = fmt.Sprintf(" %sExplorer (%d files, %d tok) ",
 			m.glyphs.FolderOpen, m.root.FileCount(), m.root.TotalActiveTokens())
 	}
-	title = truncateString(title, max(1, width-4))
+	title = ansi.Truncate(title, max(1, width-4), "…")
 	b.WriteString(titleStyle.Render(title))
 
 	innerRows := max(1, height-3)
@@ -105,23 +109,23 @@ func (m model) treeRow(n *TreeNode, width int) string {
 		right = fmt.Sprintf("~%6d tok", n.ApproxTokens)
 	}
 
-	leftWidth := lipgloss.Width(left)
-	rightWidth := lipgloss.Width(right)
+	leftWidth := ansi.StringWidth(left)
+	rightWidth := ansi.StringWidth(right)
 
 	if leftWidth+rightWidth > width {
-		fixed := lipgloss.Width(treeGuide) + lipgloss.Width(mark) + lipgloss.Width(icon) +
-			lipgloss.Width(modeStr) + lipgloss.Width(secret) + 2
+		fixed := ansi.StringWidth(treeGuide) + ansi.StringWidth(mark) + ansi.StringWidth(icon) +
+			ansi.StringWidth(modeStr) + ansi.StringWidth(secret) + 2
 		nameSpace := width - rightWidth - fixed
 		if nameSpace >= 2 && len(name) > nameSpace {
-			name = truncateString(name, nameSpace)
+			name = ansi.Truncate(name, nameSpace, "…")
 			left = fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
-			leftWidth = lipgloss.Width(left)
+			leftWidth = ansi.StringWidth(left)
 		}
 	}
 
 	pad := max(0, width-leftWidth-rightWidth)
 	row := left + strings.Repeat(" ", pad) + right
-	if lipgloss.Width(row) > width {
+	if ansi.StringWidth(row) > width {
 		row = ansi.Truncate(row, width, "…")
 	}
 

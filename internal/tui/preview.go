@@ -73,7 +73,9 @@ func (m model) renderPreviewBox(width, height int) string {
 	}
 	boxStyle := lipgloss.NewStyle().
 		Width(max(1, width-2)).
+		MaxWidth(max(1, width)).
 		Height(max(1, height-2)).
+		MaxHeight(max(1, height)).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
 		Padding(0, 1)
@@ -87,7 +89,7 @@ func (m model) renderPreviewBox(width, height int) string {
 	} else if n != nil && n.Kind == KindDir {
 		title = fmt.Sprintf(" %sFolder: %s/ ", m.glyphs.FolderOpen, n.Path)
 	}
-	title = truncateString(title, max(1, width-4))
+	title = ansi.Truncate(title, max(1, width-4), "…")
 	b.WriteString(titleStyle.Render(title))
 
 	if n == nil {
@@ -156,16 +158,18 @@ func (m model) renderPreviewBox(width, height int) string {
 			maxLen := max(1, innerWidth-prefixWidth-barWidth)
 
 			lineText = strings.ReplaceAll(lineText, "\t", "    ")
-			if lipgloss.Width(lineText) > maxLen {
-				lineText = truncateString(lineText, maxLen)
-			}
 			lineText = highlight.RenderLine(n.Path, lineText, m.highlight)
+			renderedWidth := ansi.StringWidth(lineText)
+			if renderedWidth > maxLen {
+				lineText = ansi.Truncate(lineText, maxLen, "…")
+				renderedWidth = ansi.StringWidth(lineText)
+			}
 
 			b.WriteString("\n")
 			b.WriteString(dimStyle.Render(prefix))
 			b.WriteString(lineText)
 			if barWidth > 0 {
-				b.WriteString(strings.Repeat(" ", max(0, maxLen-lipgloss.Width(lineText))))
+				b.WriteString(strings.Repeat(" ", max(0, maxLen-renderedWidth)))
 				b.WriteString(scrollbarStyle.Render(bar))
 			}
 		}

@@ -8,10 +8,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// footerHeight returns the number of lines the footer occupies. The join
-// newline between body and footer is included, so the whole view is exactly
-// height lines tall and the footer sits on the bottom row. It is always a
-// fixed 2 lines (divider + status) so the panes never resize mid-session.
+// footerHeight returns the number of rendered footer lines. The body is
+// normalized before the separator is added, so the separator itself does not
+// consume a layout row.
 func (m model) footerHeight() int {
 	return 2
 }
@@ -59,11 +58,11 @@ func (m model) renderFooter(width int) string {
 	case m.filtering:
 		statusLine = fmt.Sprintf("/ Filter (%d matches): %s▌", len(m.rows), m.filter)
 	case m.stream.active() && !m.scanDone:
-		actions := "[?] Help  [g] Generate  [y] Copy  [q] Exit"
+		actions := "[m] Mode  [?] Help  [g] Generate  [y] Copy  [q] Exit"
 		statusLine = fmt.Sprintf("%sScanning… %d files · %d dirs (%d processed) | %s",
 			budget, m.scanFiles, m.scanDirs, m.scanProcessed, actions)
 	default:
-		actions := "[?] Help  [g] Generate  [y] Copy  [q] Exit"
+		actions := "[m] Mode  [?] Help  [g] Generate  [y] Copy  [q] Exit"
 		statusLine = fmt.Sprintf("%sStyle: %s%s | %d selected (%d tok) | %s", budget, m.style, visibility, selected, active, actions)
 	}
 
