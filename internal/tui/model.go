@@ -55,6 +55,7 @@ type model struct {
 	glyphs      Glyphs
 	highlight   highlight.Options
 	windowTitle string
+	styles      uiStyles
 
 	onCopy func([]Selection) error
 	notice string
@@ -65,6 +66,12 @@ type model struct {
 	helpOpen   bool
 	helpOffset int
 	onGenerate func([]Selection) error
+
+	// Theme modal state.
+	themeOpen   bool
+	themeCursor int
+	themeOffset int
+	themeIndex  int
 
 	// Delta modal state.
 	delta         *DeltaInfo
@@ -132,6 +139,8 @@ func newModel(root *TreeNode, opts Options) model {
 		glyphs:      glyphs,
 		highlight:   highlight.Options{Enabled: opts.Highlight, Theme: highlight.Theme(opts.Theme), MaxBytes: opts.HighlightMaxBytes},
 		windowTitle: sanitizeWindowTitle(opts.WindowTitle),
+		styles:      defaultStyles(),
+		themeIndex:  defaultThemeIndex(),
 		onCopy:      opts.OnCopy,
 		onGenerate:  opts.OnGenerate,
 		delta:       opts.Delta,
@@ -330,6 +339,9 @@ func (m model) View() string {
 	}
 	if m.helpOpen {
 		view = m.renderHelpModal(view, width, height)
+	}
+	if m.themeOpen {
+		view = m.renderThemeModal(view, width, height)
 	}
 	return clampViewHeight(view, width, height)
 }

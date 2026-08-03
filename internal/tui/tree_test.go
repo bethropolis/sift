@@ -119,6 +119,114 @@ func TestModePropagation(t *testing.T) {
 	}
 }
 
+func TestCycleModeFiltered(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "internal/app.go", TokensFull: 10, TokensSig: 2},
+		{Path: "internal/app_test.go", TokensFull: 10, TokensSig: 2},
+		{Path: "internal/other.go", TokensFull: 10, TokensSig: 2},
+		{Path: "cmd/main.go", TokensFull: 10, TokensSig: 2},
+	})
+	m := newModel(root, Options{})
+	m.filter = "app"
+	m.recomputeRows()
+
+	internal := root.findChild("internal")
+	m.cycleMode(internal) // full -> signatures
+
+	if got := internal.findChild("app.go").Mode; got != ModeSignatures {
+		t.Errorf("app.go Mode = %v, want signatures", got)
+	}
+	if got := internal.findChild("app_test.go").Mode; got != ModeSignatures {
+		t.Errorf("app_test.go Mode = %v, want signatures", got)
+	}
+	// Non-matching siblings must keep their mode.
+	if got := internal.findChild("other.go").Mode; got != ModeFull {
+		t.Errorf("other.go Mode = %v, want full (not in filter)", got)
+	}
+	// The directory aggregate must show the mixed state.
+	if got := internal.Mode; got != ModeFull {
+		t.Errorf("dir Mode = %v, want full (mixed children)", got)
+	}
+}
+
+func TestCycleModeFilteredNested(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "a/b/matchme.go", TokensFull: 10},
+		{Path: "a/b/other.go", TokensFull: 10},
+		{Path: "a/skipme.go", TokensFull: 10},
+	})
+	m := newModel(root, Options{})
+	m.filter = "matchme"
+	m.recomputeRows()
+
+	a := root.findChild("a")
+	m.cycleMode(a) // full -> signatures
+
+	if got := a.findChild("b").findChild("matchme.go").Mode; got != ModeSignatures {
+		t.Errorf("nested matchme.go Mode = %v, want signatures", got)
+	}
+	if got := a.findChild("b").findChild("other.go").Mode; got != ModeFull {
+		t.Errorf("nested other.go Mode = %v, want full", got)
+	}
+	if got := a.findChild("skipme.go").Mode; got != ModeFull {
+		t.Errorf("skipme.go Mode = %v, want full", got)
+	}
+}
+
+func TestCycleModeFilteredHidesByVisibility(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "dir/app.go", TokensFull: 10},
+		{Path: "dir/.app.go", Hidden: true, TokensFull: 10},
+		{Path: "dir/gen.go", GitIgnored: true, TokensFull: 10},
+	})
+	m := newModel(root, Options{})
+	m.filter = "app"
+	m.recomputeRows()
+
+	dir := root.findChild("dir")
+	m.cycleMode(dir) // full -> signatures
+
+	// Visible matching files cycle; hidden and gitignored files stay put.
+	if got := dir.findChild("app.go").Mode; got != ModeSignatures {
+		t.Errorf("app.go Mode = %v, want signatures", got)
+	}
+	if got := dir.findChild(".app.go").Mode; got != ModeFull {
+		t.Errorf(".app.go Mode = %v, want full (hidden)", got)
+	}
+	if got := dir.findChild("gen.go").Mode; got != ModeFull {
+		t.Errorf("gen.go Mode = %v, want full (gitignored)", got)
+	}
+
+	// Revealing hidden files then cycling picks them up.
+	m.showHidden = true
+	m.recomputeRows()
+	m.cycleMode(dir) // dir aggregate is full (mixed) -> signatures again
+	if got := dir.findChild(".app.go").Mode; got != ModeSignatures {
+		t.Errorf(".app.go Mode = %v, want signatures after reveal", got)
+	}
+	// Gitignored still hidden: remains untouched by the cycle.
+	if got := dir.findChild("gen.go").Mode; got != ModeFull {
+		t.Errorf("gen.go Mode = %v, want full (still gitignored)", got)
+	}
+}
+
+func TestCycleModeUnfilteredStillWholeSubtree(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "dir/app.go", TokensFull: 10},
+		{Path: "dir/other.go", TokensFull: 10},
+	})
+	m := newModel(root, Options{})
+	dir := root.findChild("dir")
+	m.cycleMode(dir) // full -> signatures
+
+	if got := dir.findChild("app.go").Mode; got != ModeSignatures {
+		t.Errorf("app.go Mode = %v, want signatures", got)
+	}
+	if got := dir.findChild("other.go").Mode; got != ModeSignatures {
+		t.Errorf("other.go Mode = %v, want signatures", got)
+	}
+}
+
 // TestMixedModeFolderTokens guards against the recompute override that used
 // to overwrite a selected folder's child-summed ActiveTokens with the uniform
 // TokensFull/TokensSig, which inflated the total when children had mixed modes.

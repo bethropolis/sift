@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -226,4 +227,179 @@ func TestMergeSkippedDedups(t *testing.T) {
 	if _, ok := byPath["main.go"]; !ok {
 		t.Error("main.go missing from merged skipped items")
 	}
+}
+
+func TestPickerWindowTitle(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		cfg := config.New()
+		cfg.RootDir = "/repo/src/myproject"
+		if got := pickerWindowTitle(cfg); got != "sift | myproject" {
+			t.Errorf("title = %q, want %q", got, "sift | myproject")
+		}
+	})
+
+	t.Run("custom", func(t *testing.T) {
+		cfg := config.New()
+		cfg.RootDir = "/repo"
+		cfg.WindowTitle = "My Custom Title"
+		if got := pickerWindowTitle(cfg); got != "My Custom Title" {
+			t.Errorf("title = %q, want custom", got)
+		}
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		cfg := config.New()
+		cfg.RootDir = "/repo"
+		cfg.NoWindowTitle = true
+		if got := pickerWindowTitle(cfg); got != "" {
+			t.Errorf("title = %q, want empty when disabled", got)
+		}
+	})
+
+	t.Run("root-directory", func(t *testing.T) {
+		cfg := config.New()
+		cfg.RootDir = "/"
+		if got := pickerWindowTitle(cfg); got != "sift | directory" {
+			t.Errorf("title = %q, want %q", got, "sift | directory")
+		}
+	})
+
+	t.Run("relative-basename", func(t *testing.T) {
+		cfg := config.New()
+		cfg.RootDir = "rel/proj"
+		if got := pickerWindowTitle(cfg); got != "sift | proj" {
+			t.Errorf("title = %q, want basename of relative root", got)
+		}
+	})
+}
+
+// waitForGoroutinesToSettle polls runtime.NumGoroutine until it stays at or
+// below the baseline for a short window. A hard equality assertion on goroutine
+// counts is brittle because the Go runtime and the test binary spawn their own
+// goroutines; a bounded settle window proves no leak without false positives.
+func waitForGoroutinesToSettle(t *testing.T, baseline int, budget time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(budget)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= baseline {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("goroutine count %d did not settle to baseline %d", runtime.NumGoroutine(), baseline)
+}
+
+// TestStreamScanLeavesNoGoroutines verifies the idle-behavior guarantee: once
+// a scan completes normally, its progress goroutine and walker workers are
+// gone, so the picker no longer schedules polling work.
+func TestStreamScanLeavesNoGoroutines(t *testing.T) {
+	dir := writeSmokeTree(t)
+	cfg := config.New()
+	cfg.RootDir = dir
+	cfg.SmartFilter = true
+	cfg.Quiet = true
+	application, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer application.Close()
+
+	baseline := runtime.NumGoroutine()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var stateMu sync.Mutex
+	var collected []format.FileEntry
+	var skippedMu sync.Mutex
+	var skipped []walker.SkippedItem
+	stream := newPickStream()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+	}()
+
+	// Drain until every channel closes, like the TUI listener does.
+	for stream.nodes != nil || stream.progress != nil || stream.errCh != nil {
+		select {
+		case _, ok := <-stream.nodes:
+			if !ok {
+				stream.nodes = nil
+			}
+		case _, ok := <-stream.progress:
+			if !ok {
+				stream.progress = nil
+			}
+		case _, ok := <-stream.errCh:
+			if !ok {
+				stream.errCh = nil
+			}
+		}
+	}
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("streamScan did not return after completion")
+	}
+
+	waitForGoroutinesToSettle(t, baseline, 5*time.Second)
+}
+
+// TestStreamScanCancellationLeavesNoGoroutines proves cancellation tears down
+// the same goroutines: workers stop consuming and the progress goroutine exits
+// without leaving a polling loop behind.
+func TestStreamScanCancellationLeavesNoGoroutines(t *testing.T) {
+	dir := writeSmokeTree(t)
+	cfg := config.New()
+	cfg.RootDir = dir
+	cfg.SmartFilter = true
+	cfg.Quiet = true
+	application, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer application.Close()
+
+	baseline := runtime.NumGoroutine()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var stateMu sync.Mutex
+	var collected []format.FileEntry
+	var skippedMu sync.Mutex
+	var skipped []walker.SkippedItem
+	stream := newPickStream()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+	}()
+
+	// Cancel before draining, forcing every producer to unwind on ctx.Done.
+	cancel()
+
+	for stream.nodes != nil || stream.progress != nil || stream.errCh != nil {
+		select {
+		case _, ok := <-stream.nodes:
+			if !ok {
+				stream.nodes = nil
+			}
+		case _, ok := <-stream.progress:
+			if !ok {
+				stream.progress = nil
+			}
+		case _, ok := <-stream.errCh:
+			if !ok {
+				stream.errCh = nil
+			}
+		}
+	}
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("streamScan did not return after cancellation")
+	}
+
+	waitForGoroutinesToSettle(t, baseline, 5*time.Second)
 }

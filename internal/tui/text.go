@@ -20,12 +20,13 @@ func truncateString(s string, maxLen int) string {
 	return string(runes[:maxLen-1]) + "…"
 }
 
-// boxStyle returns a rounded bordered box of the given width.
-func boxStyle(width int) lipgloss.Style {
+// boxStyle returns a rounded bordered box of the given width using the
+// model's theme border color.
+func (m model) boxStyle(width int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Width(max(1, width-2)).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62"))
+		BorderForeground(m.styles.border)
 }
 
 // overlay centers sub over view, blanking the area behind it.

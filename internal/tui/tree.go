@@ -149,7 +149,7 @@ func BuildTree(items []Item) *TreeNode {
 			if strings.HasPrefix(part, ".") {
 				child.Hidden = true
 			}
-			if it.GitIgnored {
+			if it.IsDir && it.GitIgnored {
 				child.GitIgnored = true
 			}
 			if isFile {

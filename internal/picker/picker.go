@@ -176,5 +176,5 @@ func pickerWindowTitle(cfg *config.Config) string {
 	if root == "." || root == string(filepath.Separator) || root == "" {
 		root = "directory"
 	}
-	return "sift — " + root
+	return "sift | " + root
 }

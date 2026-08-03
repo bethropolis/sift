@@ -199,5 +199,75 @@ func TestListenerDrainsAfterChannelClosed(t *testing.T) {
 	}
 }
 
+// TestListenStreamStopsRearmingAfterAllClosed verifies the idle-behavior
+// guarantee: once every scan channel closes (normal completion or
+// cancellation), the model stops arming listener commands, so BubbleTea has
+// nothing polling and the process sits idle.
+func TestListenStreamStopsRearmingAfterAllClosed(t *testing.T) {
+	nodes := make(chan NodesMsg, 1)
+	progress := make(chan ProgressMsg, 1)
+	errCh := make(chan error, 1)
+	close(nodes)
+	close(progress)
+	close(errCh)
+
+	m := newModel(BuildTree([]Item{{Path: "a.txt"}}), Options{})
+	m.stream = Stream{Nodes: nodes, Progress: progress, Err: errCh}
+
+	// Drive the listener through each channel closure, exactly as Update does.
+	cmd := m.listenStream()
+	for cmd != nil {
+		msg := cmd()
+		mm, ok := msg.(streamClosedMsg)
+		if !ok {
+			t.Fatalf("got %#v, want streamClosedMsg", msg)
+		}
+		switch mm.channel {
+		case streamNodesClosed:
+			m.streamNodesClosed = true
+		case streamProgressClosed:
+			m.streamProgressClosed = true
+		case streamErrClosed:
+			m.streamErrClosed = true
+		}
+		cmd = m.listenStream()
+	}
+}
+
+// TestUpdateClearsStreamListenerAfterClosure drives the full Update loop with
+// closed channels and asserts the final command is nil: no re-arm, no polling.
+func TestUpdateClearsStreamListenerAfterClosure(t *testing.T) {
+	nodes := make(chan NodesMsg, 1)
+	progress := make(chan ProgressMsg, 1)
+	errCh := make(chan error, 1)
+	close(nodes)
+	close(progress)
+	close(errCh)
+
+	m := newModel(BuildTree([]Item{{Path: "a.txt"}}), Options{})
+	m.stream = Stream{Nodes: nodes, Progress: progress, Err: errCh}
+
+	for i := 0; i < 10; i++ {
+		updated, cmd := m.Update(streamClosedMsg{channel: streamNodesClosed})
+		m = updated.(model)
+		if m.scanDone {
+			if cmd != nil {
+				t.Fatalf("after scanDone cmd = %v, want nil", cmd)
+			}
+			return
+		}
+		// Before all channels are known closed, the listener is re-armed to
+		// drain the others; feed progress and err closures too.
+		updated, _ = m.Update(streamClosedMsg{channel: streamProgressClosed})
+		m = updated.(model)
+		updated, _ = m.Update(streamClosedMsg{channel: streamErrClosed})
+		m = updated.(model)
+		if cmd != nil && i > 4 {
+			t.Fatalf("listener still armed before full closure: %v", cmd)
+		}
+	}
+	t.Fatal("scanDone never reached with all channels closed")
+}
+
 // ensure tea is imported even when assertions are trimmed.
 var _ tea.Msg = NodesMsg{}

@@ -54,7 +54,7 @@ func (m model) renderFooter(width int) string {
 	}
 	switch {
 	case m.notice != "":
-		statusLine = noticeStyle.Render(m.notice)
+		statusLine = m.styles.notice.Render(m.notice)
 	case m.filtering:
 		statusLine = fmt.Sprintf("/ Filter (%d matches): %s▌", len(m.rows), m.filter)
 	case m.stream.active() && !m.scanDone:
@@ -70,6 +70,6 @@ func (m model) renderFooter(width int) string {
 	b.WriteString(strings.Repeat("─", width))
 	b.WriteString("\n")
 	statusLine = ansi.Truncate(statusLine, max(1, width), "…")
-	b.WriteString(hintStyle.Render(statusLine))
+	b.WriteString(m.styles.hint.Render(statusLine))
 	return b.String()
 }

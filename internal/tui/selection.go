@@ -2,6 +2,7 @@ package tui
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/selection"
@@ -48,18 +49,21 @@ func (n *TreeNode) bubbleUp() {
 // applies it to the whole subtree, so a directory set to a mode propagates to
 // every file beneath it.
 func (n *TreeNode) CycleMode() {
-	var next CompressMode
-	switch n.Mode {
-	case ModeFull:
-		next = ModeSignatures
-	case ModeSignatures:
-		next = ModeSkip
-	default:
-		next = ModeFull
-	}
-	n.applyMode(next)
+	n.applyMode(nextMode(n.Mode))
 	n.recompute()
 	n.bubbleUp()
+}
+
+// nextMode returns the mode that follows the given one in the cycle.
+func nextMode(m CompressMode) CompressMode {
+	switch m {
+	case ModeFull:
+		return ModeSignatures
+	case ModeSignatures:
+		return ModeSkip
+	default:
+		return ModeFull
+	}
 }
 
 // applyMode sets the mode on n and every descendant.
@@ -68,6 +72,41 @@ func (n *TreeNode) applyMode(m CompressMode) {
 	for _, c := range n.Children {
 		c.applyMode(m)
 	}
+}
+
+// applyModeFiltered advances the mode only on files currently included by the
+// active fuzzy filter and the visibility toggles, mirroring
+// VisibleRowsWithOptions. Files hidden by the filter, or hidden by the
+// visibility settings, keep their existing modes. The node itself is never
+// switched when it is a directory: only matching, visible descendant files
+// change, so directory aggregate state reflects the surviving children.
+func (n *TreeNode) applyModeFiltered(m CompressMode, filter string, showHidden, showGitIgnored bool) {
+	if !nodeVisible(n, showHidden, showGitIgnored) {
+		return
+	}
+	if n.Kind == KindFile {
+		if strings.Contains(strings.ToLower(n.Name), filter) {
+			n.Mode = m
+		}
+		return
+	}
+	for _, c := range n.Children {
+		c.applyModeFiltered(m, filter, showHidden, showGitIgnored)
+	}
+}
+
+// cycleMode advances the mode of the node under the cursor. When a fuzzy
+// filter is active it only affects files included by the filter and the active
+// visibility toggles; otherwise it cycles the whole subtree. It preserves the
+// selection and the cursor path, and recomputes directory aggregates.
+func (m *model) cycleMode(n *TreeNode) {
+	if m.filter == "" {
+		n.CycleMode()
+		return
+	}
+	n.applyModeFiltered(nextMode(n.Mode), m.filter, m.showHidden, m.showGitIgnored)
+	n.recompute()
+	n.bubbleUp()
 }
 
 // TotalActiveTokens returns the cached active tokens for n in O(1) time.

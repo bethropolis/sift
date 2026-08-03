@@ -19,8 +19,17 @@ func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.themeOpen {
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			m.themeMove(-1)
+		case tea.MouseWheelDown:
+			m.themeMove(1)
+		}
+		return m, nil
+	}
 	// While a modal or filter is open, ignore pointer input entirely.
-	if m.deltaOpen || m.helpOpen || m.filtering {
+	if m.deltaOpen || m.filtering {
 		return m, nil
 	}
 
@@ -78,6 +87,33 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.scrollHelp(-1)
 			} else if r == "?" || r == "q" {
 				m.helpOpen = false
+			}
+		}
+		return m, nil
+	}
+
+	if m.themeOpen {
+		switch msg.Type {
+		case tea.KeyUp, tea.KeyShiftTab:
+			m.themeMove(-1)
+		case tea.KeyDown, tea.KeyTab:
+			m.themeMove(1)
+		case tea.KeyPgUp:
+			m.themeMove(-m.themePageSize())
+		case tea.KeyPgDown:
+			m.themeMove(m.themePageSize())
+		case tea.KeyEnter, tea.KeySpace:
+			m.themeOpen = false
+			m.applyTheme(ThemePresets[m.themeCursor])
+		case tea.KeyEsc, tea.KeyCtrlC, tea.KeyCtrlQ:
+			m.themeOpen = false
+		case tea.KeyRunes:
+			if r := string(msg.Runes); r == "j" {
+				m.themeMove(1)
+			} else if r == "k" {
+				m.themeMove(-1)
+			} else if r == "t" || r == "q" {
+				m.themeOpen = false
 			}
 		}
 		return m, nil
@@ -203,7 +239,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "m":
 			if n := m.node(); n != nil {
-				n.CycleMode()
+				m.cycleMode(n)
 			}
 		case "a":
 			m.selectAll()
@@ -218,6 +254,8 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.openDelta()
 		case "?":
 			m.helpOpen = !m.helpOpen
+		case "t":
+			m.themeOpen = !m.themeOpen
 		case ".":
 			m.showHidden = !m.showHidden
 			m.recomputeRows()
@@ -370,5 +408,21 @@ func (m *model) deltaMove(delta int) {
 	}
 	if m.deltaCursor >= len(m.delta.Commits) {
 		m.deltaCursor = len(m.delta.Commits) - 1
+	}
+}
+
+// themePageSize returns how many presets fit in the theme modal at once.
+func (m model) themePageSize() int {
+	return max(1, m.height-6)
+}
+
+// themeMove moves the theme selector cursor, clamping it to the preset list.
+func (m *model) themeMove(delta int) {
+	m.themeCursor += delta
+	if m.themeCursor < 0 {
+		m.themeCursor = 0
+	}
+	if m.themeCursor >= len(ThemePresets) {
+		m.themeCursor = len(ThemePresets) - 1
 	}
 }

@@ -21,6 +21,7 @@ func helpContentLines() []string {
 		"  s                    Smart Select (FULL/SIGS by git history)",
 		"  d                    Incremental Delta Dump Modal",
 		"  a                    Select All / Deselect All",
+		"  t                    Color theme selector",
 		"",
 		"Generation & Actions:",
 		"  g                    Generate output document (stays in TUI)",
@@ -52,18 +53,18 @@ func (m *model) renderHelpModal(view string, width, height int) string {
 	}
 	var b strings.Builder
 	title := ansi.Truncate(" Sift Interactive Picker - Keyboard Shortcuts ", modalWidth-4, "…")
-	b.WriteString(titleStyle.Render(title))
+	b.WriteString(m.styles.title.Render(title))
 	for _, line := range lines[m.helpOffset:min(len(lines), m.helpOffset+bodyRows)] {
 		b.WriteString("\n")
 		if strings.HasSuffix(line, ":") {
-			b.WriteString(titleStyle.Render(line))
+			b.WriteString(m.styles.title.Render(line))
 		} else {
 			b.WriteString(ansi.Truncate(line, modalWidth-4, "…"))
 		}
 	}
 	b.WriteString("\n")
-	b.WriteString(hintStyle.Render("↑/↓ scroll · Esc/?/q close"))
-	return m.overlay(view, boxStyle(modalWidth).Height(modalHeight-2).Render(b.String()), width, height)
+	b.WriteString(m.styles.hint.Render("↑/↓ scroll · Esc/?/q close"))
+	return m.overlay(view, m.boxStyle(modalWidth).Height(modalHeight-2).Render(b.String()), width, height)
 }
 
 func (m *model) scrollHelp(delta int) {

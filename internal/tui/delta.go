@@ -154,8 +154,8 @@ func (m model) renderDeltaModal(view string, width, height int) string {
 	b.WriteString("\n")
 
 	if m.delta == nil {
-		b.WriteString(hintStyle.Render("Not available outside a git repository."))
-		return m.overlay(view, boxStyle(modalWidth).Render(b.String()), width, height)
+		b.WriteString(m.styles.hint.Render("Not available outside a git repository."))
+		return m.overlay(view, m.boxStyle(modalWidth).Render(b.String()), width, height)
 	}
 
 	b.WriteString(fmt.Sprintf("Project: %s", m.delta.RootDir))
@@ -164,7 +164,7 @@ func (m model) renderDeltaModal(view string, width, height int) string {
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("HEAD:        %s %s", m.delta.HeadHash, truncateString(m.delta.HeadMsg, modalWidth-30)))
 	b.WriteString("\n\n")
-	b.WriteString(dimStyle.Render("Commits since last dump:"))
+	b.WriteString(m.styles.dim.Render("Commits since last dump:"))
 	b.WriteString("\n")
 
 	// Scrollable commit list, newest first.
@@ -179,7 +179,7 @@ func (m model) renderDeltaModal(view string, width, height int) string {
 		line := fmt.Sprintf("%s %s %s", mark, c.Short, c.Subject)
 		line = truncateString(line, modalWidth-4)
 		if i == m.deltaCursor {
-			b.WriteString(cursorStyle.Render(line))
+			b.WriteString(m.styles.cursor.Render(line))
 		} else {
 			b.WriteString(line)
 		}
@@ -187,7 +187,7 @@ func (m model) renderDeltaModal(view string, width, height int) string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("Delta output mode:"))
+	b.WriteString(m.styles.dim.Render("Delta output mode:"))
 	b.WriteString("\n")
 
 	modeFull := "( ) "
@@ -202,8 +202,8 @@ func (m model) renderDeltaModal(view string, width, height int) string {
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("%sGit unified patch diff (%d lines, %d tokens)", modePatch, m.delta.PatchLines, m.delta.PatchToken))
 	b.WriteString("\n\n")
-	b.WriteString(hintStyle.Render("[Enter] perform delta dump | [c] copy | [Esc] cancel"))
+	b.WriteString(m.styles.hint.Render("[Enter] perform delta dump | [c] copy | [Esc] cancel"))
 
-	modal := boxStyle(modalWidth).Render(b.String())
+	modal := m.boxStyle(modalWidth).Render(b.String())
 	return m.overlay(view, modal, width, height)
 }

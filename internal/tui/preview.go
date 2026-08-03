@@ -67,9 +67,9 @@ func (m *model) scrollPreview(delta int) {
 }
 
 func (m model) renderPreviewBox(width, height int) string {
-	borderColor := lipgloss.Color("62")
+	borderColor := m.styles.border
 	if m.focus == FocusPreview {
-		borderColor = lipgloss.Color("12") // Active bright blue border
+		borderColor = m.styles.accent // Active border follows the theme accent
 	}
 	boxStyle := lipgloss.NewStyle().
 		Width(max(1, width-2)).
@@ -90,11 +90,11 @@ func (m model) renderPreviewBox(width, height int) string {
 		title = fmt.Sprintf(" %sFolder: %s/ ", m.glyphs.FolderOpen, n.Path)
 	}
 	title = ansi.Truncate(title, max(1, width-4), "…")
-	b.WriteString(titleStyle.Render(title))
+	b.WriteString(m.styles.title.Render(title))
 
 	if n == nil {
 		b.WriteString("\n")
-		b.WriteString(hintStyle.Render("No file selected"))
+		b.WriteString(m.styles.hint.Render("No file selected"))
 		return boxStyle.Render(b.String())
 	}
 
@@ -110,7 +110,7 @@ func (m model) renderPreviewBox(width, height int) string {
 		}
 		for i := 0; i < len(lines) && i < innerRows; i++ {
 			b.WriteString("\n")
-			b.WriteString(hintStyle.Render(ansi.Truncate(lines[i], innerWidth, "…")))
+			b.WriteString(m.styles.hint.Render(ansi.Truncate(lines[i], innerWidth, "…")))
 		}
 	} else {
 		content := n.Preview()
@@ -118,9 +118,9 @@ func (m model) renderPreviewBox(width, height int) string {
 			// Structure-only node whose content has not streamed in yet.
 			b.WriteString("\n")
 			if m.stream.active() && !m.scanDone {
-				b.WriteString(hintStyle.Render("Scanning… content not loaded yet"))
+				b.WriteString(m.styles.hint.Render("Scanning… content not loaded yet"))
 			} else {
-				b.WriteString(hintStyle.Render("No content available"))
+				b.WriteString(m.styles.hint.Render("No content available"))
 			}
 			return boxStyle.Render(b.String())
 		}
@@ -166,17 +166,17 @@ func (m model) renderPreviewBox(width, height int) string {
 			}
 
 			b.WriteString("\n")
-			b.WriteString(dimStyle.Render(prefix))
+			b.WriteString(m.styles.dim.Render(prefix))
 			b.WriteString(lineText)
 			if barWidth > 0 {
 				b.WriteString(strings.Repeat(" ", max(0, maxLen-renderedWidth)))
-				b.WriteString(scrollbarStyle.Render(bar))
+				b.WriteString(m.styles.scrollbar.Render(bar))
 			}
 		}
 
 		if n.SecretCount > 0 {
 			b.WriteString("\n")
-			b.WriteString(warningStyle.Render(fmt.Sprintf("%sWarning: %d secret(s) detected in this file",
+			b.WriteString(m.styles.warning.Render(fmt.Sprintf("%sWarning: %d secret(s) detected in this file",
 				m.glyphs.Warning, n.SecretCount)))
 		}
 	}

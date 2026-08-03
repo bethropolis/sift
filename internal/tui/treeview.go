@@ -21,9 +21,9 @@ func (m *model) clampOffset() {
 }
 
 func (m model) renderTreeBox(width, height int) string {
-	borderColor := lipgloss.Color("62")
+	borderColor := m.styles.border
 	if m.focus == FocusTree {
-		borderColor = lipgloss.Color("12") // Active bright blue border
+		borderColor = m.styles.accent // Active border follows the theme accent
 	}
 	boxStyle := lipgloss.NewStyle().
 		Width(max(1, width-2)).
@@ -43,7 +43,7 @@ func (m model) renderTreeBox(width, height int) string {
 			m.glyphs.FolderOpen, m.root.FileCount(), m.root.TotalActiveTokens())
 	}
 	title = ansi.Truncate(title, max(1, width-4), "…")
-	b.WriteString(titleStyle.Render(title))
+	b.WriteString(m.styles.title.Render(title))
 
 	innerRows := max(1, height-3)
 	end := min(len(m.rows), m.offset+innerRows)
@@ -86,22 +86,22 @@ func (m model) treeRow(n *TreeNode, width int) string {
 
 	secret := ""
 	if n.SecretCount > 0 {
-		secret = " " + warningStyle.Render(m.glyphs.Warning)
+		secret = " " + m.styles.warning.Render(m.glyphs.Warning)
 	}
 
 	modeStr := ""
 	if n.Kind == KindFile {
 		switch n.Mode {
 		case ModeFull:
-			modeStr = " " + modeFullStyle.Render(m.glyphs.ModeFull)
+			modeStr = " " + m.styles.modeFull.Render(m.glyphs.ModeFull)
 		case ModeSignatures:
-			modeStr = " " + modeSigStyle.Render(m.glyphs.ModeSigns)
+			modeStr = " " + m.styles.modeSig.Render(m.glyphs.ModeSigns)
 		case ModeSkip:
-			modeStr = " " + modeSkipStyle.Render(m.glyphs.ModeSkip)
+			modeStr = " " + m.styles.modeSkip.Render(m.glyphs.ModeSkip)
 		}
 	}
 
-	treeGuide := treeGuideStyle.Render(prefix)
+	treeGuide := m.styles.treeGuide.Render(prefix)
 	left := fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
 	right := fmt.Sprintf("%6d tok", tokens)
 	if n.Kind == KindFile && n.TokensFull == 0 && n.ApproxTokens > 0 {
@@ -130,10 +130,10 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	}
 
 	if n == m.node() {
-		return cursorStyle.Render(row)
+		return m.styles.cursor.Render(row)
 	}
 	if n.SelectState != Unselected {
-		return selectedStyle.Render(row)
+		return m.styles.selected.Render(row)
 	}
 	return row
 }
