@@ -80,17 +80,25 @@ func applySelection(application *app.App, files []format.FileEntry, selected []t
 // copySelection renders the current selection to the system clipboard without
 // touching the picker's output destination.
 func (s *service) copySelection(files []format.FileEntry, selected []tui.Selection) error {
+	return s.copySelectionWithPrompt(files, selected, s.cfg.Prompt)
+}
+
+func (s *service) copySelectionWithPrompt(files []format.FileEntry, selected []tui.Selection, prompt string) error {
 	chosen := applySelection(s.env.App, files, selected)
 	if len(chosen) == 0 {
 		return fmt.Errorf("nothing selected")
 	}
-	return s.env.App.RenderToClipboard(chosen)
+	return s.env.App.RenderToClipboardWithPrompt(chosen, prompt)
 }
 
 // generateSelection renders the current selection to the output document
 // without leaving the picker (pressing g). The output file is truncated first
 // so repeated generates replace the previous dump instead of appending to it.
 func (s *service) generateSelection(files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection) error {
+	return s.generateSelectionWithPrompt(files, skipped, start, selected, s.cfg.Prompt)
+}
+
+func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection, prompt string) error {
 	chosen := applySelection(s.env.App, files, selected)
 	if len(chosen) == 0 {
 		return fmt.Errorf("nothing selected")
@@ -103,7 +111,7 @@ func (s *service) generateSelection(files []format.FileEntry, skipped []walker.S
 			return err
 		}
 	}
-	if err := s.env.App.RenderFinal(chosen, skipped, time.Since(start), nil); err != nil {
+	if err := s.env.App.RenderFinalWithPrompt(chosen, skipped, time.Since(start), nil, prompt); err != nil {
 		return err
 	}
 	// Update the baseline so a later delta dump knows what was just rendered.

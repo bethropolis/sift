@@ -56,22 +56,32 @@ type model struct {
 	highlight   highlight.Options
 	windowTitle string
 	styles      uiStyles
+	prompt      string
 
-	onCopy func([]Selection) error
-	notice string
+	onCopy       func([]Selection) error
+	onCopyPrompt func([]Selection, string) error
+	notice       string
 	// noticeID stamps each notice so only its own timer clears it.
 	noticeID int
 
 	// Help modal state.
-	helpOpen   bool
-	helpOffset int
-	onGenerate func([]Selection) error
+	helpOpen         bool
+	helpOffset       int
+	onGenerate       func([]Selection) error
+	onGeneratePrompt func([]Selection, string) error
 
 	// Theme modal state.
-	themeOpen   bool
-	themeCursor int
-	themeOffset int
-	themeIndex  int
+	themeOpen     bool
+	themeCursor   int
+	themeOffset   int
+	themeIndex    int
+	onThemeChange func(string) error
+
+	// Prompt/directive modal state.
+	promptOpen   bool
+	promptCursor int
+	promptInput  string
+	promptCustom bool
 
 	// Delta modal state.
 	delta         *DeltaInfo
@@ -107,14 +117,21 @@ type Options struct {
 	UseNerd           bool
 	Highlight         bool
 	Theme             string
+	UITheme           string
 	HighlightMaxBytes int
 	WindowTitle       string
+	OnThemeChange     func(string) error
+	Prompt            string
 	OnCopy            func([]Selection) error
+	OnCopyPrompt      func([]Selection, string) error
 
 	// OnGenerate renders the current selection without exiting the picker
 	// (pressing g). It mirrors OnCopy but writes the document instead of the
 	// clipboard.
 	OnGenerate func([]Selection) error
+	// OnGeneratePrompt is the prompt-aware variant used by the TUI directive
+	// builder. When nil, OnGenerate is used for backward compatibility.
+	OnGeneratePrompt func([]Selection, string) error
 
 	// Delta is the git delta state shown in the delta modal (pressing d).
 	// When nil the modal shows "not available" messaging. OnDelta is invoked
@@ -131,22 +148,28 @@ func newModel(root *TreeNode, opts Options) model {
 	nodeIndex := make(map[string]*TreeNode, 256)
 	indexTree(root, nodeIndex)
 	m := model{
-		root:        root,
-		height:      24,
-		width:       80,
-		budget:      opts.Budget,
-		style:       opts.Style,
-		glyphs:      glyphs,
-		highlight:   highlight.Options{Enabled: opts.Highlight, Theme: highlight.Theme(opts.Theme), MaxBytes: opts.HighlightMaxBytes},
-		windowTitle: sanitizeWindowTitle(opts.WindowTitle),
-		styles:      defaultStyles(),
-		themeIndex:  defaultThemeIndex(),
-		onCopy:      opts.OnCopy,
-		onGenerate:  opts.OnGenerate,
-		delta:       opts.Delta,
-		onDelta:     opts.OnDelta,
-		nodeIndex:   nodeIndex,
+		root:             root,
+		height:           24,
+		width:            80,
+		budget:           opts.Budget,
+		style:            opts.Style,
+		glyphs:           glyphs,
+		highlight:        highlight.Options{Enabled: opts.Highlight, Theme: highlight.Theme(opts.Theme), MaxBytes: opts.HighlightMaxBytes},
+		windowTitle:      sanitizeWindowTitle(opts.WindowTitle),
+		styles:           defaultStyles(),
+		themeIndex:       themeIndex(opts.UITheme),
+		themeCursor:      themeIndex(opts.UITheme),
+		onThemeChange:    opts.OnThemeChange,
+		prompt:           opts.Prompt,
+		onCopy:           opts.OnCopy,
+		onCopyPrompt:     opts.OnCopyPrompt,
+		onGenerate:       opts.OnGenerate,
+		onGeneratePrompt: opts.OnGeneratePrompt,
+		delta:            opts.Delta,
+		onDelta:          opts.OnDelta,
+		nodeIndex:        nodeIndex,
 	}
+	m.applyTheme(ThemePresets[m.themeIndex])
 	m.recomputeRows()
 	return m
 }
@@ -342,6 +365,9 @@ func (m model) View() string {
 	}
 	if m.themeOpen {
 		view = m.renderThemeModal(view, width, height)
+	}
+	if m.promptOpen {
+		view = m.renderPromptModal(view, width, height)
 	}
 	return clampViewHeight(view, width, height)
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
+	"github.com/bethropolis/sift/internal/state"
 	"github.com/bethropolis/sift/internal/tui"
 	"github.com/bethropolis/sift/internal/walker"
 )
@@ -126,13 +127,25 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		UseNerd:           !s.cfg.NoNerdFonts,
 		Highlight:         s.cfg.Highlight && !s.cfg.NoHighlight && !s.cfg.NoColor,
 		Theme:             s.cfg.Theme,
+		UITheme:           s.cfg.UITheme,
 		HighlightMaxBytes: s.cfg.HighlightMaxBytes,
 		WindowTitle:       pickerWindowTitle(s.cfg),
+		Prompt:            s.cfg.Prompt,
+		OnThemeChange: func(name string) error {
+			s.cfg.UITheme = name
+			return state.SavePreferences(state.Preferences{UITheme: name})
+		},
 		OnCopy: func(sel []tui.Selection) error {
 			return s.copySelection(snapshotFiles(), sel)
 		},
+		OnCopyPrompt: func(sel []tui.Selection, prompt string) error {
+			return s.copySelectionWithPrompt(snapshotFiles(), sel, prompt)
+		},
 		OnGenerate: func(sel []tui.Selection) error {
 			return s.generateSelection(snapshotFiles(), snapshotSkipped(), start, sel)
+		},
+		OnGeneratePrompt: func(sel []tui.Selection, prompt string) error {
+			return s.generateSelectionWithPrompt(snapshotFiles(), snapshotSkipped(), start, sel, prompt)
 		},
 		Delta: s.buildDeltaInfo(deltaFiles),
 		OnDelta: func(sel tui.DeltaSelection) error {

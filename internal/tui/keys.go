@@ -28,6 +28,9 @@ func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.promptOpen {
+		return m, nil
+	}
 	// While a modal or filter is open, ignore pointer input entirely.
 	if m.deltaOpen || m.filtering {
 		return m, nil
@@ -106,6 +109,11 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.themeOpen = false
 			m.themeIndex = m.themeCursor
 			m.applyTheme(ThemePresets[m.themeCursor])
+			if m.onThemeChange != nil {
+				if err := m.onThemeChange(ThemePresets[m.themeCursor].Name); err != nil {
+					m.setNotice(fmt.Sprintf("theme not saved: %v", err))
+				}
+			}
 		case tea.KeyEsc, tea.KeyCtrlC, tea.KeyCtrlQ:
 			m.themeOpen = false
 		case tea.KeyRunes:
@@ -118,6 +126,9 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	}
+	if m.promptOpen {
+		return m.updatePromptKey(msg)
 	}
 
 	if m.filtering {
@@ -268,6 +279,8 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.themeCursor = m.themeIndex
 				m.themeOffset = 0
 			}
+		case "p":
+			m.openPrompt()
 		case ".":
 			m.showHidden = !m.showHidden
 			m.recomputeRows()
@@ -299,6 +312,79 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) helpPageSize() int {
 	return max(1, max(8, m.height-2)-5)
+}
+
+func (m model) updatePromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	commitAndClose := func() (tea.Model, tea.Cmd) {
+		m.commitPrompt()
+		m.promptOpen = false
+		return m, nil
+	}
+	switch msg.Type {
+	case tea.KeyUp:
+		if !m.promptCustom {
+			m.promptMove(-1)
+		}
+	case tea.KeyDown:
+		if !m.promptCustom {
+			m.promptMove(1)
+		}
+	case tea.KeyTab:
+		m.promptCustom = !m.promptCustom
+		if m.promptCustom {
+			m.promptInput = m.prompt
+		}
+	case tea.KeyBackspace, tea.KeyDelete:
+		if m.promptCustom && len(m.promptInput) > 0 {
+			m.promptInput = m.promptInput[:len(m.promptInput)-1]
+		}
+	case tea.KeyEnter:
+		return commitAndClose()
+	case tea.KeyEsc, tea.KeyCtrlC, tea.KeyCtrlQ:
+		m.promptOpen = false
+	case tea.KeyRunes:
+		r := string(msg.Runes)
+		switch r {
+		case "j":
+			if !m.promptCustom {
+				m.promptMove(1)
+			} else {
+				m.promptInput += r
+			}
+		case "k":
+			if !m.promptCustom {
+				m.promptMove(-1)
+			} else {
+				m.promptInput += r
+			}
+		case "c":
+			if m.promptCustom {
+				m.promptInput += r
+			} else {
+				m.promptCustom = true
+				m.promptInput = m.prompt
+			}
+		case "g":
+			m.commitPrompt()
+			m.promptOpen = false
+			return m, m.generate()
+		case "y":
+			m.commitPrompt()
+			m.promptOpen = false
+			return m, m.copy()
+		case "q", "p":
+			if m.promptCustom {
+				m.promptInput += r
+			} else {
+				m.promptOpen = false
+			}
+		default:
+			if m.promptCustom {
+				m.promptInput += r
+			}
+		}
+	}
+	return m, nil
 }
 
 func (m *model) move(delta int) {
@@ -351,14 +437,20 @@ func (m *model) smartSelect() {
 }
 
 func (m *model) copy() tea.Cmd {
-	if m.onCopy == nil {
+	if m.onCopy == nil && m.onCopyPrompt == nil {
 		return nil
 	}
 	sel := m.root.Selections()
 	if len(sel) == 0 {
 		return m.setNotice("Nothing selected to copy")
 	}
-	if err := m.onCopy(sel); err != nil {
+	var err error
+	if m.onCopyPrompt != nil {
+		err = m.onCopyPrompt(sel, m.prompt)
+	} else {
+		err = m.onCopy(sel)
+	}
+	if err != nil {
 		return m.setNotice("Copy failed: " + err.Error())
 	}
 	return m.setNotice(fmt.Sprintf("Copied %d files (%d tokens) to clipboard", len(sel), m.root.TotalActiveTokens()))
@@ -367,14 +459,20 @@ func (m *model) copy() tea.Cmd {
 // generate renders the current selection to the output document without
 // leaving the picker, so the user can keep tweaking the selection.
 func (m *model) generate() tea.Cmd {
-	if m.onGenerate == nil {
+	if m.onGenerate == nil && m.onGeneratePrompt == nil {
 		return nil
 	}
 	sel := m.root.Selections()
 	if len(sel) == 0 {
 		return m.setNotice("Nothing selected to generate")
 	}
-	if err := m.onGenerate(sel); err != nil {
+	var err error
+	if m.onGeneratePrompt != nil {
+		err = m.onGeneratePrompt(sel, m.prompt)
+	} else {
+		err = m.onGenerate(sel)
+	}
+	if err != nil {
 		return m.setNotice("Generate failed: " + err.Error())
 	}
 	return m.setNotice(fmt.Sprintf("Generated output (%d files, %d tokens)", len(sel), m.root.TotalActiveTokens()))

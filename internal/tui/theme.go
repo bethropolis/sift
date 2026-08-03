@@ -74,6 +74,19 @@ func defaultThemeIndex() int {
 	return 0
 }
 
+// themeIndex resolves a persisted theme name while tolerating a missing or
+// stale preference after themes are renamed or removed.
+func themeIndex(name string) int {
+	if name != "" {
+		for i, p := range ThemePresets {
+			if p.Name == name {
+				return i
+			}
+		}
+	}
+	return defaultThemeIndex()
+}
+
 // applyTheme rebuilds the model's own styles from the preset. Because the
 // styles live on the model, two pickers never share theme state and applying
 // a theme cannot race another render.

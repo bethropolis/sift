@@ -17,14 +17,17 @@ type Config struct {
 	RootDir string
 
 	// Logging settings
-	Verbose           bool
-	Quiet             bool
-	LogLevel          string
-	NoColor           bool
-	UseColors         bool
-	Highlight         bool
-	NoHighlight       bool
-	Theme             string
+	Verbose     bool
+	Quiet       bool
+	LogLevel    string
+	NoColor     bool
+	UseColors   bool
+	Highlight   bool
+	NoHighlight bool
+	Theme       string
+	// UITheme is the persisted interactive picker palette. It is separate
+	// from Theme, which controls syntax highlighting.
+	UITheme           string
 	HighlightMaxBytes int
 	WindowTitle       string
 	NoWindowTitle     bool

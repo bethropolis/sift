@@ -83,6 +83,34 @@ func TestThemeSelectAppliesPreset(t *testing.T) {
 	}
 }
 
+func TestPersistedThemeInitializesModel(t *testing.T) {
+	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{UITheme: ThemePresets[1].Name})
+	if m.themeIndex != 1 || m.themeCursor != 1 {
+		t.Fatalf("theme indexes = (%d, %d), want (1, 1)", m.themeIndex, m.themeCursor)
+	}
+	if m.styles.border != ThemePresets[1].Border {
+		t.Errorf("initial border = %q, want %q", m.styles.border, ThemePresets[1].Border)
+	}
+}
+
+func TestThemeSelectionNotifiesPersistenceCallback(t *testing.T) {
+	var got string
+	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{
+		OnThemeChange: func(name string) error {
+			got = name
+			return nil
+		},
+	})
+	m = updateKey(m, tea.KeyRunes, 't')
+	for i := 1; i < len(ThemePresets)-1; i++ {
+		m = updateKey(m, tea.KeyUp)
+	}
+	m = updateKey(m, tea.KeyEnter)
+	if got != ThemePresets[1].Name {
+		t.Fatalf("persisted theme = %q, want %q", got, ThemePresets[1].Name)
+	}
+}
+
 func TestThemeApplyIsInstanceLocal(t *testing.T) {
 	// Two models start from the same preset list; applying a theme to one must
 	// not leak into the other's styles.

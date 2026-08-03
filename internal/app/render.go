@@ -27,13 +27,25 @@ func (a *App) Render(files []format.FileEntry, skippedItems []walker.SkippedItem
 // budget. It is used by the interactive picker, whose TUI owns budget
 // accounting (including smart auto-selection); nothing is dropped afterwards.
 func (a *App) RenderFinal(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) error {
-	return a.render(files, skippedItems, duration, runErr, false)
+	return a.RenderFinalWithPrompt(files, skippedItems, duration, runErr, a.cfg.Prompt)
+}
+
+// RenderFinalWithPrompt renders picker output with a session-specific
+// directive without mutating application configuration.
+func (a *App) RenderFinalWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, prompt string) error {
+	return a.renderWithPrompt(files, skippedItems, duration, runErr, false, prompt)
 }
 
 // RenderToClipboard renders the given files and copies the result to the
 // system clipboard, without writing to the configured output destination. It
 // backs the picker's live copy action.
 func (a *App) RenderToClipboard(files []format.FileEntry) error {
+	return a.RenderToClipboardWithPrompt(files, a.cfg.Prompt)
+}
+
+// RenderToClipboardWithPrompt renders clipboard output with a session-specific
+// directive without mutating application configuration.
+func (a *App) RenderToClipboardWithPrompt(files []format.FileEntry, prompt string) error {
 	renderer, err := format.NewRenderer(format.ParseStyle(a.cfg.EffectiveStyle()), a.cfg.UseColors)
 	if err != nil {
 		return err
@@ -55,7 +67,7 @@ func (a *App) RenderToClipboard(files []format.FileEntry) error {
 		DirectoryTree: format.BuildTree(paths),
 		Files:         files,
 		TotalTokens:   total,
-		Instructions:  a.cfg.Prompt,
+		Instructions:  prompt,
 	}
 
 	var buf bytes.Buffer
@@ -66,6 +78,10 @@ func (a *App) RenderToClipboard(files []format.FileEntry) error {
 }
 
 func (a *App) render(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool) error {
+	return a.renderWithPrompt(files, skippedItems, duration, runErr, applyBudget, a.cfg.Prompt)
+}
+
+func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool, prompt string) error {
 	// --- Create the renderer ---
 	renderer, err := format.NewRendererWithOptions(format.ParseStyle(a.cfg.EffectiveStyle()), format.RenderOptions{
 		UseColors: a.cfg.UseColors,
@@ -111,7 +127,7 @@ func (a *App) render(files []format.FileEntry, skippedItems []walker.SkippedItem
 		DirectoryTree: format.BuildTree(paths),
 		Files:         files,
 		TotalTokens:   int(tokenTotal),
-		Instructions:  a.cfg.Prompt,
+		Instructions:  prompt,
 	}
 
 	// --- Render output ---

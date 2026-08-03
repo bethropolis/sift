@@ -22,6 +22,7 @@ func helpContentLines() []string {
 		"  d                    Incremental Delta Dump Modal",
 		"  a                    Select All / Deselect All",
 		"  t                    Color theme selector",
+		"  p                    Prompt / task directive builder",
 		"",
 		"Generation & Actions:",
 		"  g                    Generate output document (stays in TUI)",

@@ -11,6 +11,7 @@ import (
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/picker"
+	"github.com/bethropolis/sift/internal/state"
 )
 
 func init() {
@@ -39,6 +40,11 @@ func runPick(cmd *cobra.Command, args []string) error {
 	}
 	if err := applyProfile(cmd); err != nil {
 		return err
+	}
+	if prefs, err := state.LoadPreferences(); err == nil {
+		if cfg.UITheme == "" {
+			cfg.UITheme = prefs.UITheme
+		}
 	}
 
 	// The smart filter is always active in the picker so generated, lockfile,
