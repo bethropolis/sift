@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/bethropolis/sift/internal/highlight"
 )
 
 // Style identifies a supported output format.
@@ -53,9 +55,21 @@ type Renderer interface {
 
 // NewRenderer returns a Renderer for the given style.
 func NewRenderer(style Style, useColors bool) (Renderer, error) {
+	return NewRendererWithOptions(style, RenderOptions{UseColors: useColors})
+}
+
+// RenderOptions controls terminal-only presentation features.
+type RenderOptions struct {
+	UseColors bool
+	Highlight highlight.Options
+}
+
+// NewRendererWithOptions creates a renderer with explicit terminal display
+// options. Non-terminal renderers ignore highlighting options.
+func NewRendererWithOptions(style Style, options RenderOptions) (Renderer, error) {
 	switch style {
 	case StylePlain:
-		return &plainRenderer{useColors: useColors}, nil
+		return &plainRenderer{useColors: options.UseColors, highlight: options.Highlight}, nil
 	case StyleMarkdown:
 		return &markdownRenderer{}, nil
 	case StyleJSON:

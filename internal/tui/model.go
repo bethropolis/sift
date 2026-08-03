@@ -3,6 +3,7 @@ package tui
 import (
 	"time"
 
+	"github.com/bethropolis/sift/internal/highlight"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -45,9 +46,10 @@ type model struct {
 	filter    string
 	filtering bool
 
-	budget int
-	style  string
-	glyphs Glyphs
+	budget    int
+	style     string
+	glyphs    Glyphs
+	highlight highlight.Options
 
 	onCopy func([]Selection) error
 	notice string
@@ -87,10 +89,13 @@ type model struct {
 
 // Options configures the picker.
 type Options struct {
-	Budget  int
-	Style   string
-	UseNerd bool
-	OnCopy  func([]Selection) error
+	Budget            int
+	Style             string
+	UseNerd           bool
+	Highlight         bool
+	Theme             string
+	HighlightMaxBytes int
+	OnCopy            func([]Selection) error
 
 	// OnGenerate renders the current selection without exiting the picker
 	// (pressing g). It mirrors OnCopy but writes the document instead of the
@@ -118,6 +123,7 @@ func newModel(root *TreeNode, opts Options) model {
 		budget:     opts.Budget,
 		style:      opts.Style,
 		glyphs:     glyphs,
+		highlight:  highlight.Options{Enabled: opts.Highlight, Theme: highlight.Theme(opts.Theme), MaxBytes: opts.HighlightMaxBytes},
 		onCopy:     opts.OnCopy,
 		onGenerate: opts.OnGenerate,
 		delta:      opts.Delta,

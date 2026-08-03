@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/bethropolis/sift/internal/highlight"
 )
 
 func render(t *testing.T, style Style, doc *Document, useColors bool) string {
@@ -63,6 +65,40 @@ func TestRenderPlainColor(t *testing.T) {
 	got := render(t, StylePlain, doc, true)
 	if !strings.Contains(got, "\033[1;36m") {
 		t.Errorf("plain colored output missing ANSI code: %q", got)
+	}
+}
+
+func TestRenderPlainHighlight(t *testing.T) {
+	r, err := NewRendererWithOptions(StylePlain, RenderOptions{
+		UseColors: true,
+		Highlight: highlight.Options{Enabled: true, Theme: highlight.ThemeAuto},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := r.Render(&Document{Files: []FileEntry{{Path: "main.go", Content: []byte("func main() {}")}}}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "\033[1;34mfunc\033[0m") {
+		t.Errorf("highlighted plain output missing keyword style: %q", buf.String())
+	}
+}
+
+func TestNonPlainRenderersIgnoreHighlight(t *testing.T) {
+	r, err := NewRendererWithOptions(StyleMarkdown, RenderOptions{
+		UseColors: true,
+		Highlight: highlight.Options{Enabled: true, Theme: highlight.ThemeAuto},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := r.Render(&Document{Files: []FileEntry{{Path: "main.go", Content: []byte("func main() {}")}}}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "\033[") {
+		t.Errorf("markdown output contains ANSI escapes: %q", buf.String())
 	}
 }
 

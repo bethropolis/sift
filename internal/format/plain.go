@@ -3,10 +3,13 @@ package format
 import (
 	"fmt"
 	"io"
+
+	"github.com/bethropolis/sift/internal/highlight"
 )
 
 type plainRenderer struct {
 	useColors bool
+	highlight highlight.Options
 }
 
 // Render writes each file's path followed by its content.
@@ -26,7 +29,11 @@ func (r *plainRenderer) Render(doc *Document, w io.Writer) error {
 		} else {
 			fmt.Fprintf(w, "%s\n", f.Path)
 		}
-		fmt.Fprintf(w, "%s\n\n", f.Content)
+		content := string(f.Content)
+		if r.highlight.Enabled {
+			content = highlight.Render(f.Path, f.Content, r.highlight)
+		}
+		fmt.Fprintf(w, "%s\n\n", content)
 	}
 	return nil
 }

@@ -17,13 +17,17 @@ type Config struct {
 	RootDir string
 
 	// Logging settings
-	Verbose     bool
-	Quiet       bool
-	LogLevel    string
-	NoColor     bool
-	UseColors   bool
-	OutputFile  string
-	ShowSkipped bool
+	Verbose           bool
+	Quiet             bool
+	LogLevel          string
+	NoColor           bool
+	UseColors         bool
+	Highlight         bool
+	NoHighlight       bool
+	Theme             string
+	HighlightMaxBytes int
+	OutputFile        string
+	ShowSkipped       bool
 
 	// Processing settings
 	Concurrent    bool
@@ -72,15 +76,18 @@ type Config struct {
 // New returns a Config populated with built-in defaults.
 func New() *Config {
 	return &Config{
-		Version:        "1.0.4",
-		IgnoreHidden:   true,
-		IgnoreGit:      true,
-		SecretScan:     true,
-		Style:          "markdown",
-		OutputFile:     "codebase.md",
-		Concurrent:     true,
-		MaxWorkers:     runtime.NumCPU(),
-		SmartMaxTokens: smart.DefaultMaxTokens,
+		Version:           "1.0.4",
+		IgnoreHidden:      true,
+		IgnoreGit:         true,
+		SecretScan:        true,
+		Style:             "markdown",
+		OutputFile:        "codebase.md",
+		Concurrent:        true,
+		MaxWorkers:        runtime.NumCPU(),
+		SmartMaxTokens:    smart.DefaultMaxTokens,
+		Highlight:         true,
+		Theme:             "auto",
+		HighlightMaxBytes: 256 * 1024,
 	}
 }
 
@@ -101,7 +108,8 @@ func (c *Config) EffectiveStyle() string {
 
 // ResolveColors determines whether colored output should be used.
 func (c *Config) ResolveColors() {
-	c.UseColors = !c.NoColor && isatty.IsTerminal(os.Stderr.Fd()) && c.OutputFile == ""
+	terminalOutput := c.OutputFile == "" || c.OutputFile == "-"
+	c.UseColors = !c.NoColor && terminalOutput && isatty.IsTerminal(os.Stdout.Fd())
 }
 
 // RegisterFlags binds every config option to fs, using the current field
@@ -122,6 +130,10 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.BoolVar(&c.SmartFilter, "smart", c.SmartFilter, "Skip generated, lockfile, minified, and oversized files")
 	fs.IntVar(&c.SmartMaxTokens, "smart-max-tokens", c.SmartMaxTokens, "Per-file token ceiling for the smart filter (default: 15000)")
 	fs.BoolVar(&c.NoColor, "no-color", c.NoColor, "Disable color output")
+	fs.BoolVar(&c.Highlight, "highlight", c.Highlight, "Enable syntax highlighting for terminal output")
+	fs.BoolVar(&c.NoHighlight, "no-highlight", c.NoHighlight, "Disable syntax highlighting")
+	fs.StringVar(&c.Theme, "theme", c.Theme, "Terminal color theme: auto, none, dark, light")
+	fs.IntVar(&c.HighlightMaxBytes, "highlight-max-bytes", c.HighlightMaxBytes, "Maximum file bytes to syntax-highlight")
 	fs.StringVar(&c.OutputFile, "output", c.OutputFile, "Output file (default \"codebase.md\", use \"-\" for stdout)")
 	fs.BoolVar(&c.ShowProgress, "progress", c.ShowProgress, "Show progress information")
 	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, "Maximum execution time (e.g., '30s', '5m')")

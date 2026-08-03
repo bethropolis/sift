@@ -9,6 +9,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/highlight"
 	"github.com/bethropolis/sift/internal/secrets"
 	"github.com/bethropolis/sift/internal/summary"
 	"github.com/bethropolis/sift/internal/tokenize"
@@ -66,7 +67,13 @@ func (a *App) RenderToClipboard(files []format.FileEntry) error {
 
 func (a *App) render(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool) error {
 	// --- Create the renderer ---
-	renderer, err := format.NewRenderer(format.ParseStyle(a.cfg.EffectiveStyle()), a.cfg.UseColors)
+	renderer, err := format.NewRendererWithOptions(format.ParseStyle(a.cfg.EffectiveStyle()), format.RenderOptions{
+		UseColors: a.cfg.UseColors,
+		Highlight: highlight.Options{
+			Enabled: a.cfg.Highlight && !a.cfg.NoHighlight && a.cfg.UseColors,
+			Theme:   highlight.Theme(a.cfg.Theme), MaxBytes: a.cfg.HighlightMaxBytes,
+		},
+	})
 	if err != nil {
 		return err
 	}

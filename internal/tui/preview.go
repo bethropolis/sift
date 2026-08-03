@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bethropolis/sift/internal/highlight"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -156,6 +157,7 @@ func (m model) renderPreviewBox(width, height int) string {
 			if lipgloss.Width(lineText) > maxLen {
 				lineText = truncateString(lineText, maxLen)
 			}
+			lineText = highlight.RenderLine(n.Path, lineText, m.highlight)
 
 			b.WriteString("\n")
 			b.WriteString(dimStyle.Render(prefix))

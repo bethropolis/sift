@@ -13,18 +13,22 @@ import (
 // Profile is a named set of configuration overrides loaded from TOML.
 // Pointer fields distinguish "not set" from an explicit value.
 type Profile struct {
-	Style          string   `toml:"style"`
-	TokenizeModel  string   `toml:"tokenize_model"`
-	Budget         int      `toml:"budget"`
-	Mode           string   `toml:"compress_mode"`
-	Prompt         string   `toml:"prompt"`
-	SecretScan     *bool    `toml:"secret_scan"`
-	ForceSecrets   *bool    `toml:"force_secrets"`
-	IgnoreHidden   *bool    `toml:"ignore_hidden"`
-	IgnoreGit      *bool    `toml:"ignore_git"`
-	Extensions     []string `toml:"extensions"`
-	SmartFilter    *bool    `toml:"smart_filter"`
-	SmartMaxTokens int      `toml:"smart_max_tokens"`
+	Style             string   `toml:"style"`
+	TokenizeModel     string   `toml:"tokenize_model"`
+	Budget            int      `toml:"budget"`
+	Mode              string   `toml:"compress_mode"`
+	Prompt            string   `toml:"prompt"`
+	SecretScan        *bool    `toml:"secret_scan"`
+	ForceSecrets      *bool    `toml:"force_secrets"`
+	IgnoreHidden      *bool    `toml:"ignore_hidden"`
+	IgnoreGit         *bool    `toml:"ignore_git"`
+	Extensions        []string `toml:"extensions"`
+	SmartFilter       *bool    `toml:"smart_filter"`
+	SmartMaxTokens    int      `toml:"smart_max_tokens"`
+	Highlight         *bool    `toml:"highlight"`
+	NoHighlight       *bool    `toml:"no_highlight"`
+	Theme             string   `toml:"theme"`
+	HighlightMaxBytes int      `toml:"highlight_max_bytes"`
 }
 
 type profilesFile struct {
@@ -151,6 +155,18 @@ func overlay(dst, src Profile) Profile {
 	if src.SmartMaxTokens != 0 {
 		dst.SmartMaxTokens = src.SmartMaxTokens
 	}
+	if src.Highlight != nil {
+		dst.Highlight = src.Highlight
+	}
+	if src.NoHighlight != nil {
+		dst.NoHighlight = src.NoHighlight
+	}
+	if src.Theme != "" {
+		dst.Theme = src.Theme
+	}
+	if src.HighlightMaxBytes != 0 {
+		dst.HighlightMaxBytes = src.HighlightMaxBytes
+	}
 	return dst
 }
 
@@ -192,5 +208,17 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	}
 	if p.SmartMaxTokens != 0 && !fs.Changed("smart-max-tokens") {
 		c.SmartMaxTokens = p.SmartMaxTokens
+	}
+	if p.Highlight != nil && !fs.Changed("highlight") {
+		c.Highlight = *p.Highlight
+	}
+	if p.NoHighlight != nil && !fs.Changed("no-highlight") {
+		c.NoHighlight = *p.NoHighlight
+	}
+	if p.Theme != "" && !fs.Changed("theme") {
+		c.Theme = p.Theme
+	}
+	if p.HighlightMaxBytes != 0 && !fs.Changed("highlight-max-bytes") {
+		c.HighlightMaxBytes = p.HighlightMaxBytes
 	}
 }

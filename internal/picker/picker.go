@@ -120,9 +120,12 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		totalFiles, totalDirs, stream)
 
 	result, err := tui.RunStreaming(skeletonItems, tui.Options{
-		Budget:  s.cfg.Budget,
-		Style:   s.cfg.EffectiveStyle(),
-		UseNerd: !s.cfg.NoNerdFonts,
+		Budget:            s.cfg.Budget,
+		Style:             s.cfg.EffectiveStyle(),
+		UseNerd:           !s.cfg.NoNerdFonts,
+		Highlight:         s.cfg.Highlight && !s.cfg.NoHighlight && !s.cfg.NoColor,
+		Theme:             s.cfg.Theme,
+		HighlightMaxBytes: s.cfg.HighlightMaxBytes,
 		OnCopy: func(sel []tui.Selection) error {
 			return s.copySelection(snapshotFiles(), sel)
 		},
