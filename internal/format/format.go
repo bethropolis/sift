@@ -36,6 +36,8 @@ type FileEntry struct {
 	TokensSig   int
 	SecretCount int
 	RankScore   float64
+	Hidden      bool
+	GitIgnored  bool
 }
 
 // Document is the complete set of data handed to a Renderer.

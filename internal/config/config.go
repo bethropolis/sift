@@ -26,6 +26,8 @@ type Config struct {
 	NoHighlight       bool
 	Theme             string
 	HighlightMaxBytes int
+	WindowTitle       string
+	NoWindowTitle     bool
 	OutputFile        string
 	ShowSkipped       bool
 
@@ -88,6 +90,7 @@ func New() *Config {
 		Highlight:         true,
 		Theme:             "auto",
 		HighlightMaxBytes: 256 * 1024,
+		WindowTitle:       "",
 	}
 }
 
@@ -134,6 +137,8 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.BoolVar(&c.NoHighlight, "no-highlight", c.NoHighlight, "Disable syntax highlighting")
 	fs.StringVar(&c.Theme, "theme", c.Theme, "Terminal color theme: auto, none, dark, light")
 	fs.IntVar(&c.HighlightMaxBytes, "highlight-max-bytes", c.HighlightMaxBytes, "Maximum file bytes to syntax-highlight")
+	fs.StringVar(&c.WindowTitle, "window-title", c.WindowTitle, "Terminal title for the interactive picker")
+	fs.BoolVar(&c.NoWindowTitle, "no-window-title", c.NoWindowTitle, "Disable interactive terminal title updates")
 	fs.StringVar(&c.OutputFile, "output", c.OutputFile, "Output file (default \"codebase.md\", use \"-\" for stdout)")
 	fs.BoolVar(&c.ShowProgress, "progress", c.ShowProgress, "Show progress information")
 	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, "Maximum execution time (e.g., '30s', '5m')")

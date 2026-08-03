@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func (m *model) clampOffset() {
-	bodyHeight := max(5, m.height-m.footerHeight())
-	innerRows := max(1, bodyHeight-3)
+	innerRows := m.treeViewportRows()
 
 	if m.cursor < m.offset {
 		m.offset = m.cursor
@@ -17,6 +17,7 @@ func (m *model) clampOffset() {
 	if m.cursor >= m.offset+innerRows {
 		m.offset = m.cursor - innerRows + 1
 	}
+	m.clampTreeOffset()
 }
 
 func (m model) renderTreeBox(width, height int) string {
@@ -37,6 +38,7 @@ func (m model) renderTreeBox(width, height int) string {
 		title = fmt.Sprintf(" %sExplorer (%d files, %d tok) ",
 			m.glyphs.FolderOpen, m.root.FileCount(), m.root.TotalActiveTokens())
 	}
+	title = truncateString(title, max(1, width-4))
 	b.WriteString(titleStyle.Render(title))
 
 	innerRows := max(1, height-3)
@@ -119,6 +121,9 @@ func (m model) treeRow(n *TreeNode, width int) string {
 
 	pad := max(0, width-leftWidth-rightWidth)
 	row := left + strings.Repeat(" ", pad) + right
+	if lipgloss.Width(row) > width {
+		row = ansi.Truncate(row, width, "…")
+	}
 
 	if n == m.node() {
 		return cursorStyle.Render(row)

@@ -51,22 +51,31 @@ func (n *TreeNode) depth() int {
 // order. When filter is non-empty only matching nodes and their ancestors are
 // included.
 func (n *TreeNode) VisibleRows(filter string) []*TreeNode {
+	return n.VisibleRowsWithOptions(filter, false, false)
+}
+
+// VisibleRowsWithOptions flattens the tree while applying fuzzy and
+// presentation-visibility filters.
+func (n *TreeNode) VisibleRowsWithOptions(filter string, showHidden, showGitIgnored bool) []*TreeNode {
 	var rows []*TreeNode
 	filter = strings.ToLower(strings.TrimSpace(filter))
 	n.Filtered = filter != "" && !strings.Contains(strings.ToLower(n.Name), filter)
 	if filter != "" {
-		n.walkFiltered(&rows, filter)
+		n.walkFiltered(&rows, filter, showHidden, showGitIgnored)
 	} else {
-		n.walk(&rows)
+		n.walk(&rows, showHidden, showGitIgnored)
 	}
 	return rows
 }
 
-func (n *TreeNode) walk(rows *[]*TreeNode) {
+func (n *TreeNode) walk(rows *[]*TreeNode, showHidden, showGitIgnored bool) {
 	for _, c := range n.Children {
+		if !nodeVisible(c, showHidden, showGitIgnored) {
+			continue
+		}
 		*rows = append(*rows, c)
 		if c.Kind == KindDir && c.Expanded {
-			c.walk(rows)
+			c.walk(rows, showHidden, showGitIgnored)
 		}
 	}
 }
@@ -95,29 +104,45 @@ func (n *TreeNode) CollapseAll() {
 
 // walkFiltered walks with a fuzzy filter: a node is kept when its name matches
 // or any descendant matches. Ancestors of a match are expanded implicitly.
-func (n *TreeNode) walkFiltered(rows *[]*TreeNode, filter string) {
+func (n *TreeNode) walkFiltered(rows *[]*TreeNode, filter string, showHidden, showGitIgnored bool) {
 	for _, c := range n.Children {
+		if !nodeVisible(c, showHidden, showGitIgnored) {
+			continue
+		}
 		match := strings.Contains(strings.ToLower(c.Name), filter)
 		c.Filtered = !match
-		hasMatching := match || c.anyMatching(filter)
+		hasMatching := match || c.anyMatching(filter, showHidden, showGitIgnored)
 		if hasMatching {
 			*rows = append(*rows, c)
 		}
 		if c.Kind == KindDir && (c.Expanded || hasMatching) {
-			c.walkFiltered(rows, filter)
+			c.walkFiltered(rows, filter, showHidden, showGitIgnored)
 		}
 	}
 }
 
 // anyMatching reports whether any descendant name matches the filter.
-func (n *TreeNode) anyMatching(filter string) bool {
+func (n *TreeNode) anyMatching(filter string, showHidden, showGitIgnored bool) bool {
+	if !nodeVisible(n, showHidden, showGitIgnored) {
+		return false
+	}
 	if strings.Contains(strings.ToLower(n.Name), filter) {
 		return true
 	}
 	for _, c := range n.Children {
-		if c.anyMatching(filter) {
+		if c.anyMatching(filter, showHidden, showGitIgnored) {
 			return true
 		}
 	}
 	return false
+}
+
+func nodeVisible(n *TreeNode, showHidden, showGitIgnored bool) bool {
+	if n.Hidden && !showHidden {
+		return false
+	}
+	if n.GitIgnored && !showGitIgnored {
+		return false
+	}
+	return true
 }

@@ -41,6 +41,38 @@ func TestHelpCloseKeys(t *testing.T) {
 	}
 }
 
+func TestHelpScrollsAndClamps(t *testing.T) {
+	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{})
+	m.height = 10
+	m = updateKey(m, tea.KeyRunes, '?')
+	if !m.helpOpen {
+		t.Fatal("help did not open")
+	}
+	for i := 0; i < 20; i++ {
+		m = updateKey(m, tea.KeyDown)
+	}
+	if m.helpOffset == 0 {
+		t.Fatal("help did not scroll down")
+	}
+	maxOffset := max(0, len(helpContentLines())-m.helpPageSize())
+	if m.helpOffset > maxOffset {
+		t.Fatalf("helpOffset = %d, want <= %d", m.helpOffset, maxOffset)
+	}
+	for i := 0; i < 20; i++ {
+		m = updateKey(m, tea.KeyUp)
+	}
+	if m.helpOffset != 0 {
+		t.Fatalf("helpOffset = %d after scrolling up, want 0", m.helpOffset)
+	}
+}
+
+func TestWindowTitleSanitizesControlCharacters(t *testing.T) {
+	got := sanitizeWindowTitle(" sift\x1b]0;bad\a\n ")
+	if strings.ContainsAny(got, "\x1b\n\a") {
+		t.Fatalf("title contains control characters: %q", got)
+	}
+}
+
 func TestEscQuitsInBaseState(t *testing.T) {
 	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{})
 	m = updateKey(m, tea.KeyEsc)

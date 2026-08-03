@@ -291,10 +291,12 @@ func newProcessEntry(
 // FileMeta describes a file without its content, backing the picker's
 // structure-first skeleton so the TUI can open before any reads happen.
 type FileMeta struct {
-	Path    string
-	Size    int64
-	IsDir   bool
-	ModTime time.Time
+	Path       string
+	Size       int64
+	IsDir      bool
+	ModTime    time.Time
+	Hidden     bool
+	GitIgnored bool
 }
 
 // WalkMeta enumerates a directory tree and returns file metadata only: no
@@ -370,11 +372,17 @@ func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]
 			return nil
 		}
 
+		visibility := ignore.Visibility{}
+		if matcher != nil {
+			visibility = matcher.ClassifyVisibility(relativePath, info.IsDir())
+		}
 		metas = append(metas, FileMeta{
-			Path:    filepath.ToSlash(relativePath),
-			Size:    info.Size(),
-			IsDir:   info.IsDir(),
-			ModTime: info.ModTime(),
+			Path:       filepath.ToSlash(relativePath),
+			Size:       info.Size(),
+			IsDir:      info.IsDir(),
+			ModTime:    info.ModTime(),
+			Hidden:     visibility.Hidden,
+			GitIgnored: visibility.GitIgnored,
 		})
 		return nil
 	})

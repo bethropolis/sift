@@ -42,7 +42,11 @@ func RunStreaming(skeleton []Item, opts Options, stream Stream) (Result, error) 
 func runProgram(root *TreeNode, opts Options, stream Stream) (Result, error) {
 	m := newModel(root, opts)
 	m.stream = stream
-	final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	if m.windowTitle != "" {
+		defer program.SetWindowTitle("sift")
+	}
+	final, err := program.Run()
 	if err != nil {
 		return Result{}, err
 	}

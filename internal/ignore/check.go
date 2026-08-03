@@ -5,6 +5,40 @@ import (
 	"strings"
 )
 
+// Visibility describes presentation-relevant ignore metadata. Explicit and
+// custom safety exclusions remain hard filters and are not represented here.
+type Visibility struct {
+	Hidden       bool
+	GitIgnored   bool
+	ProtectedGit bool
+}
+
+// ClassifyVisibility reports hidden and repository-gitignore metadata without
+// applying those matches as filters.
+func (m *IgnoreMatcher) ClassifyVisibility(relativePath string, isDir bool) Visibility {
+	if m == nil || m.disabled {
+		return Visibility{}
+	}
+	path := filepath.ToSlash(relativePath)
+	visibility := Visibility{Hidden: isHiddenPath(path), ProtectedGit: isPathInGitDir(path)}
+	if visibility.ProtectedGit || m.repoIgnore == nil {
+		return visibility
+	}
+	if match := m.repoIgnore.Match(filepath.Join(m.rootDir, relativePath)); match != nil {
+		visibility.GitIgnored = match.Ignore()
+	}
+	return visibility
+}
+
+func isHiddenPath(path string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if part != "" && strings.HasPrefix(part, ".") {
+			return true
+		}
+	}
+	return false
+}
+
 // ShouldIgnore checks if a file or directory should be ignored
 func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 	// Return early if matcher is nil or disabled
@@ -41,7 +75,7 @@ func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 	}
 
 	// Special check for .git directory
-	if m.ignoreGit && isPathInGitDir(relativePath) {
+	if isPathInGitDir(relativePath) {
 		m.logger.Debug("ignore.ShouldIgnore: Ignored %q (.git rule)", relativePath)
 		return true
 	}
@@ -59,7 +93,7 @@ func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 
 	// Delegate to gitignore library for repo rules. A repo match (including a
 	// negation) is definitive and takes precedence over the defaults below.
-	if m.repoIgnore != nil {
+	if m.ignoreGit && m.repoIgnore != nil {
 		m.logger.Debug("ignore.ShouldIgnore: Checking repo rules for path %q", relativePath)
 
 		if match := m.repoIgnore.Match(absPath); match != nil {

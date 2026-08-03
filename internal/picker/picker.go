@@ -59,6 +59,7 @@ type service struct {
 
 func (s *service) run(ctx context.Context) (Result, error) {
 	application := s.env.App
+	application.EnablePickerVisibility()
 	start := time.Now()
 
 	// Structure-first launch: a cheap metadata pass builds the skeleton the
@@ -126,6 +127,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		Highlight:         s.cfg.Highlight && !s.cfg.NoHighlight && !s.cfg.NoColor,
 		Theme:             s.cfg.Theme,
 		HighlightMaxBytes: s.cfg.HighlightMaxBytes,
+		WindowTitle:       pickerWindowTitle(s.cfg),
 		OnCopy: func(sel []tui.Selection) error {
 			return s.copySelection(snapshotFiles(), sel)
 		},
@@ -161,4 +163,18 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		application.LogError("Failed to record dump state: %v", err)
 	}
 	return Result{Selections: selected}, nil
+}
+
+func pickerWindowTitle(cfg *config.Config) string {
+	if cfg.NoWindowTitle {
+		return ""
+	}
+	if cfg.WindowTitle != "" {
+		return cfg.WindowTitle
+	}
+	root := filepath.Base(filepath.Clean(cfg.RootDir))
+	if root == "." || root == string(filepath.Separator) || root == "" {
+		root = "directory"
+	}
+	return "sift — " + root
 }

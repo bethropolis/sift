@@ -6,6 +6,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/highlight"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // syncPreview resets the preview scroll position whenever the selected node
@@ -86,6 +87,7 @@ func (m model) renderPreviewBox(width, height int) string {
 	} else if n != nil && n.Kind == KindDir {
 		title = fmt.Sprintf(" %sFolder: %s/ ", m.glyphs.FolderOpen, n.Path)
 	}
+	title = truncateString(title, max(1, width-4))
 	b.WriteString(titleStyle.Render(title))
 
 	if n == nil {
@@ -106,7 +108,7 @@ func (m model) renderPreviewBox(width, height int) string {
 		}
 		for i := 0; i < len(lines) && i < innerRows; i++ {
 			b.WriteString("\n")
-			b.WriteString(hintStyle.Render(lines[i]))
+			b.WriteString(hintStyle.Render(ansi.Truncate(lines[i], innerWidth, "…")))
 		}
 	} else {
 		content := n.Preview()

@@ -56,6 +56,29 @@ func TestShouldIgnoreHidden(t *testing.T) {
 	}
 }
 
+func TestClassifyVisibility(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		".gitignore": "*.log\n",
+		".env":       "secret",
+		"debug.log":  "debug",
+		"main.go":    "package main",
+	})
+	m, err := New(root, WithHiddenIgnore(false), WithGitIgnore(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.ClassifyVisibility(".env", false); !got.Hidden || got.GitIgnored {
+		t.Errorf(".env visibility = %+v, want hidden only", got)
+	}
+	if got := m.ClassifyVisibility("debug.log", false); !got.GitIgnored || got.Hidden {
+		t.Errorf("debug.log visibility = %+v, want gitignored only", got)
+	}
+	if got := m.ClassifyVisibility(".git/config", false); !got.ProtectedGit {
+		t.Errorf(".git visibility = %+v, want protected", got)
+	}
+}
+
 func TestShouldIgnoreGit(t *testing.T) {
 	root := t.TempDir()
 	writeFiles(t, root, map[string]string{

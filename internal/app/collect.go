@@ -149,7 +149,7 @@ func (a *App) walkAndCollect(mode collectMode, ctx context.Context, emit func(fo
 	var smartMu sync.Mutex
 	var smartSkipped []walker.SkippedItem
 
-	walkFn := a.processWalkEntry(mode, processor, &smartSkipped, &smartMu, emit)
+	walkFn := a.processWalkEntry(mode, processor, &smartSkipped, &smartMu, matcher, emit)
 
 	// --- Start the directory walk ---
 	a.infoLog("Scanning directory: %s", absRootDir)
@@ -195,7 +195,7 @@ func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
 // logs walker-level errors, delegates per-file work to the processor, records
 // smart-filter skips, and emits accepted entries. Only processing succeeds
 // reaches emit.
-func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smartSkipped *[]walker.SkippedItem, smartMu *sync.Mutex, emit func(format.FileEntry) error) walker.WalkFunc {
+func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smartSkipped *[]walker.SkippedItem, smartMu *sync.Mutex, matcher *ignore.IgnoreMatcher, emit func(format.FileEntry) error) walker.WalkFunc {
 	return func(relativePath string, content []byte, err error) error {
 		if err != nil {
 			a.log.Warn("Skipping file '%s' due to error: %v", relativePath, err)
@@ -229,6 +229,11 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 			}
 			a.log.Warn("Processing %s failed: %v", relativePath, err)
 			return nil
+		}
+		if mode == collectPicker && matcher != nil {
+			visibility := matcher.ClassifyVisibility(relativePath, false)
+			entry.Hidden = visibility.Hidden
+			entry.GitIgnored = visibility.GitIgnored
 		}
 		return emit(entry)
 	}
@@ -359,6 +364,10 @@ func (a *App) walkerOptions(absRootDir string, ctx context.Context, mode collect
 		Ctx:           ctx,
 		Quiet:         a.cfg.Quiet,
 		Logger:        a.log,
+	}
+	if mode == collectPicker && a.pickerVisibility {
+		walkerConfig.IgnoreHidden = false
+		walkerConfig.IgnoreGit = false
 	}
 
 	matcher, walkOptions, err := setup.ConfigureWalker(walkerConfig, a.infoLog)

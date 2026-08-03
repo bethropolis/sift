@@ -76,7 +76,9 @@ type TreeNode struct {
 	SigContent []byte
 
 	// Filtered marks whether the node is hidden by the active fuzzy filter.
-	Filtered bool
+	Filtered   bool
+	Hidden     bool
+	GitIgnored bool
 }
 
 // Item is one selectable file with all data the picker needs.
@@ -99,6 +101,8 @@ type Item struct {
 	ApproxTokens int
 	// SecretCount is the number of secrets detected in the file.
 	SecretCount int
+	Hidden      bool
+	GitIgnored  bool
 	// RankScore is the git relevance score.
 	RankScore float64
 	// PreferredMode is the git-history-backed mode preference for this file.
@@ -142,10 +146,18 @@ func BuildTree(items []Item) *TreeNode {
 				}
 				cur.Children = append(cur.Children, child)
 			}
+			if strings.HasPrefix(part, ".") {
+				child.Hidden = true
+			}
+			if it.GitIgnored {
+				child.GitIgnored = true
+			}
 			if isFile {
 				child.TokensFull = it.TokensFull
 				child.TokensSig = it.TokensSig
 				child.SecretCount = it.SecretCount
+				child.Hidden = it.Hidden || child.Hidden
+				child.GitIgnored = it.GitIgnored
 				child.RankScore = it.RankScore
 				child.ApproxTokens = it.ApproxTokens
 				child.Mode = ModeFull

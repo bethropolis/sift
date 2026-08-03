@@ -10,6 +10,15 @@ import (
 // moves the tree cursor on the left or scrolls the preview on the right, and
 // a click switches focus to the clicked pane.
 func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.helpOpen {
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			m.scrollHelp(-3)
+		case tea.MouseWheelDown:
+			m.scrollHelp(3)
+		}
+		return m, nil
+	}
 	// While a modal or filter is open, ignore pointer input entirely.
 	if m.deltaOpen || m.helpOpen || m.filtering {
 		return m, nil
@@ -48,10 +57,26 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if m.helpOpen {
 		switch msg.Type {
+		case tea.KeyUp:
+			m.scrollHelp(-1)
+		case tea.KeyDown:
+			m.scrollHelp(1)
+		case tea.KeyPgUp:
+			m.scrollHelp(-m.helpPageSize())
+		case tea.KeyPgDown:
+			m.scrollHelp(m.helpPageSize())
+		case tea.KeyCtrlU:
+			m.scrollHelp(-m.helpPageSize() / 2)
+		case tea.KeyCtrlD:
+			m.scrollHelp(m.helpPageSize() / 2)
 		case tea.KeyEsc, tea.KeyCtrlC, tea.KeyCtrlQ:
 			m.helpOpen = false
 		case tea.KeyRunes:
-			if r := string(msg.Runes); r == "?" || r == "q" {
+			if r := string(msg.Runes); r == "j" {
+				m.scrollHelp(1)
+			} else if r == "k" {
+				m.scrollHelp(-1)
+			} else if r == "?" || r == "q" {
 				m.helpOpen = false
 			}
 		}
@@ -193,6 +218,12 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.openDelta()
 		case "?":
 			m.helpOpen = !m.helpOpen
+		case ".":
+			m.showHidden = !m.showHidden
+			m.recomputeRows()
+		case "H":
+			m.showGitIgnored = !m.showGitIgnored
+			m.recomputeRows()
 		case "g":
 			return m, m.generate()
 		case "E":
@@ -208,6 +239,10 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	m.clampOffset()
 	return m, nil
+}
+
+func (m model) helpPageSize() int {
+	return max(1, max(8, m.height-2)-5)
 }
 
 func (m *model) move(delta int) {

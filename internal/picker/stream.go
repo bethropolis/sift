@@ -135,6 +135,8 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 			TokensFull:    e.TokensFull,
 			TokensSig:     e.TokensSig,
 			SecretCount:   e.SecretCount,
+			Hidden:        e.Hidden,
+			GitIgnored:    e.GitIgnored,
 			PreferredMode: tui.CompressMode(preferredModes[e.Path]),
 		}
 		mu.Lock()

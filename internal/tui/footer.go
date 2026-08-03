@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // footerHeight returns the number of lines the footer occupies. The join
@@ -45,6 +46,13 @@ func (m model) renderFooter(width int) string {
 	}
 
 	var statusLine string
+	visibility := ""
+	if m.showHidden {
+		visibility += " dotfiles"
+	}
+	if m.showGitIgnored {
+		visibility += " gitignored"
+	}
 	switch {
 	case m.notice != "":
 		statusLine = noticeStyle.Render(m.notice)
@@ -56,12 +64,13 @@ func (m model) renderFooter(width int) string {
 			budget, m.scanFiles, m.scanDirs, m.scanProcessed, actions)
 	default:
 		actions := "[?] Help  [g] Generate  [y] Copy  [q] Exit"
-		statusLine = fmt.Sprintf("%sStyle: %s | %d selected (%d tok) | %s", budget, m.style, selected, active, actions)
+		statusLine = fmt.Sprintf("%sStyle: %s%s | %d selected (%d tok) | %s", budget, m.style, visibility, selected, active, actions)
 	}
 
 	var b strings.Builder
 	b.WriteString(strings.Repeat("─", width))
 	b.WriteString("\n")
+	statusLine = ansi.Truncate(statusLine, max(1, width), "…")
 	b.WriteString(hintStyle.Render(statusLine))
 	return b.String()
 }

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"time"
 
 	"github.com/bethropolis/sift/internal/highlight"
@@ -43,13 +44,16 @@ type model struct {
 	height int
 	width  int
 
-	filter    string
-	filtering bool
+	filter         string
+	filtering      bool
+	showHidden     bool
+	showGitIgnored bool
 
-	budget    int
-	style     string
-	glyphs    Glyphs
-	highlight highlight.Options
+	budget      int
+	style       string
+	glyphs      Glyphs
+	highlight   highlight.Options
+	windowTitle string
 
 	onCopy func([]Selection) error
 	notice string
@@ -58,6 +62,7 @@ type model struct {
 
 	// Help modal state.
 	helpOpen   bool
+	helpOffset int
 	onGenerate func([]Selection) error
 
 	// Delta modal state.
@@ -95,6 +100,7 @@ type Options struct {
 	Highlight         bool
 	Theme             string
 	HighlightMaxBytes int
+	WindowTitle       string
 	OnCopy            func([]Selection) error
 
 	// OnGenerate renders the current selection without exiting the picker
@@ -117,25 +123,26 @@ func newModel(root *TreeNode, opts Options) model {
 	nodeIndex := make(map[string]*TreeNode, 256)
 	indexTree(root, nodeIndex)
 	m := model{
-		root:       root,
-		height:     24,
-		width:      80,
-		budget:     opts.Budget,
-		style:      opts.Style,
-		glyphs:     glyphs,
-		highlight:  highlight.Options{Enabled: opts.Highlight, Theme: highlight.Theme(opts.Theme), MaxBytes: opts.HighlightMaxBytes},
-		onCopy:     opts.OnCopy,
-		onGenerate: opts.OnGenerate,
-		delta:      opts.Delta,
-		onDelta:    opts.OnDelta,
-		nodeIndex:  nodeIndex,
+		root:        root,
+		height:      24,
+		width:       80,
+		budget:      opts.Budget,
+		style:       opts.Style,
+		glyphs:      glyphs,
+		highlight:   highlight.Options{Enabled: opts.Highlight, Theme: highlight.Theme(opts.Theme), MaxBytes: opts.HighlightMaxBytes},
+		windowTitle: sanitizeWindowTitle(opts.WindowTitle),
+		onCopy:      opts.OnCopy,
+		onGenerate:  opts.OnGenerate,
+		delta:       opts.Delta,
+		onDelta:     opts.OnDelta,
+		nodeIndex:   nodeIndex,
 	}
 	m.recomputeRows()
 	return m
 }
 
 func (m *model) recomputeRows() {
-	m.rows = m.root.VisibleRows(m.filter)
+	m.rows = m.root.VisibleRowsWithOptions(m.filter, m.showHidden, m.showGitIgnored)
 	if m.cursor >= len(m.rows) {
 		m.cursor = len(m.rows) - 1
 	}
@@ -154,7 +161,20 @@ func (m *model) node() *TreeNode {
 }
 
 func (m model) Init() tea.Cmd {
-	return m.listenStream()
+	if m.windowTitle == "" {
+		return m.listenStream()
+	}
+	return tea.Batch(m.listenStream(), tea.SetWindowTitle(m.windowTitle))
+}
+
+func sanitizeWindowTitle(title string) string {
+	title = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || r == '\x1b' {
+			return -1
+		}
+		return r
+	}, title)
+	return truncateString(strings.TrimSpace(title), 96)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -167,6 +187,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.height, m.width = msg.Height, msg.Width
 		m.clampOffset()
+		if m.helpOpen {
+			m.scrollHelp(0)
+		}
 	case tea.KeyMsg:
 		return m.updateKey(msg)
 	case tea.MouseMsg:
@@ -254,6 +277,32 @@ func (m model) leftPaneWidth() int {
 		leftWidth = width / 2
 	}
 	return leftWidth
+}
+
+func (m model) treeViewportRows() int {
+	bodyHeight := max(5, m.height-m.footerHeight())
+	return max(1, bodyHeight-3)
+}
+
+func (m *model) clampTreeOffset() {
+	if len(m.rows) == 0 {
+		m.cursor, m.offset = 0, 0
+		return
+	}
+	visible := m.treeViewportRows()
+	maxOffset := max(0, len(m.rows)-visible)
+	if m.offset > maxOffset {
+		m.offset = maxOffset
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+	if m.cursor >= len(m.rows) {
+		m.cursor = len(m.rows) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
 }
 
 func (m model) View() string {

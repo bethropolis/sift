@@ -24,6 +24,8 @@ func buildSkeleton(metas []walker.FileMeta, preferredModes map[string]string) ([
 			IsDir:         m.IsDir,
 			ApproxTokens:  approx,
 			PreferredMode: tui.CompressMode(preferredModes[m.Path]),
+			Hidden:        m.Hidden,
+			GitIgnored:    m.GitIgnored,
 		})
 		deltaFiles = append(deltaFiles, format.FileEntry{
 			Path:       m.Path,

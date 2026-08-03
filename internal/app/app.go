@@ -19,12 +19,17 @@ type App struct {
 	// outputPath is the absolute path of the output file, or "" for stdout.
 	// Files matching it are excluded from the walk so the dump never contains
 	// itself.
-	outputPath string
+	outputPath       string
+	pickerVisibility bool
 
 	// OnlyPaths, when non-nil, restricts the walk to these relative paths.
 	// Used by sift diff to dump a curated set of files.
 	OnlyPaths map[string]bool
 }
+
+// EnablePickerVisibility lets the interactive picker receive hidden and
+// gitignored metadata so the TUI can reveal it without rescanning.
+func (a *App) EnablePickerVisibility() { a.pickerVisibility = true }
 
 // New creates a new App instance. It resolves color usage from the terminal
 // and output destination and opens the configured output file; an error is
