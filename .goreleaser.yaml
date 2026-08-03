@@ -21,23 +21,22 @@ builds:
       - windows
       - darwin
       - freebsd
+      - android
     goarch:
       - amd64
       - arm64
-      - 386
-      - arm
-    goarm:
-      - '7'
     ignore:
       # Go does not provide these targets.
       - goos: darwin
-        goarch: 386
-      - goos: darwin
         goarch: arm
+      # Android builds with CGO_ENABLED=0 can only link internally, which Go
+      # supports solely on arm64. Other Android arches need the NDK + cgo.
+      - goos: android
+        goarch: amd64
 
 archives:
   - id: default
-    builds:
+    ids:
       - sift
     formats: [tar.gz]
     format_overrides:
@@ -63,7 +62,7 @@ release:
   footer: |
     Install with `curl -fsSL https://bethropolis.github.io/sift/install.sh | sh`.
 
-brews:
+homebrew_casks:
   - name: sift
     repository:
       owner: bethropolis
@@ -71,8 +70,7 @@ brews:
       token: '{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}'
     description: LLM-friendly codebase context picker
     homepage: https://github.com/bethropolis/sift
-    binaries:
-      - sift
+    license: MIT
     skip_upload: '{{ not (isEnvSet "HOMEBREW_TAP_GITHUB_TOKEN") }}'
 
 scoops:

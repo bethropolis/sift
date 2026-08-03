@@ -40,3 +40,7 @@ scoop install sift
 
 From a checkout, run `./scripts/install.sh`. The script builds the current
 source and installs it to `~/.local/bin` by default.
+
+See the [full documentation](https://github.com/bethropolis/sift/tree/main/docs)
+for usage, picker controls, configuration, output formats, and incremental
+deltas.

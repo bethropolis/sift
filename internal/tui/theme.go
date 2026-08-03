@@ -14,6 +14,7 @@ type ThemePreset struct {
 	Name     string
 	Border   lipgloss.Color
 	Title    lipgloss.Color
+	Muted    lipgloss.Color
 	CursorBg lipgloss.Color
 	CursorFg lipgloss.Color
 	Selected lipgloss.Color
@@ -27,37 +28,37 @@ type ThemePreset struct {
 // Classic/Default entry reproduces the original ANSI palette.
 var ThemePresets = []ThemePreset{
 	{
-		Name: "Catppuccin Mocha", Border: lipgloss.Color("#cba6f7"), Title: lipgloss.Color("#89b4fa"),
+		Name: "Catppuccin Mocha", Border: lipgloss.Color("#cba6f7"), Title: lipgloss.Color("#89b4fa"), Muted: lipgloss.Color("#6c7086"),
 		CursorBg: lipgloss.Color("#313244"), CursorFg: lipgloss.Color("#cdd6f4"), Selected: lipgloss.Color("#89b4fa"),
 		Notice: lipgloss.Color("#a6e3a1"), ModeFull: lipgloss.Color("#a6e3a1"), ModeSig: lipgloss.Color("#f9e2af"), ModeSkip: lipgloss.Color("#f38ba8"),
 	},
 	{
-		Name: "Tokyo Night", Border: lipgloss.Color("#7aa2f7"), Title: lipgloss.Color("#7dcfff"),
+		Name: "Tokyo Night", Border: lipgloss.Color("#7aa2f7"), Title: lipgloss.Color("#7dcfff"), Muted: lipgloss.Color("#565f89"),
 		CursorBg: lipgloss.Color("#2ac3de"), CursorFg: lipgloss.Color("#1a1b26"), Selected: lipgloss.Color("#7aa2f7"),
 		Notice: lipgloss.Color("#9ece6a"), ModeFull: lipgloss.Color("#9ece6a"), ModeSig: lipgloss.Color("#e0af68"), ModeSkip: lipgloss.Color("#f7768e"),
 	},
 	{
-		Name: "Dracula", Border: lipgloss.Color("#bd93f9"), Title: lipgloss.Color("#8be9fd"),
+		Name: "Dracula", Border: lipgloss.Color("#bd93f9"), Title: lipgloss.Color("#8be9fd"), Muted: lipgloss.Color("#6272a4"),
 		CursorBg: lipgloss.Color("#44475a"), CursorFg: lipgloss.Color("#f8f8f2"), Selected: lipgloss.Color("#ff79c6"),
 		Notice: lipgloss.Color("#50fa7b"), ModeFull: lipgloss.Color("#50fa7b"), ModeSig: lipgloss.Color("#f1fa8c"), ModeSkip: lipgloss.Color("#ff5555"),
 	},
 	{
-		Name: "Gruvbox Dark", Border: lipgloss.Color("#d3869b"), Title: lipgloss.Color("#83a598"),
+		Name: "Gruvbox Dark", Border: lipgloss.Color("#d3869b"), Title: lipgloss.Color("#83a598"), Muted: lipgloss.Color("#928374"),
 		CursorBg: lipgloss.Color("#3c3836"), CursorFg: lipgloss.Color("#ebdbb2"), Selected: lipgloss.Color("#83a598"),
 		Notice: lipgloss.Color("#b8bb26"), ModeFull: lipgloss.Color("#b8bb26"), ModeSig: lipgloss.Color("#fabd2f"), ModeSkip: lipgloss.Color("#fb4934"),
 	},
 	{
-		Name: "Nord", Border: lipgloss.Color("#88c0d0"), Title: lipgloss.Color("#81a1c1"),
+		Name: "Nord", Border: lipgloss.Color("#88c0d0"), Title: lipgloss.Color("#81a1c1"), Muted: lipgloss.Color("#4c566a"),
 		CursorBg: lipgloss.Color("#3b4252"), CursorFg: lipgloss.Color("#eceff4"), Selected: lipgloss.Color("#88c0d0"),
 		Notice: lipgloss.Color("#a3be8c"), ModeFull: lipgloss.Color("#a3be8c"), ModeSig: lipgloss.Color("#ebcb8b"), ModeSkip: lipgloss.Color("#bf616a"),
 	},
 	{
-		Name: "Rose Pine", Border: lipgloss.Color("#c4a7e7"), Title: lipgloss.Color("#e0def4"),
+		Name: "Rose Pine", Border: lipgloss.Color("#c4a7e7"), Title: lipgloss.Color("#e0def4"), Muted: lipgloss.Color("#6e6a86"),
 		CursorBg: lipgloss.Color("#ebbcba"), CursorFg: lipgloss.Color("#191724"), Selected: lipgloss.Color("#31748f"),
 		Notice: lipgloss.Color("#9ccfd8"), ModeFull: lipgloss.Color("#9ccfd8"), ModeSig: lipgloss.Color("#f6c177"), ModeSkip: lipgloss.Color("#eb6f92"),
 	},
 	{
-		Name: "Classic (Default)", Border: lipgloss.Color("62"), Title: lipgloss.Color("12"),
+		Name: "Classic (Default)", Border: lipgloss.Color("62"), Title: lipgloss.Color("12"), Muted: lipgloss.Color("245"),
 		CursorBg: lipgloss.Color("236"), CursorFg: lipgloss.Color("15"), Selected: lipgloss.Color("12"),
 		Notice: lipgloss.Color("10"), ModeFull: lipgloss.Color("10"), ModeSig: lipgloss.Color("11"), ModeSkip: lipgloss.Color("9"),
 	},
@@ -95,7 +96,7 @@ func (m *model) applyTheme(p ThemePreset) {
 		title:     lipgloss.NewStyle().Bold(true).Foreground(p.Title),
 		hint:      lipgloss.NewStyle().Foreground(p.Title),
 		dim:       lipgloss.NewStyle().Foreground(p.Title).Faint(true),
-		muted:     lipgloss.NewStyle().Foreground(p.Border).Faint(true),
+		muted:     lipgloss.NewStyle().Foreground(p.Muted),
 		treeGuide: lipgloss.NewStyle().Foreground(p.Border),
 		cursor:    lipgloss.NewStyle().Bold(true).Background(p.CursorBg).Foreground(p.CursorFg),
 		scrollbar: lipgloss.NewStyle().Foreground(p.Border),

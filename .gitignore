@@ -26,3 +26,9 @@ vendor/
 .DS_Store
 
 *.txt
+
+# GoReleaser
+/dist/
+
+# sift files
+/codebase*

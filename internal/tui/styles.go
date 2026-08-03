@@ -33,7 +33,7 @@ func defaultStyles() uiStyles {
 		title:     lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
 		hint:      lipgloss.NewStyle().Foreground(lipgloss.Color("242")),
 		dim:       lipgloss.NewStyle().Foreground(lipgloss.Color("240")),
-		muted:     lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Faint(true),
+		muted:     lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
 		treeGuide: lipgloss.NewStyle().Foreground(lipgloss.Color("239")),
 		cursor:    lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15")),
 		scrollbar: lipgloss.NewStyle().Foreground(lipgloss.Color("244")),

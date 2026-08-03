@@ -128,15 +128,28 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	if ansi.StringWidth(row) > width {
 		row = ansi.Truncate(row, width, "…")
 	}
-	if (n.Hidden || n.GitIgnored) && n != m.node() && n.SelectState == Unselected {
-		row = m.styles.muted.Render(row)
-	}
 
+	// Hover and selection outrank the muted styling so focus stays obvious.
 	if n == m.node() {
 		return m.styles.cursor.Render(row)
 	}
 	if n.SelectState != Unselected {
 		return m.styles.selected.Render(row)
+	}
+
+	// Hidden and Git-ignored rows are dimmed so they recede from tracked
+	// files. The muted color is applied to the readable text (the name and the
+	// token count) rather than wrapping the whole row, because the tree
+	// guide's own ANSI reset would otherwise wipe the dimming from the text
+	// that follows it.
+	if n.Hidden || n.GitIgnored {
+		name = m.styles.muted.Render(name)
+		right = m.styles.muted.Render(right)
+		left = fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
+		row = left + strings.Repeat(" ", pad) + right
+		if ansi.StringWidth(row) > width {
+			row = ansi.Truncate(row, width, "…")
+		}
 	}
 	return row
 }
