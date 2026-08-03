@@ -37,6 +37,7 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 		options.Logger.Debug("processFile Skipping [%s]: Exceeds size limit (%d > %d bytes)",
 			relativePath, info.Size(), options.MaxFileSize)
 		tracker.Track(relativePath, ReasonSkippedSizeLimit, false)
+		stats.sizeSkipped.Add(1)
 		stats.skippedFiles.Add(1)
 		return
 	}
@@ -46,6 +47,7 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	if !options.IncludeBinary && IsBinaryFile(path) {
 		options.Logger.Debug("processFile Skipping [%s]: Binary file detected", relativePath)
 		tracker.Track(relativePath, ReasonSkippedBinary, false)
+		stats.binarySkipped.Add(1)
 		stats.skippedFiles.Add(1)
 		return
 	}
@@ -58,6 +60,7 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 		walkFn(relativePath, nil, fmt.Errorf("failed to read file: %w", err))
 		return
 	}
+	stats.bytesRead.Add(int64(len(content)))
 
 	// Call the walk function with the content
 	options.Logger.Debug("processFile Success [%s]: Read %d bytes. Calling walkFn.", relativePath, len(content))

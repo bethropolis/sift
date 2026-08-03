@@ -23,6 +23,12 @@ func TestLanguageForPath(t *testing.T) {
 		{"App.tsx", TSX, true},
 		{"util.py", Python, true},
 		{"web.php", PHP, true},
+		{"Main.java", Java, true},
+		{"Main.kt", Kotlin, true},
+		{"Program.cs", CSharp, true},
+		{"main.cpp", Cpp, true},
+		{"app.rb", Ruby, true},
+		{"App.swift", Swift, true},
 		{"README.md", 0, false},
 		{"noext", 0, false},
 	}
@@ -31,6 +37,29 @@ func TestLanguageForPath(t *testing.T) {
 		if ok != tt.ok || got != tt.want {
 			t.Errorf("LanguageForPath(%q) = %v, %v; want %v, %v", tt.path, got, ok, tt.want, tt.ok)
 		}
+	}
+}
+
+func TestCompressAdditionalLanguages(t *testing.T) {
+	tests := []struct {
+		name string
+		lang Language
+		src  string
+	}{
+		{"java", Java, "package app; public class App { public void run() { int value = 1; } }"},
+		{"kotlin", Kotlin, "fun run() { println(\"ok\") }"},
+		{"csharp", CSharp, "class App { void Run() { var value = 1; } }"},
+		{"cpp", Cpp, "class App { void run() { int value = 1; } };"},
+		{"ruby", Ruby, "class App\n  def run\n    value = 1\n  end\nend"},
+		{"swift", Swift, "class App { func run() { let value = 1 } }"},
+	}
+	c := New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if out, ok := c.Compress([]byte(tt.src), tt.lang); !ok || out == tt.src {
+				t.Fatalf("compression failed: ok=%v output=%q", ok, out)
+			}
+		})
 	}
 }
 

@@ -168,8 +168,9 @@ func (c *Compressor) emitContainer(n, body *sitter.Node, src []byte, lang Langua
 // isHeaderOrConst reports whether a node carries no body worth stripping, so
 // its full text (package clause, imports, constants, globals) is kept.
 func isHeaderOrConst(t string) bool {
-	return t == "package_clause" || t == "import_declaration" || t == "import_statement" ||
+	return t == "package_clause" || t == "package_declaration" || t == "package_header" || t == "import_declaration" || t == "import_header" || t == "import_statement" ||
 		t == "import_from_statement" || t == "use_declaration" || t == "extern_crate_declaration" ||
+		t == "using_directive" || t == "using_declaration" || t == "preproc_include" ||
 		t == "namespace_definition" || t == "namespace_use_declaration" ||
 		t == "const_declaration" || t == "var_declaration" || t == "variable_declaration" ||
 		t == "const_item" || t == "static_item"
@@ -178,11 +179,11 @@ func isHeaderOrConst(t string) bool {
 // isTypeDefinition reports whether a node is a type declaration whose
 // interior structure should be preserved.
 func isTypeDefinition(t string) bool {
-	return t == "type_declaration" || t == "struct_item" || t == "enum_item" ||
+	return t == "type_declaration" || t == "struct_item" || t == "enum_item" || t == "class_specifier" || t == "struct_specifier" || t == "enum_specifier" ||
 		t == "trait_item" || t == "type_item" ||
 		t == "class_declaration" || t == "class_definition" ||
 		t == "interface_declaration" || t == "type_alias_declaration" ||
-		t == "enum_declaration"
+		t == "enum_declaration" || t == "record_declaration" || t == "object_declaration" || t == "protocol_declaration" || t == "struct_declaration"
 }
 
 // isContainerType reports whether a type node's body can contain method
@@ -200,8 +201,8 @@ func isComment(t string) bool {
 // isFunctionOrMethod reports whether a node is a function or method whose body
 // should be replaced with a placeholder.
 func isFunctionOrMethod(t string) bool {
-	return t == "function_declaration" || t == "method_declaration" ||
-		t == "function_item" || t == "function_definition" ||
+	return t == "function_declaration" || t == "method_declaration" || t == "function_definition" || t == "method" || t == "singleton_method" || t == "init_declaration" ||
+		t == "function_item" ||
 		t == "method_definition" || t == "generator_function_declaration"
 }
 

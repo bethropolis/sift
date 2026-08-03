@@ -18,6 +18,8 @@ type WalkOptions struct {
 	IncludeBinary bool
 	Context       context.Context
 	ProgressFn    ProgressCallback // Add progress callback function
+	PreReadFilter func(relativePath string) bool
+	StatsFn       StatsCallback
 	// PathFilter, when set, is consulted before a file is read. Returning
 	// false excludes the file from processing, so filtered paths never cost
 	// I/O or token work.
@@ -131,6 +133,18 @@ func WithProgress(fn ProgressCallback) Option {
 	return func(o *WalkOptions) {
 		o.ProgressFn = fn
 	}
+}
+
+// WithPreReadFilter excludes paths before stat/binary detection and content
+// reads. It is intended for cheap name-only rules such as lockfiles and
+// generated bundles.
+func WithPreReadFilter(fn func(relativePath string) bool) Option {
+	return func(opts *WalkOptions) { opts.PreReadFilter = fn }
+}
+
+// WithStats receives one aggregate snapshot after a walk completes.
+func WithStats(fn StatsCallback) Option {
+	return func(opts *WalkOptions) { opts.StatsFn = fn }
 }
 
 // WithPathFilter sets a predicate deciding whether a relative path is

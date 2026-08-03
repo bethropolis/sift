@@ -15,6 +15,7 @@ var knownTextExts = map[string]bool{
 	".cxx": true, ".hpp": true, ".hh": true, ".cs": true, ".md": true,
 	".txt": true, ".json": true, ".yaml": true, ".yml": true, ".toml": true,
 	".xml": true, ".html": true, ".htm": true, ".css": true, ".scss": true,
+	".vue": true, ".svelte": true, ".astro": true, ".csv": true, ".log": true,
 	".sql": true, ".sh": true, ".bash": true, ".zsh": true, ".lua": true,
 	".swift": true, ".kt": true, ".kts": true, ".env": true, ".gitignore": true,
 }
@@ -29,6 +30,12 @@ var knownBinaryExts = map[string]bool{
 	".ico": true, ".bmp": true, ".mp4": true, ".mkv": true, ".mov": true,
 	".avi": true, ".mp3": true, ".wav": true, ".flac": true, ".pdf": true,
 	".db": true, ".sqlite": true, ".sqlite3": true, ".pcap": true,
+	".deb": true, ".rpm": true, ".msi": true, ".apk": true, ".ipa": true,
+	".crx": true, ".whl": true, ".doc": true, ".docx": true, ".xls": true,
+	".xlsx": true, ".ppt": true, ".pptx": true, ".epub": true, ".mobi": true,
+	".ttf": true, ".otf": true, ".woff": true, ".woff2": true, ".wasm": true,
+	".zst": true, ".lz4": true, ".cab": true, ".pak": true, ".torrent": true,
+	".vdi": true, ".vmdk": true, ".qcow2": true,
 }
 
 // IsBinaryFile checks whether path points to a binary file.

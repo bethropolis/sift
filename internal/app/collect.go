@@ -383,6 +383,19 @@ func (a *App) walkerOptions(absRootDir string, ctx context.Context, mode collect
 			return true
 		}))
 	}
+	if a.cfg.SmartFilter {
+		evaluator := smart.New(a.cfg.SmartMaxTokens)
+		walkOptions = append(walkOptions, walker.WithPreReadFilter(func(relativePath string) bool {
+			skip, _ := evaluator.ShouldSkipPath(relativePath)
+			return skip
+		}))
+	}
+	walkOptions = append(walkOptions, walker.WithStats(func(stats walker.WalkStats) {
+		a.log.Debug("scan stats: files=%d processed=%d skipped=%d binary=%d oversized=%d smart=%d bytes=%d duration=%s",
+			stats.TotalFiles, stats.ProcessedFiles, stats.SkippedFiles,
+			stats.BinarySkipped, stats.SizeSkipped, stats.SmartSkipped,
+			stats.BytesRead, stats.Duration)
+	}))
 	return matcher, walkOptions, nil
 }
 

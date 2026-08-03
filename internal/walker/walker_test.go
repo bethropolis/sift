@@ -106,6 +106,48 @@ func TestWalkExtensionFilter(t *testing.T) {
 	}
 }
 
+func TestWalkPreReadFilterSkipsBeforeCallback(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "keep.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "bundle.min.js"), []byte("generated"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := collectWalk(t, root, WithPreReadFilter(func(path string) bool {
+		return filepath.Base(path) == "bundle.min.js"
+	}))
+	if len(got) != 1 || got[0] != "keep.txt" {
+		t.Fatalf("files = %v, want [keep.txt]", got)
+	}
+}
+
+func TestWalkStatsIncludeReadAndSkipCounts(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "keep.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "skip.min.js"), []byte("generated"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	matcher, err := ignore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got WalkStats
+	_, err = Walk(root, matcher, func(string, []byte, error) error { return nil },
+		WithPreReadFilter(func(path string) bool { return filepath.Base(path) == "skip.min.js" }),
+		WithStats(func(stats WalkStats) { got = stats }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProcessedFiles != 1 || got.SmartSkipped != 1 || got.BytesRead != 4 {
+		t.Fatalf("stats = %+v, want one read and one smart skip", got)
+	}
+}
+
 func TestWalkContextCancellation(t *testing.T) {
 	root := t.TempDir()
 	writeTestTree(t, root)

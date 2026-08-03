@@ -54,7 +54,6 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 	for _, opt := range opts {
 		opt(&options)
 	}
-
 	// Get absolute path for the root directory
 	absRootDir, err := filepath.Abs(rootDir)
 	if err != nil {
@@ -67,6 +66,11 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 
 	// Create atomic counters for progress tracking
 	stats := &walkStats{}
+	defer func() {
+		if options.StatsFn != nil {
+			options.StatsFn(stats.snapshot(time.Since(startTime)))
+		}
+	}()
 
 	// Start progress reporting if enabled
 	var progressCtx context.Context
@@ -271,6 +275,14 @@ func newProcessEntry(
 			return nil, false
 		}
 
+		if options.PreReadFilter != nil && options.PreReadFilter(relativePath) {
+			options.Logger.Debug("Walker: File %q excluded by pre-read filter", relativePath)
+			tracker.Track(relativePath, ReasonSkippedSmart, false)
+			stats.smartSkipped.Add(1)
+			stats.skippedFiles.Add(1)
+			return nil, false
+		}
+
 		options.Logger.Debug("Walker: File %q PASSED all checks, will be processed", relativePath)
 		return nil, true
 	}
@@ -297,7 +309,6 @@ func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]
 	for _, opt := range opts {
 		opt(&options)
 	}
-
 	absRootDir, err := filepath.Abs(rootDir)
 	if err != nil {
 		return nil, []SkippedItem{{Path: rootDir, Reason: ReasonSkippedPathError, IsDir: true}},
@@ -306,6 +317,11 @@ func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]
 
 	tracker := NewSkippedTracker(100)
 	stats := &walkStats{}
+	defer func() {
+		if options.StatsFn != nil {
+			options.StatsFn(stats.snapshot(time.Since(startTime)))
+		}
+	}()
 	processEntry := newProcessEntry(absRootDir, options, matcher, tracker, stats)
 
 	options.Logger.Debug("walker.WalkMeta started. Root: %s", absRootDir)
@@ -343,11 +359,13 @@ func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]
 		// later content walk: oversized and binary files are never advertised.
 		if options.MaxFileSize > 0 && info.Size() > options.MaxFileSize {
 			tracker.Track(relativePath, ReasonSkippedSizeLimit, false)
+			stats.sizeSkipped.Add(1)
 			stats.skippedFiles.Add(1)
 			return nil
 		}
 		if !options.IncludeBinary && IsBinaryFile(path) {
 			tracker.Track(relativePath, ReasonSkippedBinary, false)
+			stats.binarySkipped.Add(1)
 			stats.skippedFiles.Add(1)
 			return nil
 		}

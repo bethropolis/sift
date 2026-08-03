@@ -10,11 +10,17 @@ import (
 	"sync"
 
 	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/cpp"
+	"github.com/smacker/go-tree-sitter/csharp"
 	"github.com/smacker/go-tree-sitter/golang"
+	"github.com/smacker/go-tree-sitter/java"
 	"github.com/smacker/go-tree-sitter/javascript"
+	"github.com/smacker/go-tree-sitter/kotlin"
 	"github.com/smacker/go-tree-sitter/php"
 	"github.com/smacker/go-tree-sitter/python"
+	"github.com/smacker/go-tree-sitter/ruby"
 	"github.com/smacker/go-tree-sitter/rust"
+	"github.com/smacker/go-tree-sitter/swift"
 	"github.com/smacker/go-tree-sitter/typescript/tsx"
 	"github.com/smacker/go-tree-sitter/typescript/typescript"
 )
@@ -37,6 +43,12 @@ const (
 	Python
 	// PHP is the PHP grammar.
 	PHP
+	Java
+	Kotlin
+	CSharp
+	Cpp
+	Ruby
+	Swift
 )
 
 func (l Language) String() string {
@@ -55,22 +67,45 @@ func (l Language) String() string {
 		return "python"
 	case PHP:
 		return "php"
+	case Java:
+		return "java"
+	case Kotlin:
+		return "kotlin"
+	case CSharp:
+		return "csharp"
+	case Cpp:
+		return "cpp"
+	case Ruby:
+		return "ruby"
+	case Swift:
+		return "swift"
 	}
 	return "unknown"
 }
 
 var extToLang = map[string]Language{
-	".go":  Go,
-	".rs":  Rust,
-	".js":  JavaScript,
-	".jsx": JavaScript,
-	".mjs": JavaScript,
-	".cjs": JavaScript,
-	".ts":  TypeScript,
-	".tsx": TSX,
-	".py":  Python,
-	".pyi": Python,
-	".php": PHP,
+	".go":    Go,
+	".rs":    Rust,
+	".js":    JavaScript,
+	".jsx":   JavaScript,
+	".mjs":   JavaScript,
+	".cjs":   JavaScript,
+	".ts":    TypeScript,
+	".tsx":   TSX,
+	".py":    Python,
+	".pyi":   Python,
+	".php":   PHP,
+	".java":  Java,
+	".kt":    Kotlin,
+	".kts":   Kotlin,
+	".cs":    CSharp,
+	".c":     Cpp,
+	".h":     Cpp,
+	".cc":    Cpp,
+	".cpp":   Cpp,
+	".cxx":   Cpp,
+	".rb":    Ruby,
+	".swift": Swift,
 }
 
 var declTypes = map[Language]map[string]bool{
@@ -150,6 +185,12 @@ var declTypes = map[Language]map[string]bool{
 		"trait_declaration",
 		"enum_declaration",
 	),
+	Java:   stringSet("package_declaration", "import_declaration", "class_declaration", "interface_declaration", "enum_declaration", "record_declaration", "method_declaration"),
+	Kotlin: stringSet("package_header", "import_header", "class_declaration", "object_declaration", "function_declaration", "property_declaration", "type_alias"),
+	CSharp: stringSet("using_directive", "namespace_declaration", "class_declaration", "interface_declaration", "struct_declaration", "enum_declaration", "method_declaration", "property_declaration"),
+	Cpp:    stringSet("preproc_include", "using_declaration", "function_definition", "class_specifier", "struct_specifier", "enum_specifier"),
+	Ruby:   stringSet("class", "module", "method", "singleton_method"),
+	Swift:  stringSet("import_declaration", "class_declaration", "struct_declaration", "enum_declaration", "protocol_declaration", "function_declaration", "init_declaration"),
 }
 
 func stringSet(items ...string) map[string]bool {
@@ -179,6 +220,12 @@ func New() *Compressor {
 		TSX:        tsx.GetLanguage(),
 		Python:     python.GetLanguage(),
 		PHP:        php.GetLanguage(),
+		Java:       java.GetLanguage(),
+		Kotlin:     kotlin.GetLanguage(),
+		CSharp:     csharp.GetLanguage(),
+		Cpp:        cpp.GetLanguage(),
+		Ruby:       ruby.GetLanguage(),
+		Swift:      swift.GetLanguage(),
 	}
 
 	parsers := make(map[Language]*sync.Pool, len(grammars))
