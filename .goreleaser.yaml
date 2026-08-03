@@ -1,0 +1,87 @@
+version: 2
+
+project_name: sift
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: sift
+    main: ./cmd/sift
+    binary: sift
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+      - windows
+      - darwin
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - 386
+      - arm
+    goarm:
+      - '7'
+    ignore:
+      # Go does not provide these targets.
+      - goos: darwin
+        goarch: 386
+      - goos: darwin
+        goarch: arm
+
+archives:
+  - id: default
+    builds:
+      - sift
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
+
+release:
+  prerelease: auto
+  mode: replace
+  header: |
+    ## Sift {{ .Tag }}
+  footer: |
+    Install with `curl -fsSL https://bethropolis.github.io/sift/install.sh | sh`.
+
+brews:
+  - name: sift
+    repository:
+      owner: bethropolis
+      name: homebrew-tap
+      token: '{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}'
+    description: LLM-friendly codebase context picker
+    homepage: https://github.com/bethropolis/sift
+    binaries:
+      - sift
+    skip_upload: '{{ not (isEnvSet "HOMEBREW_TAP_GITHUB_TOKEN") }}'
+
+scoops:
+  - name: sift
+    repository:
+      owner: bethropolis
+      name: scoop-bucket
+      token: '{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}'
+    description: LLM-friendly codebase context picker
+    homepage: https://github.com/bethropolis/sift
+    license: MIT
+    skip_upload: '{{ not (isEnvSet "SCOOP_BUCKET_GITHUB_TOKEN") }}'

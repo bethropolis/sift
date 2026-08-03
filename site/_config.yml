@@ -1,0 +1,10 @@
+title: Sift
+description: An LLM-friendly codebase context picker
+url: https://bethropolis.github.io
+baseurl: /sift
+theme: minima
+include:
+  - install.sh
+exclude:
+  - Gemfile
+  - Gemfile.lock

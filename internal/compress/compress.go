@@ -1,3 +1,5 @@
+//go:build cgo
+
 // Package compress extracts signature-only summaries of source files using
 // tree-sitter grammars. The result keeps doc comments and declaration
 // signatures (function/method/type/class headers) while dropping bodies, so an
