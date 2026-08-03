@@ -9,6 +9,7 @@ type uiStyles struct {
 	title     lipgloss.Style
 	hint      lipgloss.Style
 	dim       lipgloss.Style
+	muted     lipgloss.Style
 	treeGuide lipgloss.Style
 	cursor    lipgloss.Style
 	scrollbar lipgloss.Style
@@ -32,6 +33,7 @@ func defaultStyles() uiStyles {
 		title:     lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
 		hint:      lipgloss.NewStyle().Foreground(lipgloss.Color("242")),
 		dim:       lipgloss.NewStyle().Foreground(lipgloss.Color("240")),
+		muted:     lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Faint(true),
 		treeGuide: lipgloss.NewStyle().Foreground(lipgloss.Color("239")),
 		cursor:    lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("236")).Foreground(lipgloss.Color("15")),
 		scrollbar: lipgloss.NewStyle().Foreground(lipgloss.Color("244")),

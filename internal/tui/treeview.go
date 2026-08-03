@@ -128,6 +128,9 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	if ansi.StringWidth(row) > width {
 		row = ansi.Truncate(row, width, "…")
 	}
+	if (n.Hidden || n.GitIgnored) && n != m.node() && n.SelectState == Unselected {
+		row = m.styles.muted.Render(row)
+	}
 
 	if n == m.node() {
 		return m.styles.cursor.Render(row)

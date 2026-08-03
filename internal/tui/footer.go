@@ -58,11 +58,11 @@ func (m model) renderFooter(width int) string {
 	case m.filtering:
 		statusLine = fmt.Sprintf("/ Filter (%d matches): %s▌", len(m.rows), m.filter)
 	case m.stream.active() && !m.scanDone:
-		actions := "[m] Mode  [?] Help  [g] Generate  [y] Copy  [q] Exit"
+		actions := "[m] Mode  [g] Generate  [y] Copy  [q] Exit  [?] Help"
 		statusLine = fmt.Sprintf("%sScanning… %d files · %d dirs (%d processed) | %s",
 			budget, m.scanFiles, m.scanDirs, m.scanProcessed, actions)
 	default:
-		actions := "[m] Mode  [?] Help  [g] Generate  [y] Copy  [q] Exit"
+		actions := "[m] Mode  [g] Generate  [y] Copy  [q] Exit  [?] Help"
 		statusLine = fmt.Sprintf("%sStyle: %s%s | %d selected (%d tok) | %s", budget, m.style, visibility, selected, active, actions)
 	}
 

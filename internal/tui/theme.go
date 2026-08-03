@@ -82,6 +82,7 @@ func (m *model) applyTheme(p ThemePreset) {
 		title:     lipgloss.NewStyle().Bold(true).Foreground(p.Title),
 		hint:      lipgloss.NewStyle().Foreground(p.Title),
 		dim:       lipgloss.NewStyle().Foreground(p.Title).Faint(true),
+		muted:     lipgloss.NewStyle().Foreground(p.Border).Faint(true),
 		treeGuide: lipgloss.NewStyle().Foreground(p.Border),
 		cursor:    lipgloss.NewStyle().Bold(true).Background(p.CursorBg).Foreground(p.CursorFg),
 		scrollbar: lipgloss.NewStyle().Foreground(p.Border),
