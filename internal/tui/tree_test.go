@@ -147,6 +147,17 @@ func TestCycleModeFiltered(t *testing.T) {
 	if got := internal.Mode; got != ModeFull {
 		t.Errorf("dir Mode = %v, want full (mixed children)", got)
 	}
+
+	// Repeated presses must continue through skip and back to full even though
+	// the directory aggregate remains mixed because other.go is not matched.
+	m.cycleMode(internal) // signatures -> skip
+	if got := internal.findChild("app.go").Mode; got != ModeSkip {
+		t.Errorf("app.go Mode after second cycle = %v, want skip", got)
+	}
+	m.cycleMode(internal) // skip -> full
+	if got := internal.findChild("app.go").Mode; got != ModeFull {
+		t.Errorf("app.go Mode after third cycle = %v, want full", got)
+	}
 }
 
 func TestCycleModeFilteredNested(t *testing.T) {

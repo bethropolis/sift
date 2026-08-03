@@ -42,7 +42,10 @@ func RunStreaming(skeleton []Item, opts Options, stream Stream) (Result, error) 
 func runProgram(root *TreeNode, opts Options, stream Stream) (Result, error) {
 	m := newModel(root, opts)
 	m.stream = stream
-	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// Bubble Tea's default renderer wakes 60 times per second even when the
+	// frame is unchanged. Ten FPS keeps input/render latency responsive while
+	// substantially reducing idle wakeups and CPU usage.
+	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithFPS(10))
 	if m.windowTitle != "" {
 		defer program.SetWindowTitle("sift")
 	}

@@ -49,7 +49,10 @@ func TestThemeSelectAppliesPreset(t *testing.T) {
 	if !m.themeOpen {
 		t.Fatal("theme did not open")
 	}
-	for i := 0; i < idx; i++ {
+	for i := m.themeCursor; i > idx; i-- {
+		m = updateKey(m, tea.KeyUp)
+	}
+	for i := m.themeCursor; i < idx; i++ {
 		m = updateKey(m, tea.KeyDown)
 	}
 	m = updateKey(m, tea.KeyEnter)

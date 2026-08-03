@@ -104,6 +104,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.themeMove(m.themePageSize())
 		case tea.KeyEnter, tea.KeySpace:
 			m.themeOpen = false
+			m.themeIndex = m.themeCursor
 			m.applyTheme(ThemePresets[m.themeCursor])
 		case tea.KeyEsc, tea.KeyCtrlC, tea.KeyCtrlQ:
 			m.themeOpen = false
@@ -123,6 +124,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyEsc:
 			m.filtering = false
+			m.filter = ""
 			m.recomputeRows()
 		case tea.KeyEnter:
 			m.filtering = false
@@ -150,6 +152,12 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.quit = true
 		return m, tea.Quit
 	case tea.KeyEsc:
+		if m.filter != "" {
+			m.filter = ""
+			m.filtering = false
+			m.recomputeRows()
+			return m, nil
+		}
 		if m.focus == FocusPreview {
 			m.focus = FocusTree
 			return m, nil
@@ -256,6 +264,10 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.helpOpen = !m.helpOpen
 		case "t":
 			m.themeOpen = !m.themeOpen
+			if m.themeOpen {
+				m.themeCursor = m.themeIndex
+				m.themeOffset = 0
+			}
 		case ".":
 			m.showHidden = !m.showHidden
 			m.recomputeRows()
@@ -271,6 +283,12 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.root.CollapseAll()
 			m.recomputeRows()
 		case "q":
+			if m.filter != "" {
+				m.filter = ""
+				m.filtering = false
+				m.recomputeRows()
+				return m, nil
+			}
 			m.quit = true
 			return m, tea.Quit
 		}

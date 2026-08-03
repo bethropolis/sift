@@ -172,7 +172,11 @@ func pickerWindowTitle(cfg *config.Config) string {
 	if cfg.WindowTitle != "" {
 		return cfg.WindowTitle
 	}
-	root := filepath.Base(filepath.Clean(cfg.RootDir))
+	rootDir, err := filepath.Abs(cfg.RootDir)
+	if err != nil {
+		rootDir = cfg.RootDir
+	}
+	root := filepath.Base(filepath.Clean(rootDir))
 	if root == "." || root == string(filepath.Separator) || root == "" {
 		root = "directory"
 	}

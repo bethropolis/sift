@@ -50,6 +50,35 @@ func TestVisibilityToggles(t *testing.T) {
 	}
 }
 
+func TestFilterEscapeReturnsToNormalRows(t *testing.T) {
+	m := newModel(BuildTree([]Item{{Path: "app.go"}, {Path: "other.go"}}), Options{})
+	m = updateKey(m, tea.KeyRunes, '/')
+	m = updateKey(m, tea.KeyRunes, 'a')
+	if len(m.rows) != 1 {
+		t.Fatalf("filtered rows = %d, want 1", len(m.rows))
+	}
+	m = updateKey(m, tea.KeyEsc)
+	if m.filtering || m.filter != "" || len(m.rows) != 2 {
+		t.Fatalf("after Esc: filtering=%v filter=%q rows=%d, want normal rows", m.filtering, m.filter, len(m.rows))
+	}
+}
+
+func TestFilterEscapeAndQClearCommittedFilter(t *testing.T) {
+	for _, key := range []rune{'\x1b', 'q'} {
+		m := newModel(BuildTree([]Item{{Path: "app.go"}, {Path: "other.go"}}), Options{})
+		m.filter = "app"
+		m.recomputeRows()
+		if key == '\x1b' {
+			m = updateKey(m, tea.KeyEsc)
+		} else {
+			m = updateKey(m, tea.KeyRunes, key)
+		}
+		if m.quit || m.filter != "" || len(m.rows) != 2 {
+			t.Fatalf("key %q: quit=%v filter=%q rows=%d, want filter cleared without quitting", key, m.quit, m.filter, len(m.rows))
+		}
+	}
+}
+
 func TestCardHeightsEqual(t *testing.T) {
 	items := make([]Item, 30)
 	for i := 0; i < 30; i++ {

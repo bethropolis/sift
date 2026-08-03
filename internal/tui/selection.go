@@ -104,9 +104,50 @@ func (m *model) cycleMode(n *TreeNode) {
 		n.CycleMode()
 		return
 	}
-	n.applyModeFiltered(nextMode(n.Mode), m.filter, m.showHidden, m.showGitIgnored)
+	current, ok := filteredMode(n, m.filter, m.showHidden, m.showGitIgnored)
+	if !ok {
+		return
+	}
+	n.applyModeFiltered(nextMode(current), m.filter, m.showHidden, m.showGitIgnored)
 	n.recompute()
 	n.bubbleUp()
+}
+
+// filteredMode returns the common mode of files visible under the active
+// filter. A mixed set starts the cycle at FULL, matching normal directory
+// behavior while ensuring repeated filtered presses still advance.
+func filteredMode(n *TreeNode, filter string, showHidden, showGitIgnored bool) (CompressMode, bool) {
+	if !nodeVisible(n, showHidden, showGitIgnored) {
+		return "", false
+	}
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	var mode CompressMode
+	found, mixed := false, false
+	var visit func(*TreeNode)
+	visit = func(node *TreeNode) {
+		if !nodeVisible(node, showHidden, showGitIgnored) {
+			return
+		}
+		if node.Kind == KindFile {
+			if strings.Contains(strings.ToLower(node.Name), filter) {
+				if !found {
+					mode = node.Mode
+					found = true
+				} else if mode != node.Mode {
+					mixed = true
+				}
+			}
+			return
+		}
+		for _, child := range node.Children {
+			visit(child)
+		}
+	}
+	visit(n)
+	if mixed {
+		return ModeFull, found
+	}
+	return mode, found
 }
 
 // TotalActiveTokens returns the cached active tokens for n in O(1) time.

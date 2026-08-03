@@ -80,13 +80,13 @@ func defaultThemeIndex() int {
 func (m *model) applyTheme(p ThemePreset) {
 	m.styles = uiStyles{
 		title:     lipgloss.NewStyle().Bold(true).Foreground(p.Title),
-		hint:      m.styles.hint,
-		dim:       m.styles.dim,
-		treeGuide: m.styles.treeGuide,
+		hint:      lipgloss.NewStyle().Foreground(p.Title),
+		dim:       lipgloss.NewStyle().Foreground(p.Title).Faint(true),
+		treeGuide: lipgloss.NewStyle().Foreground(p.Border),
 		cursor:    lipgloss.NewStyle().Bold(true).Background(p.CursorBg).Foreground(p.CursorFg),
-		scrollbar: m.styles.scrollbar,
+		scrollbar: lipgloss.NewStyle().Foreground(p.Border),
 		selected:  lipgloss.NewStyle().Foreground(p.Selected),
-		warning:   m.styles.warning,
+		warning:   lipgloss.NewStyle().Bold(true).Foreground(p.ModeSkip),
 		notice:    lipgloss.NewStyle().Foreground(p.Notice),
 		modeFull:  lipgloss.NewStyle().Foreground(p.ModeFull),
 		modeSig:   lipgloss.NewStyle().Foreground(p.ModeSig),
@@ -111,6 +111,12 @@ func (m *model) renderThemeModal(view string, width, height int) string {
 	}
 	if m.themeOffset < 0 {
 		m.themeOffset = 0
+	}
+	if m.themeCursor < m.themeOffset {
+		m.themeOffset = m.themeCursor
+	}
+	if m.themeCursor >= m.themeOffset+bodyRows {
+		m.themeOffset = m.themeCursor - bodyRows + 1
 	}
 
 	var b strings.Builder
