@@ -8,7 +8,7 @@ import (
 	"unicode"
 
 	"github.com/bethropolis/sift/internal/format"
-	"github.com/bethropolis/sift/internal/selection/language"
+	"github.com/bethropolis/sift/internal/lang"
 )
 
 // Mode is the output representation selected for a file.
@@ -159,7 +159,7 @@ func selectUnlimited(candidates []Candidate, result Result, prompt string) Resul
 			// budget, retain useful source roles as signatures. Tests, fixtures,
 			// mocks, generated files, and vendored code remain legitimately
 			// skippable even when there is no budget limit.
-			classification := language.Classify(candidate.File.Path)
+			classification := lang.Classify(candidate.File.Path)
 			if retainWithoutBudget(classification.Role) && candidate.File.TokensSig > 0 && candidate.File.TokensSig < candidate.File.TokensFull {
 				mode = ModeSignatures
 				reason = "background file retained; signature representation"
@@ -180,10 +180,10 @@ func selectUnlimited(candidates []Candidate, result Result, prompt string) Resul
 	return result
 }
 
-func retainWithoutBudget(role language.Role) bool {
+func retainWithoutBudget(role lang.Role) bool {
 	switch role {
-	case language.RoleTest, language.RoleFixture, language.RoleMock,
-		language.RoleGenerated, language.RoleVendor:
+	case lang.RoleTest, lang.RoleFixture, lang.RoleMock,
+		lang.RoleGenerated, lang.RoleVendor:
 		return false
 	default:
 		return true
@@ -191,7 +191,7 @@ func retainWithoutBudget(role language.Role) bool {
 }
 
 func makeDecision(candidate Candidate, mode Mode, utility float64, reason, prompt string) Decision {
-	classification := language.Classify(candidate.File.Path)
+	classification := lang.Classify(candidate.File.Path)
 	relevance := taskRelevance(candidate.File.Path, prompt)
 	return Decision{
 		Path:            candidate.File.Path,
@@ -209,7 +209,7 @@ func makeDecision(candidate Candidate, mode Mode, utility float64, reason, promp
 
 func variants(candidate Candidate, prompt string) []Variant {
 	file := candidate.File
-	classification := language.Classify(file.Path)
+	classification := lang.Classify(file.Path)
 	relevance := taskRelevance(file.Path, prompt)
 	base := clamp(file.RankScore+classification.Adjustment+0.20*relevance, 0.01, 1.0)
 	preferenceBonus := 0.0
@@ -277,7 +277,7 @@ func words(value string) []string {
 }
 
 func plannedMode(candidate Candidate) (Mode, string) {
-	classification := language.Classify(candidate.File.Path)
+	classification := lang.Classify(candidate.File.Path)
 	switch Mode(candidate.PreferredMode) {
 	case ModeFull:
 		return ModeFull, "history preference: full; " + classification.Reason

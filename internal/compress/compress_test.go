@@ -4,33 +4,35 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/bethropolis/sift/internal/lang"
 )
 
 func TestLanguageForPath(t *testing.T) {
 	c := New()
 	tests := []struct {
 		path string
-		want Language
+		want lang.ID
 		ok   bool
 	}{
-		{"main.go", Go, true},
-		{"lib.rs", Rust, true},
-		{"app.js", JavaScript, true},
-		{"App.jsx", JavaScript, true},
-		{"m.mjs", JavaScript, true},
-		{"c.cjs", JavaScript, true},
-		{"App.ts", TypeScript, true},
-		{"App.tsx", TSX, true},
-		{"util.py", Python, true},
-		{"web.php", PHP, true},
-		{"Main.java", Java, true},
-		{"Main.kt", Kotlin, true},
-		{"Program.cs", CSharp, true},
-		{"main.cpp", Cpp, true},
-		{"app.rb", Ruby, true},
-		{"App.swift", Swift, true},
-		{"README.md", 0, false},
-		{"noext", 0, false},
+		{"main.go", lang.Go, true},
+		{"lib.rs", lang.Rust, true},
+		{"app.js", lang.JavaScript, true},
+		{"App.jsx", lang.JavaScript, true},
+		{"m.mjs", lang.JavaScript, true},
+		{"c.cjs", lang.JavaScript, true},
+		{"App.ts", lang.TypeScript, true},
+		{"App.tsx", lang.TSX, true},
+		{"util.py", lang.Python, true},
+		{"web.php", lang.PHP, true},
+		{"Main.java", lang.Java, true},
+		{"Main.kt", lang.Kotlin, true},
+		{"Program.cs", lang.CSharp, true},
+		{"main.cpp", lang.Cpp, true},
+		{"app.rb", lang.Ruby, true},
+		{"App.swift", lang.Swift, true},
+		{"README.md", "", false},
+		{"noext", "", false},
 	}
 	for _, tt := range tests {
 		got, ok := c.LanguageForPath(tt.path)
@@ -43,20 +45,20 @@ func TestLanguageForPath(t *testing.T) {
 func TestCompressAdditionalLanguages(t *testing.T) {
 	tests := []struct {
 		name string
-		lang Language
+		id   lang.ID
 		src  string
 	}{
-		{"java", Java, "package app; public class App { public void run() { int value = 1; } }"},
-		{"kotlin", Kotlin, "fun run() { println(\"ok\") }"},
-		{"csharp", CSharp, "class App { void Run() { var value = 1; } }"},
-		{"cpp", Cpp, "class App { void run() { int value = 1; } };"},
-		{"ruby", Ruby, "class App\n  def run\n    value = 1\n  end\nend"},
-		{"swift", Swift, "class App { func run() { let value = 1 } }"},
+		{"java", lang.Java, "package app; public class App { public void run() { int value = 1; } }"},
+		{"kotlin", lang.Kotlin, "fun run() { println(\"ok\") }"},
+		{"csharp", lang.CSharp, "class App { void Run() { var value = 1; } }"},
+		{"cpp", lang.Cpp, "class App { void run() { int value = 1; } };"},
+		{"ruby", lang.Ruby, "class App\n  def run\n    value = 1\n  end\nend"},
+		{"swift", lang.Swift, "class App { func run() { let value = 1 } }"},
 	}
 	c := New()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if out, ok := c.Compress([]byte(tt.src), tt.lang); !ok || out == tt.src {
+			if out, ok := c.Compress([]byte(tt.src), tt.id); !ok || out == tt.src {
 				t.Fatalf("compression failed: ok=%v output=%q", ok, out)
 			}
 		})
@@ -95,7 +97,7 @@ func unexported() {
 	// body
 }
 `
-	out, didCompress := c.Compress([]byte(src), Go)
+	out, didCompress := c.Compress([]byte(src), lang.Go)
 	if !didCompress {
 		t.Fatal("expected compression")
 	}
@@ -139,7 +141,7 @@ class Widget {
 	}
 }
 `
-	out, didCompress := c.Compress([]byte(src), JavaScript)
+	out, didCompress := c.Compress([]byte(src), lang.JavaScript)
 	if !didCompress {
 		t.Fatal("expected compression")
 	}
@@ -160,6 +162,39 @@ class Widget {
 	}
 }
 
+// TestCompressJavaScriptVariableFunction verifies the JS signature fix:
+// const foo = (a, b) => {...} and export default function() {...} become
+// signatures rather than missing or verbatim dumps of the function body.
+func TestCompressJavaScriptVariableFunction(t *testing.T) {
+	c := New()
+	src := `// greet greets a name.
+const greet = (name) => {
+	return "hi " + name;
+};
+
+export default function init(opts) {
+	return opts;
+};
+`
+	out, didCompress := c.Compress([]byte(src), lang.JavaScript)
+	if !didCompress {
+		t.Fatal("expected compression")
+	}
+
+	for _, w := range []string{
+		"// greet greets a name.",
+		"const greet = (name) => { /* ... */ }",
+		"export default function init(opts) { /* ... */ }",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in output:\n%s", w, out)
+		}
+	}
+	if strings.Contains(out, `"hi " + name`) || strings.Contains(out, "return opts") {
+		t.Errorf("function body leaked into signatures:\n%s", out)
+	}
+}
+
 func TestCompressPython(t *testing.T) {
 	c := New()
 	src := `import os
@@ -173,7 +208,7 @@ class Server:
     def start(self) -> None:
         pass
 `
-	out, didCompress := c.Compress([]byte(src), Python)
+	out, didCompress := c.Compress([]byte(src), lang.Python)
 	if !didCompress {
 		t.Fatal("expected compression")
 	}
@@ -217,7 +252,7 @@ fn greet(u: &User) -> String {
     format!("hi {}", u.name)
 }
 `
-	out, didCompress := c.Compress([]byte(src), Rust)
+	out, didCompress := c.Compress([]byte(src), lang.Rust)
 	if !didCompress {
 		t.Fatal("expected compression")
 	}
@@ -258,7 +293,7 @@ class Service
     }
 }
 `
-	out, didCompress := c.Compress([]byte(src), PHP)
+	out, didCompress := c.Compress([]byte(src), lang.PHP)
 	if !didCompress {
 		t.Fatal("expected compression")
 	}
@@ -282,7 +317,7 @@ class Service
 func TestCompressFallback(t *testing.T) {
 	c := New()
 	src := "this is not parseable as code, just prose text without declarations"
-	out, didCompress := c.Compress([]byte(src), Go)
+	out, didCompress := c.Compress([]byte(src), lang.Go)
 	if out != src || didCompress {
 		t.Errorf("fallback should return source unchanged with compressed=false, got %q, %v", out, didCompress)
 	}
@@ -291,7 +326,7 @@ func TestCompressFallback(t *testing.T) {
 func TestCompressReportsCompressed(t *testing.T) {
 	c := New()
 	src := "package p\n\n// F does things.\nfunc F() int {\n\treturn 1\n}\n"
-	out, didCompress := c.Compress([]byte(src), Go)
+	out, didCompress := c.Compress([]byte(src), lang.Go)
 	if !didCompress || !strings.Contains(out, "func F() int") {
 		t.Errorf("expected compressed output, got %q, %v", out, didCompress)
 	}
@@ -307,7 +342,7 @@ func f() int {
 	return 1
 }
 `
-	out, _ := c.Compress([]byte(src), Go)
+	out, _ := c.Compress([]byte(src), lang.Go)
 	if strings.Contains(out, "note about something") {
 		t.Errorf("blank-line comment leaked into signatures:\n%s", out)
 	}
@@ -324,7 +359,7 @@ func TestCompressConcurrent(t *testing.T) {
 
 	const workers = 8
 	const perWorker = 20
-	expected, didCompress := c.Compress(src, Go)
+	expected, didCompress := c.Compress(src, lang.Go)
 	if !didCompress || !strings.Contains(expected, "func F() int") {
 		t.Fatalf("baseline compress failed: %q, %v", expected, didCompress)
 	}
@@ -336,7 +371,7 @@ func TestCompressConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < perWorker; j++ {
-				out, ok := c.Compress(src, Go)
+				out, ok := c.Compress(src, lang.Go)
 				if !ok {
 					errs <- "didCompress = false"
 					return

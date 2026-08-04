@@ -1,80 +1,9 @@
-// Package language classifies source files using common language conventions.
-// Classifications are soft signals for selection; hard filtering remains the
-// responsibility of the smart/binary/size filtering pipeline.
-package language
+package lang
 
-import (
-	"path/filepath"
-	"strings"
-)
+import "strings"
 
-// Role describes the likely purpose of a file.
-type Role string
-
-const (
-	RoleUnknown    Role = "unknown"
-	RoleEntrypoint Role = "entrypoint"
-	RoleAPI        Role = "api"
-	RoleImpl       Role = "implementation"
-	RoleTest       Role = "test"
-	RoleFixture    Role = "fixture"
-	RoleMock       Role = "mock"
-	RoleConfig     Role = "config"
-	RoleSchema     Role = "schema"
-	RoleDocs       Role = "docs"
-	RoleGenerated  Role = "generated"
-	RoleExample    Role = "example"
-	RoleVendor     Role = "vendor"
-)
-
-// Classification is a soft selection signal.
-type Classification struct {
-	Role       Role
-	Adjustment float64
-	Confidence float64
-	Reason     string
-}
-
-// Classify applies common and language-specific path conventions.
-func Classify(path string) Classification {
-	norm := strings.ToLower(filepath.ToSlash(path))
-	base := strings.ToLower(filepath.Base(norm))
-	ext := strings.ToLower(filepath.Ext(base))
-
-	if c, ok := common(norm, base, ext); ok {
-		return c
-	}
-	switch ext {
-	case ".go":
-		return goFile(norm, base)
-	case ".js", ".jsx", ".mjs", ".cjs":
-		return javascriptFile(norm, base)
-	case ".ts", ".tsx":
-		return typescriptFile(norm, base)
-	case ".py":
-		return pythonFile(norm, base)
-	case ".rs":
-		return rustFile(norm, base)
-	case ".java":
-		return javaFile(norm, base)
-	case ".kt", ".kts":
-		return kotlinFile(norm, base)
-	case ".rb":
-		return rubyFile(norm, base)
-	case ".php":
-		return phpFile(norm, base)
-	case ".cs":
-		return csharpFile(norm, base)
-	case ".c", ".h":
-		return cFile(norm, base)
-	case ".cpp", ".cc", ".cxx", ".hpp":
-		return cppFile(norm, base)
-	case ".swift":
-		return swiftFile(norm, base)
-	}
-	return Classification{Role: RoleUnknown}
-}
-
+// common applies language-agnostic path conventions before any language rules,
+// mirroring the historical shared rules used by selection ranking.
 func common(path, base, ext string) (Classification, bool) {
 	switch {
 	case strings.Contains(path, "/vendor/") || strings.HasPrefix(path, "vendor/"):

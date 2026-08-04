@@ -6,53 +6,60 @@ import (
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
+
+	"github.com/bethropolis/sift/internal/lang"
 )
 
 // walkDeclarations visits the AST in document order, emitting declarations the
 // tree can summarize. Nodes handled by emitNode are emitted with their full
 // structure (headers, type bodies, placeholders) and their interiors are not
 // re-walked, so class members and import specs are never emitted twice.
-func (c *Compressor) walkDeclarations(n *sitter.Node, src []byte, lang Language, b *strings.Builder) {
-	if n.IsNamed() && declTypes[lang][n.Type()] {
-		if c.emitNode(n, src, lang, b) {
+func (c *Compressor) walkDeclarations(n *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) {
+	if n.IsNamed() && spec.Declarations[n.Type()] {
+		if c.emitNode(n, src, spec, b) {
 			return
 		}
 	}
 	for i := 0; i < int(n.ChildCount()); i++ {
-		c.walkDeclarations(n.Child(i), src, lang, b)
+		c.walkDeclarations(n.Child(i), src, spec, b)
 	}
 }
 
 // emitNode writes a declaration and reports whether it was fully handled (in
 // which case the caller must not descend, since the interior was already
-// emitted). The three branches are:
+// emitted). The branches are:
+//   - a variable declaration that initialises a function (JS/TS): header plus
+//     a signature, so arrow-function bodies are dropped instead of dumped;
 //   - headers/imports/constants: verbatim, they carry no bodies to strip;
 //   - type definitions: structure preserved (fields and interface contracts),
 //     with class/interface method bodies compressed;
 //   - functions and methods: header signature plus a body placeholder.
-func (c *Compressor) emitNode(n *sitter.Node, src []byte, lang Language, b *strings.Builder) bool {
+func (c *Compressor) emitNode(n *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) bool {
 	nodeType := n.Type()
 
-	// 1. Package, imports, and const/var declarations carry no bodies, so the
-	// literal values and dependency names are emitted intact.
-	if isHeaderOrConst(nodeType) {
+	// 1. const/let/var value = () => { ... } becomes a signature.
+	if spec.VariableWithFunction != nil && spec.VariableWithFunction(n, src) {
+		c.emitVariableFunctionSignature(n, src, spec, b)
+		return true
+	}
+
+	// 2. Package, imports, and const/var declarations carry no bodies.
+	if spec.HeaderOrConst(nodeType) {
 		b.WriteString(strings.TrimSpace(n.Content(src)))
 		b.WriteString("\n\n")
 		return true
 	}
 
-	// 2. Type definitions preserve their interior structure so fields and
-	// interface contracts survive (class bodies get method placeholders).
-	if isTypeDefinition(nodeType) {
-		c.emitTypeWithStructure(n, src, lang, b)
+	// 3. Type definitions preserve their interior structure.
+	if spec.TypeDefinition(nodeType) {
+		c.emitTypeWithStructure(n, src, spec, b)
 		return true
 	}
 
-	// 3. Functions and methods keep their header signature and replace the
-	// body with a syntactically valid placeholder.
-	if isFunctionOrMethod(nodeType) {
+	// 4. Functions and methods keep their header plus a body placeholder.
+	if spec.FunctionOrMethod(nodeType) {
 		doc := docComment(src, n)
-		sig := signatureFrom(declStart(n), src, n, lang)
+		sig := signatureFrom(declStart(n), src, n, spec)
 		if sig == "" {
 			return true
 		}
@@ -60,7 +67,7 @@ func (c *Compressor) emitNode(n *sitter.Node, src []byte, lang Language, b *stri
 			b.WriteString(doc)
 		}
 		b.WriteString(sig)
-		if lang == Python {
+		if spec.PythonLike {
 			b.WriteString(" ...\n\n")
 		} else {
 			b.WriteString(" { /* ... */ }\n\n")
@@ -91,19 +98,48 @@ func isExportWrapper(n *sitter.Node) bool {
 	return false
 }
 
-// emitTypeWithStructure emits a type definition preserving its interior:
-// structs, interfaces, enums, and aliases contain only declarations so their
-// full text is kept; classes contain method bodies which are compressed.
-func (c *Compressor) emitTypeWithStructure(n *sitter.Node, src []byte, lang Language, b *strings.Builder) {
+// emitVariableFunctionSignature emits a const/let/var declaration that
+// initialises an arrow function or function expression, replacing only the
+// function body with a placeholder (e.g. const foo = (a, b) => { /* ... */ }).
+func (c *Compressor) emitVariableFunctionSignature(n *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) {
 	if doc := docComment(src, n); doc != "" {
 		b.WriteString(doc)
 	}
 
-	// Classes and Python class definitions may embed method bodies; walk their
-	// interior so fields survive and methods become placeholders.
+	start := declStart(n)
+	end := int(n.EndByte())
+	for i := 0; i < int(n.ChildCount()); i++ {
+		child := n.Child(i)
+		if child.Type() == "variable_declarator" {
+			if v := child.ChildByFieldName("value"); v != nil &&
+				(v.Type() == "arrow_function" || v.Type() == "function_expression") {
+				if body := v.ChildByFieldName("body"); body != nil {
+					end = int(body.StartByte())
+				}
+				break
+			}
+		}
+	}
+
+	b.WriteString(strings.TrimRight(string(src[start:end]), " \t\r\n"))
+	if spec.PythonLike {
+		b.WriteString("\n\n")
+	} else {
+		b.WriteString(" { /* ... */ }\n\n")
+	}
+}
+
+// emitTypeWithStructure emits a type definition preserving its interior:
+// structs, interfaces, enums, and aliases contain only declarations so their
+// full text is kept; classes contain method bodies which are compressed.
+func (c *Compressor) emitTypeWithStructure(n *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) {
+	if doc := docComment(src, n); doc != "" {
+		b.WriteString(doc)
+	}
+
 	if isContainerType(n.Type()) {
 		if body := n.ChildByFieldName("body"); body != nil {
-			c.emitContainer(n, body, src, lang, b)
+			c.emitContainer(n, body, src, spec, b)
 			return
 		}
 	}
@@ -116,10 +152,10 @@ func (c *Compressor) emitTypeWithStructure(n *sitter.Node, src []byte, lang Lang
 // emitContainer writes a class header followed by its members indented two
 // spaces, compressing method bodies. Python classes end at the header colon
 // (no closing brace).
-func (c *Compressor) emitContainer(n, body *sitter.Node, src []byte, lang Language, b *strings.Builder) {
+func (c *Compressor) emitContainer(n, body *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) {
 	header := strings.TrimRight(string(src[declStart(n):int(body.StartByte())]), " \t\r\n")
 	b.WriteString(header)
-	if lang == Python {
+	if spec.PythonLike {
 		b.WriteString("\n")
 	} else {
 		b.WriteString(" {\n")
@@ -131,14 +167,14 @@ func (c *Compressor) emitContainer(n, body *sitter.Node, src []byte, lang Langua
 			continue
 		}
 		switch {
-		case isFunctionOrMethod(child.Type()):
+		case spec.FunctionOrMethod(child.Type()):
 			if doc := docComment(src, child); doc != "" {
 				b.WriteString("  " + strings.TrimRight(strings.ReplaceAll(strings.TrimSpace(doc), "\n", "\n  "), " ") + "\n")
 			}
-			sig := signatureFrom(declStart(child), src, child, lang)
+			sig := signatureFrom(declStart(child), src, child, spec)
 			if sig != "" {
 				b.WriteString("  " + sig)
-				if lang == Python {
+				if spec.PythonLike {
 					b.WriteString(" ...\n")
 				} else {
 					b.WriteString(" { /* ... */ }\n")
@@ -147,7 +183,7 @@ func (c *Compressor) emitContainer(n, body *sitter.Node, src []byte, lang Langua
 		case isComment(child.Type()):
 			// A comment immediately above a method is its doc and is emitted
 			// by that branch; only standalone comments are written here.
-			if next := child.NextNamedSibling(); next != nil && isFunctionOrMethod(next.Type()) && attached(src, child, next) {
+			if next := child.NextNamedSibling(); next != nil && spec.FunctionOrMethod(next.Type()) && attached(src, child, next) {
 				continue
 			}
 			b.WriteString("  " + strings.TrimSpace(child.Content(src)) + "\n")
@@ -159,33 +195,12 @@ func (c *Compressor) emitContainer(n, body *sitter.Node, src []byte, lang Langua
 		}
 	}
 
-	if lang == Python {
+	if spec.PythonLike {
 		b.WriteString("\n")
 	} else {
 		b.WriteString("}\n")
 	}
 	b.WriteString("\n")
-}
-
-// isHeaderOrConst reports whether a node carries no body worth stripping, so
-// its full text (package clause, imports, constants, globals) is kept.
-func isHeaderOrConst(t string) bool {
-	return t == "package_clause" || t == "package_declaration" || t == "package_header" || t == "import_declaration" || t == "import_header" || t == "import_statement" ||
-		t == "import_from_statement" || t == "use_declaration" || t == "extern_crate_declaration" ||
-		t == "using_directive" || t == "using_declaration" || t == "preproc_include" ||
-		t == "namespace_definition" || t == "namespace_use_declaration" ||
-		t == "const_declaration" || t == "var_declaration" || t == "variable_declaration" ||
-		t == "const_item" || t == "static_item"
-}
-
-// isTypeDefinition reports whether a node is a type declaration whose
-// interior structure should be preserved.
-func isTypeDefinition(t string) bool {
-	return t == "type_declaration" || t == "struct_item" || t == "enum_item" || t == "class_specifier" || t == "struct_specifier" || t == "enum_specifier" ||
-		t == "trait_item" || t == "type_item" ||
-		t == "class_declaration" || t == "class_definition" ||
-		t == "interface_declaration" || t == "type_alias_declaration" ||
-		t == "enum_declaration" || t == "record_declaration" || t == "object_declaration" || t == "protocol_declaration" || t == "struct_declaration"
 }
 
 // isContainerType reports whether a type node's body can contain method
@@ -200,18 +215,10 @@ func isComment(t string) bool {
 	return strings.Contains(t, "comment")
 }
 
-// isFunctionOrMethod reports whether a node is a function or method whose body
-// should be replaced with a placeholder.
-func isFunctionOrMethod(t string) bool {
-	return t == "function_declaration" || t == "method_declaration" || t == "function_definition" || t == "method" || t == "singleton_method" || t == "init_declaration" ||
-		t == "function_item" ||
-		t == "method_definition" || t == "generator_function_declaration"
-}
-
 // signatureFrom returns the declaration text from start (inclusive) up to (but
 // excluding) its body, trimmed of trailing whitespace. start may precede the
 // node (an export wrapper); the body boundary is resolved from the node itself.
-func signatureFrom(start int, src []byte, n *sitter.Node, lang Language) string {
+func signatureFrom(start int, src []byte, n *sitter.Node, spec *lang.SignatureSpec) string {
 	end := int(n.EndByte())
 	text := src[start:end]
 
@@ -222,7 +229,7 @@ func signatureFrom(start int, src []byte, n *sitter.Node, lang Language) string 
 		}
 	}
 
-	offset := scanBodyBoundary(src, n, lang)
+	offset := scanBodyBoundary(src, n, spec)
 	if offset > 0 {
 		return strings.TrimRight(string(text[:offset]), " \t\r\n")
 	}
@@ -233,10 +240,10 @@ func signatureFrom(start int, src []byte, n *sitter.Node, lang Language) string 
 // declaration body begins: the first { at bracket/paren depth zero for brace
 // languages, the first : at depth zero for Python. Strings and comments are
 // skipped so literals cannot cause a premature cut.
-func scanBodyBoundary(src []byte, n *sitter.Node, lang Language) int {
+func scanBodyBoundary(src []byte, n *sitter.Node, spec *lang.SignatureSpec) int {
 	start := int(n.StartByte())
 	end := int(n.EndByte())
-	stopColon := lang == Python
+	stopColon := spec.PythonLike
 
 	var paren, brack int
 	var quote byte
@@ -279,7 +286,7 @@ func scanBodyBoundary(src []byte, n *sitter.Node, lang Language) int {
 				continue
 			}
 		case '#':
-			if lang == Python {
+			if spec.PythonLike {
 				lineComment = true
 			}
 		case '\'', '"', '`':

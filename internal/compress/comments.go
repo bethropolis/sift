@@ -30,13 +30,13 @@ func docComment(src []byte, n *sitter.Node) string {
 	return ""
 }
 
-var wrapperTypes = stringSet(
-	"export_statement",
-	"export_clause",
-	"export_default",
-	"module_item",
-	"declaration",
-)
+var wrapperTypes = map[string]bool{
+	"export_statement": true,
+	"export_clause":    true,
+	"export_default":   true,
+	"module_item":      true,
+	"declaration":      true,
+}
 
 func isWrapper(n *sitter.Node) bool {
 	return n != nil && wrapperTypes[n.Type()]

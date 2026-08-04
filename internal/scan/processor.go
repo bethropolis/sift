@@ -117,7 +117,7 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 			if lang, ok := p.compressor.LanguageForPath(path); ok {
 				if compressed, didCompress := p.compressor.Compress(content, lang); didCompress {
 					entry.SigContent = []byte(compressed)
-					entry.Language = lang.String()
+					entry.Language = string(lang)
 				}
 			}
 		}
@@ -134,7 +134,7 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 					content = []byte(compressed)
 					entry.Content = content
 					entry.IsCompressed = true
-					entry.Language = lang.String()
+					entry.Language = string(lang)
 				}
 			}
 		}

@@ -1,7 +1,8 @@
 // Package smart filters files that are unlikely to be useful LLM context:
 // generated artifacts, lockfiles, minified bundles, and oversized files that
 // .gitignore often misses. It relies on filename heuristics, generated-header
-// sniffing, and a per-file token guardrail.
+// sniffing, and a per-file token guardrail. The language-specific rules live
+// in internal/lang.
 package smart
 
 import (
@@ -9,17 +10,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bethropolis/sift/internal/smart/language"
+	"github.com/bethropolis/sift/internal/lang"
 )
 
 // DefaultMaxTokens is the per-file guardrail used when no limit is given.
 const DefaultMaxTokens = 15000
 
-// Evaluator checks files against the token guardrail, generated headers, and
-// registered language rules.
+// Evaluator checks files against the token guardrail and generated headers,
+// delegating language-specific rules to the central lang registry.
 type Evaluator struct {
 	maxTokens int
-	rules     []language.Rule
 }
 
 // New returns an Evaluator using the given per-file token ceiling. A
@@ -28,10 +28,7 @@ func New(maxTokens int) *Evaluator {
 	if maxTokens <= 0 {
 		maxTokens = DefaultMaxTokens
 	}
-	return &Evaluator{
-		maxTokens: maxTokens,
-		rules:     language.AllRules(),
-	}
+	return &Evaluator{maxTokens: maxTokens}
 }
 
 // ShouldSkipPath reports whether a file should be excluded based on its name
@@ -40,13 +37,7 @@ func New(maxTokens int) *Evaluator {
 func (e *Evaluator) ShouldSkipPath(path string) (bool, string) {
 	filename := strings.ToLower(filepath.Base(path))
 	normPath := strings.ToLower(filepath.ToSlash(path))
-
-	for _, rule := range e.rules {
-		if rule(normPath, filename, nil) {
-			return true, "Matched smart language filter"
-		}
-	}
-	return false, ""
+	return lang.ShouldSkipSmart(normPath, filename, nil)
 }
 
 // ShouldSkipMeta reports whether a file should be excluded using only its
@@ -76,9 +67,5 @@ func (e *Evaluator) ShouldSkip(path string, content []byte, tokens int) (bool, s
 	}
 
 	// 3. Language-specific rules.
-	if skip, reason := e.ShouldSkipPath(path); skip {
-		return true, reason
-	}
-
-	return false, ""
+	return e.ShouldSkipPath(path)
 }
