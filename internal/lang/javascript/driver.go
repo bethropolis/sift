@@ -1,12 +1,17 @@
-package lang
+package langjs
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/bethropolis/sift/internal/lang/registry"
+	"github.com/bethropolis/sift/internal/lang/types"
+)
 
 type jsDriver struct{}
 
-func init() { Register(jsDriver{}) }
+func init() { registry.Register(jsDriver{}) }
 
-func (jsDriver) ID() ID               { return JavaScript }
+func (jsDriver) ID() types.ID         { return types.JavaScript }
 func (jsDriver) Name() string         { return "JavaScript" }
 func (jsDriver) Extensions() []string { return []string{".js", ".jsx", ".mjs", ".cjs"} }
 func (jsDriver) ShouldSkipSmart(path, filename string, content []byte) (bool, string) {
@@ -20,15 +25,15 @@ func (jsDriver) ShouldSkipSmart(path, filename string, content []byte) (bool, st
 	}
 	return false, ""
 }
-func (jsDriver) Classify(path, filename string) Classification {
+func (jsDriver) Classify(path, filename string) types.Classification {
 	switch {
 	case strings.Contains(path, "/__tests__/") || strings.HasPrefix(path, "__tests__/") ||
 		strings.HasSuffix(filename, ".test.js") || strings.HasSuffix(filename, ".spec.js"):
-		return Classification{Role: RoleTest, Adjustment: -0.12, Confidence: 0.95, Reason: "JavaScript test file"}
+		return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.95, Reason: "JavaScript test file"}
 	case filename == "index.js" || filename == "main.js" || strings.HasPrefix(path, "bin/"):
-		return Classification{Role: RoleEntrypoint, Adjustment: 0.16, Confidence: 0.85, Reason: "JavaScript entrypoint"}
+		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.85, Reason: "JavaScript entrypoint"}
 	case strings.HasSuffix(filename, ".config.js") || strings.HasSuffix(filename, ".config.cjs"):
-		return Classification{Role: RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "JavaScript configuration"}
+		return types.Classification{Role: types.RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "JavaScript configuration"}
 	}
-	return Classification{Role: RoleImpl, Confidence: 0.50, Reason: "JavaScript source"}
+	return types.Classification{Role: types.RoleImpl, Confidence: 0.50, Reason: "JavaScript source"}
 }

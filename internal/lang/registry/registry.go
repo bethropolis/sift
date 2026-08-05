@@ -1,20 +1,25 @@
-package lang
+// Package registry owns the global language lookup tables and the shared
+// path-convention rules. Drivers register themselves here; the facade
+// (internal/lang) is what external consumers import.
+package registry
 
 import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/bethropolis/sift/internal/lang/types"
 )
 
 var (
 	mu    sync.RWMutex
-	byID  = map[ID]Language{}
-	byExt = map[string]Language{}
+	byID  = map[types.ID]types.Language{}
+	byExt = map[string]types.Language{}
 )
 
-// Register adds a language to the global registry. Registering the same ID
-// replaces the previous entry.
-func Register(l Language) {
+// Register adds a language to the registry. Registering the same ID replaces
+// the previous entry.
+func Register(l types.Language) {
 	mu.Lock()
 	defer mu.Unlock()
 	byID[l.ID()] = l
@@ -24,7 +29,7 @@ func Register(l Language) {
 }
 
 // ByID returns the language registered under id.
-func ByID(id ID) (Language, bool) {
+func ByID(id types.ID) (types.Language, bool) {
 	mu.RLock()
 	defer mu.RUnlock()
 	l, ok := byID[id]
@@ -32,7 +37,7 @@ func ByID(id ID) (Language, bool) {
 }
 
 // ForPath resolves the language for a file by extension.
-func ForPath(path string) (Language, bool) {
+func ForPath(path string) (types.Language, bool) {
 	ext := strings.ToLower(filepath.Ext(path))
 	mu.RLock()
 	defer mu.RUnlock()
@@ -41,7 +46,7 @@ func ForPath(path string) (Language, bool) {
 }
 
 // Classify applies shared conventions and then the language driver rules.
-func Classify(path string) Classification {
+func Classify(path string) types.Classification {
 	norm := strings.ToLower(filepath.ToSlash(path))
 	base := strings.ToLower(filepath.Base(norm))
 	ext := strings.ToLower(filepath.Ext(base))
@@ -52,7 +57,7 @@ func Classify(path string) Classification {
 	if l, ok := ForPath(norm); ok {
 		return l.Classify(norm, base)
 	}
-	return Classification{Role: RoleUnknown}
+	return types.Classification{Role: types.RoleUnknown}
 }
 
 // ShouldSkipSmart reports whether any registered language's smart rules skip

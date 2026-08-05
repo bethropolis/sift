@@ -1,12 +1,16 @@
 //go:build cgo
 
-package lang
+package langrs
 
-import "github.com/smacker/go-tree-sitter/rust"
+import (
+	"github.com/bethropolis/sift/internal/lang/signature"
+	"github.com/bethropolis/sift/internal/lang/types"
+	"github.com/smacker/go-tree-sitter/rust"
+)
 
 func init() {
-	RegisterSignature(Rust, &SignatureSpec{
-		Declarations: DeclMap(
+	signature.Register(types.Rust, &signature.SignatureSpec{
+		Declarations: types.DeclMap(
 			"use_declaration", "extern_crate_declaration", "const_item", "static_item",
 			"function_item", "struct_item", "enum_item", "trait_item", "type_item",
 		),

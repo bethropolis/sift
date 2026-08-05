@@ -1,12 +1,16 @@
 //go:build cgo
 
-package lang
+package langgo
 
-import "github.com/smacker/go-tree-sitter/golang"
+import (
+	"github.com/bethropolis/sift/internal/lang/signature"
+	"github.com/bethropolis/sift/internal/lang/types"
+	"github.com/smacker/go-tree-sitter/golang"
+)
 
 func init() {
-	RegisterSignature(Go, &SignatureSpec{
-		Declarations: DeclMap(
+	signature.Register(types.Go, &signature.SignatureSpec{
+		Declarations: types.DeclMap(
 			"package_clause", "import_declaration", "const_declaration", "var_declaration",
 			"function_declaration", "method_declaration", "type_declaration",
 		),

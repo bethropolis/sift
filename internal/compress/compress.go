@@ -8,41 +8,20 @@
 package compress
 
 import (
-	"strings"
-	"sync"
-
-	sitter "github.com/smacker/go-tree-sitter"
-
 	"github.com/bethropolis/sift/internal/lang"
+	"github.com/bethropolis/sift/internal/lang/signature"
 )
 
-// Compressor produces signature summaries for registered languages.
-//
-// parsers holds one reusable parser per language. Tree-sitter parser
-// creation/destruction crosses cgo, which is expensive per file; pooling them
-// avoids that churn across worker goroutines.
+// Compressor produces signature summaries for registered languages by
+// delegating to the pooled tree-sitter engine in internal/lang/signature.
 type Compressor struct {
-	parsers map[lang.ID]*sync.Pool
+	engine *signature.Engine
 }
 
-// New returns a Compressor with a parser pool for every registered language.
+// New returns a Compressor backed by a signature engine with a parser pool for
+// every registered language.
 func New() *Compressor {
-	parsers := make(map[lang.ID]*sync.Pool)
-	for _, id := range lang.SignatureIDs() {
-		spec, ok := lang.LookupSignature(id)
-		if !ok || spec.Grammar == nil {
-			continue
-		}
-		grammar := spec.Grammar
-		parsers[id] = &sync.Pool{
-			New: func() any {
-				p := sitter.NewParser()
-				p.SetLanguage(grammar)
-				return p
-			},
-		}
-	}
-	return &Compressor{parsers: parsers}
+	return &Compressor{engine: signature.New()}
 }
 
 // LanguageForPath returns the language for a path that has a registered
@@ -56,7 +35,7 @@ func (c *Compressor) LanguageForPath(path string) (lang.ID, bool) {
 	if r, ok := l.(lang.SignatureResolver); ok {
 		id = r.SignatureLanguage(path)
 	}
-	if _, has := lang.LookupSignature(id); !has {
+	if _, has := signature.Lookup(id); !has {
 		return "", false
 	}
 	return id, true
@@ -66,28 +45,5 @@ func (c *Compressor) LanguageForPath(path string) (lang.ID, bool) {
 // reports whether any declaration was emitted; false means the source is
 // returned unchanged (nothing to compress or a parse failure).
 func (c *Compressor) Compress(src []byte, id lang.ID) (string, bool) {
-	spec, ok := lang.LookupSignature(id)
-	if !ok {
-		return string(src), false
-	}
-	pool, ok := c.parsers[id]
-	if !ok {
-		return string(src), false
-	}
-
-	parser := pool.Get().(*sitter.Parser)
-	defer pool.Put(parser)
-
-	tree := parser.Parse(nil, src)
-	if tree == nil {
-		return string(src), false
-	}
-	root := tree.RootNode()
-
-	var b strings.Builder
-	c.walkDeclarations(root, src, spec, &b)
-	if b.Len() == 0 {
-		return string(src), false
-	}
-	return strings.TrimRight(b.String(), "\n"), true
+	return c.engine.Signature(src, id)
 }

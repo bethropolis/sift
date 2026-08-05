@@ -1,12 +1,16 @@
 //go:build cgo
 
-package lang
+package langpy
 
-import "github.com/smacker/go-tree-sitter/python"
+import (
+	"github.com/bethropolis/sift/internal/lang/signature"
+	"github.com/bethropolis/sift/internal/lang/types"
+	"github.com/smacker/go-tree-sitter/python"
+)
 
 func init() {
-	RegisterSignature(Python, &SignatureSpec{
-		Declarations: DeclMap("import_statement", "import_from_statement", "function_definition", "class_definition"),
+	signature.Register(types.Python, &signature.SignatureSpec{
+		Declarations: types.DeclMap("import_statement", "import_from_statement", "function_definition", "class_definition"),
 		Grammar:      python.GetLanguage(),
 		PythonLike:   true,
 		HeaderOrConst: func(t string) bool {

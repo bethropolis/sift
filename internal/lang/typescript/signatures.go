@@ -1,16 +1,19 @@
 //go:build cgo
 
-package lang
+package langts
 
 import (
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/typescript/tsx"
 	"github.com/smacker/go-tree-sitter/typescript/typescript"
+
+	"github.com/bethropolis/sift/internal/lang/signature"
+	"github.com/bethropolis/sift/internal/lang/types"
 )
 
 func init() {
-	tsSpec := &SignatureSpec{
-		Declarations: DeclMap(
+	tsSpec := &signature.SignatureSpec{
+		Declarations: types.DeclMap(
 			"import_statement", "variable_declaration", "lexical_declaration",
 			"function_declaration", "generator_function_declaration", "method_definition",
 			"method_signature", "property_signature", "arrow_function",
@@ -28,13 +31,13 @@ func init() {
 				t == "method_definition" || t == "arrow_function" ||
 				t == "method_signature" || t == "abstract_method_signature"
 		},
-		VariableWithFunction: functionInVariableDecl,
+		VariableWithFunction: signature.FunctionInVariableDecl,
 	}
-	RegisterSignature(TypeScript, withGrammar(tsSpec, typescript.GetLanguage()))
-	RegisterSignature(TSX, withGrammar(tsSpec, tsx.GetLanguage()))
+	signature.Register(types.TypeScript, withGrammar(tsSpec, typescript.GetLanguage()))
+	signature.Register(types.TSX, withGrammar(tsSpec, tsx.GetLanguage()))
 }
 
-func withGrammar(spec *SignatureSpec, grammar *sitter.Language) *SignatureSpec {
+func withGrammar(spec *signature.SignatureSpec, grammar *sitter.Language) *signature.SignatureSpec {
 	copy := *spec
 	copy.Grammar = grammar
 	return &copy

@@ -1,6 +1,6 @@
 //go:build cgo
 
-package compress
+package signature
 
 import (
 	"strings"

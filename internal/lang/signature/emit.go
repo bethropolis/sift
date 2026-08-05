@@ -1,27 +1,84 @@
 //go:build cgo
 
-package compress
+package signature
 
 import (
 	"strings"
+	"sync"
 
+	"github.com/bethropolis/sift/internal/lang/types"
 	sitter "github.com/smacker/go-tree-sitter"
-
-	"github.com/bethropolis/sift/internal/lang"
 )
 
-// walkDeclarations visits the AST in document order, emitting declarations the
-// tree can summarize. Nodes handled by emitNode are emitted with their full
-// structure (headers, type bodies, placeholders) and their interiors are not
-// re-walked, so class members and import specs are never emitted twice.
-func (c *Compressor) walkDeclarations(n *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) {
+// Engine produces signature-only summaries for registered languages. It holds
+// one reusable tree-sitter parser per language: parser creation/destruction
+// crosses cgo and is expensive per file, so workers share a pool.
+type Engine struct {
+	parsers map[types.ID]*sync.Pool
+}
+
+// New returns an Engine with a parser pool for every registered language.
+func New() *Engine {
+	parsers := make(map[types.ID]*sync.Pool)
+	for _, id := range IDs() {
+		spec, ok := Lookup(id)
+		if !ok || spec.Grammar == nil {
+			continue
+		}
+		g := spec.Grammar
+		parsers[id] = &sync.Pool{
+			New: func() any {
+				p := sitter.NewParser()
+				p.SetLanguage(g)
+				return p
+			},
+		}
+	}
+	return &Engine{parsers: parsers}
+}
+
+// Signature returns a signature-only summary of src for id. The boolean result
+// reports whether any declaration was emitted; false means the source should be
+// kept unchanged (no registered grammar, parse failure, or nothing to strip).
+func (e *Engine) Signature(src []byte, id types.ID) (string, bool) {
+	spec, ok := Lookup(id)
+	if !ok {
+		return string(src), false
+	}
+	pool, ok := e.parsers[id]
+	if !ok {
+		return string(src), false
+	}
+
+	parser := pool.Get().(*sitter.Parser)
+	defer pool.Put(parser)
+
+	tree := parser.Parse(nil, src)
+	if tree == nil {
+		return string(src), false
+	}
+	root := tree.RootNode()
+
+	var b strings.Builder
+	e.walk(root, src, spec, &b)
+	if b.Len() == 0 {
+		return string(src), false
+	}
+	return strings.TrimRight(b.String(), "\n"), true
+}
+
+// walk visits the AST in document order, emitting declarations the tree can
+// summarize. Nodes handled by emitNode are emitted with their full structure
+// (headers, type bodies, placeholders) and their interiors are not re-walked,
+// so class members and import specs are never emitted twice.
+func (e *Engine) walk(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) {
 	if n.IsNamed() && spec.Declarations[n.Type()] {
-		if c.emitNode(n, src, spec, b) {
+		if e.emitNode(n, src, spec, b) {
 			return
 		}
 	}
 	for i := 0; i < int(n.ChildCount()); i++ {
-		c.walkDeclarations(n.Child(i), src, spec, b)
+		e.walk(n.Child(i), src, spec, b)
 	}
 }
 
@@ -34,12 +91,12 @@ func (c *Compressor) walkDeclarations(n *sitter.Node, src []byte, spec *lang.Sig
 //   - type definitions: structure preserved (fields and interface contracts),
 //     with class/interface method bodies compressed;
 //   - functions and methods: header signature plus a body placeholder.
-func (c *Compressor) emitNode(n *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) bool {
+func (e *Engine) emitNode(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) bool {
 	nodeType := n.Type()
 
 	// 1. const/let/var value = () => { ... } becomes a signature.
 	if spec.VariableWithFunction != nil && spec.VariableWithFunction(n, src) {
-		c.emitVariableFunctionSignature(n, src, spec, b)
+		e.emitVariableFunctionSignature(n, src, spec, b)
 		return true
 	}
 
@@ -52,7 +109,7 @@ func (c *Compressor) emitNode(n *sitter.Node, src []byte, spec *lang.SignatureSp
 
 	// 3. Type definitions preserve their interior structure.
 	if spec.TypeDefinition(nodeType) {
-		c.emitTypeWithStructure(n, src, spec, b)
+		e.emitTypeWithStructure(n, src, spec, b)
 		return true
 	}
 
@@ -101,7 +158,7 @@ func isExportWrapper(n *sitter.Node) bool {
 // emitVariableFunctionSignature emits a const/let/var declaration that
 // initialises an arrow function or function expression, replacing only the
 // function body with a placeholder (e.g. const foo = (a, b) => { /* ... */ }).
-func (c *Compressor) emitVariableFunctionSignature(n *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) {
+func (e *Engine) emitVariableFunctionSignature(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) {
 	if doc := docComment(src, n); doc != "" {
 		b.WriteString(doc)
 	}
@@ -132,14 +189,14 @@ func (c *Compressor) emitVariableFunctionSignature(n *sitter.Node, src []byte, s
 // emitTypeWithStructure emits a type definition preserving its interior:
 // structs, interfaces, enums, and aliases contain only declarations so their
 // full text is kept; classes contain method bodies which are compressed.
-func (c *Compressor) emitTypeWithStructure(n *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) {
+func (e *Engine) emitTypeWithStructure(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) {
 	if doc := docComment(src, n); doc != "" {
 		b.WriteString(doc)
 	}
 
 	if isContainerType(n.Type()) {
 		if body := n.ChildByFieldName("body"); body != nil {
-			c.emitContainer(n, body, src, spec, b)
+			e.emitContainer(n, body, src, spec, b)
 			return
 		}
 	}
@@ -152,7 +209,7 @@ func (c *Compressor) emitTypeWithStructure(n *sitter.Node, src []byte, spec *lan
 // emitContainer writes a class header followed by its members indented two
 // spaces, compressing method bodies. Python classes end at the header colon
 // (no closing brace).
-func (c *Compressor) emitContainer(n, body *sitter.Node, src []byte, spec *lang.SignatureSpec, b *strings.Builder) {
+func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) {
 	header := strings.TrimRight(string(src[declStart(n):int(body.StartByte())]), " \t\r\n")
 	b.WriteString(header)
 	if spec.PythonLike {
@@ -218,7 +275,7 @@ func isComment(t string) bool {
 // signatureFrom returns the declaration text from start (inclusive) up to (but
 // excluding) its body, trimmed of trailing whitespace. start may precede the
 // node (an export wrapper); the body boundary is resolved from the node itself.
-func signatureFrom(start int, src []byte, n *sitter.Node, spec *lang.SignatureSpec) string {
+func signatureFrom(start int, src []byte, n *sitter.Node, spec *SignatureSpec) string {
 	end := int(n.EndByte())
 	text := src[start:end]
 
@@ -240,7 +297,7 @@ func signatureFrom(start int, src []byte, n *sitter.Node, spec *lang.SignatureSp
 // declaration body begins: the first { at bracket/paren depth zero for brace
 // languages, the first : at depth zero for Python. Strings and comments are
 // skipped so literals cannot cause a premature cut.
-func scanBodyBoundary(src []byte, n *sitter.Node, spec *lang.SignatureSpec) int {
+func scanBodyBoundary(src []byte, n *sitter.Node, spec *SignatureSpec) int {
 	start := int(n.StartByte())
 	end := int(n.EndByte())
 	stopColon := spec.PythonLike

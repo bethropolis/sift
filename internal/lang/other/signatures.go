@@ -1,6 +1,6 @@
 //go:build cgo
 
-package lang
+package langother
 
 import (
 	"github.com/smacker/go-tree-sitter/cpp"
@@ -10,11 +10,14 @@ import (
 	"github.com/smacker/go-tree-sitter/php"
 	"github.com/smacker/go-tree-sitter/ruby"
 	"github.com/smacker/go-tree-sitter/swift"
+
+	"github.com/bethropolis/sift/internal/lang/signature"
+	"github.com/bethropolis/sift/internal/lang/types"
 )
 
 func init() {
-	RegisterSignature(PHP, &SignatureSpec{
-		Declarations: DeclMap(
+	signature.Register(types.PHP, &signature.SignatureSpec{
+		Declarations: types.DeclMap(
 			"namespace_definition", "namespace_use_declaration", "const_declaration",
 			"function_definition", "method_declaration", "class_declaration",
 			"interface_declaration", "trait_declaration", "enum_declaration",
@@ -29,8 +32,8 @@ func init() {
 		FunctionOrMethod: func(t string) bool { return t == "function_definition" || t == "method_declaration" },
 	})
 
-	RegisterSignature(Java, &SignatureSpec{
-		Declarations: DeclMap(
+	signature.Register(types.Java, &signature.SignatureSpec{
+		Declarations: types.DeclMap(
 			"package_declaration", "import_declaration", "class_declaration",
 			"interface_declaration", "enum_declaration", "record_declaration", "method_declaration",
 		),
@@ -42,8 +45,8 @@ func init() {
 		FunctionOrMethod: func(t string) bool { return t == "method_declaration" },
 	})
 
-	RegisterSignature(Kotlin, &SignatureSpec{
-		Declarations: DeclMap(
+	signature.Register(types.Kotlin, &signature.SignatureSpec{
+		Declarations: types.DeclMap(
 			"package_header", "import_header", "class_declaration", "object_declaration",
 			"function_declaration", "property_declaration", "type_alias",
 		),
@@ -53,8 +56,8 @@ func init() {
 		FunctionOrMethod: func(t string) bool { return t == "function_declaration" },
 	})
 
-	RegisterSignature(CSharp, &SignatureSpec{
-		Declarations: DeclMap(
+	signature.Register(types.CSharp, &signature.SignatureSpec{
+		Declarations: types.DeclMap(
 			"using_directive", "namespace_declaration", "class_declaration", "interface_declaration",
 			"struct_declaration", "enum_declaration", "method_declaration", "property_declaration",
 		),
@@ -66,8 +69,8 @@ func init() {
 		FunctionOrMethod: func(t string) bool { return t == "method_declaration" || t == "property_declaration" },
 	})
 
-	RegisterSignature(Cpp, &SignatureSpec{
-		Declarations: DeclMap(
+	signature.Register(types.Cpp, &signature.SignatureSpec{
+		Declarations: types.DeclMap(
 			"preproc_include", "using_declaration", "function_definition",
 			"class_specifier", "struct_specifier", "enum_specifier",
 		),
@@ -77,8 +80,8 @@ func init() {
 		FunctionOrMethod: func(t string) bool { return t == "function_definition" },
 	})
 
-	RegisterSignature(Ruby, &SignatureSpec{
-		Declarations:  DeclMap("class", "module", "method", "singleton_method"),
+	signature.Register(types.Ruby, &signature.SignatureSpec{
+		Declarations:  types.DeclMap("class", "module", "method", "singleton_method"),
 		Grammar:       ruby.GetLanguage(),
 		HeaderOrConst: func(string) bool { return false },
 		// Ruby classes are not grouped type definitions; methods are emitted
@@ -87,8 +90,8 @@ func init() {
 		FunctionOrMethod: func(t string) bool { return t == "method" || t == "singleton_method" },
 	})
 
-	RegisterSignature(Swift, &SignatureSpec{
-		Declarations: DeclMap(
+	signature.Register(types.Swift, &signature.SignatureSpec{
+		Declarations: types.DeclMap(
 			"import_declaration", "class_declaration", "struct_declaration",
 			"enum_declaration", "protocol_declaration", "function_declaration", "init_declaration",
 		),

@@ -1,8 +1,7 @@
-// Package lang centralizes every language-specific decision in Sift: file-path
-// role classification for ranking, smart-filter rules, and (in cgo builds)
-// tree-sitter signature extraction. Language drivers live under
-// internal/lang/<id>/ and register a Language in their init.
-package lang
+// Package types defines the core language contracts shared by every driver and
+// the registry. It is a leaf package: drivers import it, and nothing inside it
+// imports back, which keeps the driver/facade graph cycle-free.
+package types
 
 // ID uniquely identifies a supported language.
 type ID string
@@ -51,18 +50,9 @@ type Classification struct {
 	Reason     string
 }
 
-// DeclMap builds a lookup set of AST node types for a SignatureSpec.
-func DeclMap(types ...string) map[string]bool {
-	m := make(map[string]bool, len(types))
-	for _, t := range types {
-		m[t] = true
-	}
-	return m
-}
-
 // Language is the contract every driver implements. Signature extraction
-// (Grammar + SignatureSpec) is provided separately through a cgo-only registry
-// so this common interface builds without cgo.
+// (Grammar + SignatureSpec) is provided separately through the cgo-only
+// signature package so this common interface builds without cgo.
 type Language interface {
 	ID() ID
 	Name() string
@@ -79,4 +69,13 @@ type Language interface {
 // so secondary languages resolve to their own grammar and declaration rules.
 type SignatureResolver interface {
 	SignatureLanguage(path string) ID
+}
+
+// DeclMap builds a lookup set of AST node types for a SignatureSpec.
+func DeclMap(tags ...string) map[string]bool {
+	m := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		m[t] = true
+	}
+	return m
 }
