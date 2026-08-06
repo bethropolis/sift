@@ -15,7 +15,13 @@ func (n *TreeNode) Toggle() {
 	switch n.SelectState {
 	case Selected, Partial:
 		n.setSelected(false)
+		if n.Kind == KindFile && (n.Hidden || n.GitIgnored) {
+			n.Mode = ModeSkip
+		}
 	default:
+		if n.Kind == KindFile && (n.Hidden || n.GitIgnored) && n.Mode == ModeSkip {
+			n.Mode = ModeFull
+		}
 		n.setSelected(true)
 	}
 }
@@ -34,6 +40,9 @@ func (n *TreeNode) setSelectedSubtree(on bool) {
 		n.SelectState = Unselected
 	}
 	for _, c := range n.Children {
+		if on && (c.Hidden || c.GitIgnored) {
+			continue
+		}
 		c.setSelectedSubtree(on)
 	}
 }
@@ -69,7 +78,17 @@ func nextMode(m CompressMode) CompressMode {
 // applyMode sets the mode on n and every descendant.
 func (n *TreeNode) applyMode(m CompressMode) {
 	n.Mode = m
+	if n.Kind == KindFile && (n.Hidden || n.GitIgnored) {
+		if m == ModeSkip {
+			n.SelectState = Unselected
+		} else {
+			n.SelectState = Selected
+		}
+	}
 	for _, c := range n.Children {
+		if c.Hidden || c.GitIgnored {
+			continue
+		}
 		c.applyMode(m)
 	}
 }
@@ -248,7 +267,9 @@ func (n *TreeNode) ClearSelection() {
 func (n *TreeNode) collectFiles(out *[]*TreeNode) {
 	for _, c := range n.Children {
 		if c.Kind == KindFile {
-			*out = append(*out, c)
+			if !c.Hidden && !c.GitIgnored {
+				*out = append(*out, c)
+			}
 			continue
 		}
 		c.collectFiles(out)

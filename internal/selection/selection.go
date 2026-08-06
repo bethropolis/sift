@@ -135,6 +135,10 @@ func Select(candidates []Candidate, request Request) Result {
 		chosen[choice.Index] = choice.Mode
 	}
 	for index, candidate := range ordered {
+		if candidate.File.Hidden || candidate.File.GitIgnored {
+			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "hidden or git-ignored; opt-in required", request.Prompt))
+			continue
+		}
 		mode, ok := chosen[index]
 		if !ok {
 			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "not selected by utility optimizer", request.Prompt))
@@ -153,6 +157,10 @@ func Select(candidates []Candidate, request Request) Result {
 
 func selectUnlimited(candidates []Candidate, result Result, prompt string) Result {
 	for _, candidate := range candidates {
+		if candidate.File.Hidden || candidate.File.GitIgnored {
+			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "hidden or git-ignored; opt-in required", prompt))
+			continue
+		}
 		mode, reason := plannedMode(candidate)
 		if mode == ModeSkip {
 			// A ranker's skip preference is only a budget signal. With no
@@ -209,6 +217,12 @@ func makeDecision(candidate Candidate, mode Mode, utility float64, reason, promp
 
 func variants(candidate Candidate, prompt string) []Variant {
 	file := candidate.File
+	if file.Hidden || file.GitIgnored {
+		// Hidden and Git-ignored entries are opt-in only: the optimizer never
+		// offers full or signature variants for them, so they can never be
+		// auto-selected or counted toward the token budget.
+		return []Variant{{Mode: ModeSkip, Tokens: 0, Utility: 0, Reason: "hidden or git-ignored; opt-in required"}}
+	}
 	classification := lang.Classify(file.Path)
 	relevance := taskRelevance(file.Path, prompt)
 	base := clamp(file.RankScore+classification.Adjustment+0.20*relevance, 0.01, 1.0)

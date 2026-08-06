@@ -184,6 +184,143 @@ func TestCycleModeFilteredNested(t *testing.T) {
 	}
 }
 
+func TestHiddenGitIgnoredDefaultSkipAndUnselected(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "dir/app.go", TokensFull: 10, TokensSig: 4},
+		{Path: "dir/.app.go", Hidden: true, TokensFull: 10},
+		{Path: "dir/gen.go", GitIgnored: true, TokensFull: 10},
+	})
+	dir := root.findChild("dir")
+	if got := dir.findChild("app.go").Mode; got != ModeFull {
+		t.Errorf("app.go Mode = %v, want full", got)
+	}
+	if got := dir.findChild(".app.go").Mode; got != ModeSkip {
+		t.Errorf(".app.go Mode = %v, want skip", got)
+	}
+	if got := dir.findChild(".app.go").SelectState; got != Unselected {
+		t.Errorf(".app.go SelectState = %v, want unselected", got)
+	}
+	if got := dir.findChild("gen.go").Mode; got != ModeSkip {
+		t.Errorf("gen.go Mode = %v, want skip", got)
+	}
+	// Hidden entries contribute zero active tokens.
+	if got := root.ActiveTokens; got != 0 {
+		t.Errorf("root ActiveTokens = %d, want 0", got)
+	}
+}
+
+func TestSelectAllSkipsHiddenAndGitIgnored(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "dir/app.go", TokensFull: 10},
+		{Path: "dir/.app.go", Hidden: true, TokensFull: 10},
+		{Path: "dir/gen.go", GitIgnored: true, TokensFull: 10},
+	})
+	root.setSelected(true)
+
+	got := root.Selections()
+	if len(got) != 1 {
+		t.Fatalf("Selections = %v, want only app.go", got)
+	}
+	if got[0].Path != "dir/app.go" {
+		t.Errorf("Selections[0].Path = %q, want dir/app.go", got[0].Path)
+	}
+	if root.ActiveTokens != 10 {
+		t.Errorf("root ActiveTokens = %d, want 10", root.ActiveTokens)
+	}
+}
+
+func TestHiddenFileDirectToggleOptsIn(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "dir/.app.go", Hidden: true, TokensFull: 10},
+	})
+	f := root.findChild("dir").findChild(".app.go")
+
+	f.Toggle()
+	if f.SelectState != Selected {
+		t.Errorf("SelectState after toggle = %v, want Selected", f.SelectState)
+	}
+	if f.Mode != ModeFull {
+		t.Errorf("Mode after toggle = %v, want full (opt-in)", f.Mode)
+	}
+	if root.ActiveTokens != 10 {
+		t.Errorf("root ActiveTokens after opt-in = %d, want 10", root.ActiveTokens)
+	}
+
+	// Toggling off returns it to skipped and unselected.
+	f.Toggle()
+	if f.Mode != ModeSkip {
+		t.Errorf("Mode after untoggle = %v, want skip", f.Mode)
+	}
+	if f.SelectState != Unselected {
+		t.Errorf("SelectState after untoggle = %v, want unselected", f.SelectState)
+	}
+}
+
+func TestCollectFilesExcludesHiddenAndGitIgnored(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "a.go", TokensFull: 10},
+		{Path: ".b.go", Hidden: true, TokensFull: 10},
+		{Path: "c.go", GitIgnored: true, TokensFull: 10},
+	})
+	var files []*TreeNode
+	root.collectFiles(&files)
+	if len(files) != 1 {
+		t.Fatalf("collectFiles = %d entries, want 1", len(files))
+	}
+	if files[0].Path != "a.go" {
+		t.Errorf("collectFiles[0].Path = %q, want a.go", files[0].Path)
+	}
+}
+
+func TestApplyModeSkipsHiddenAndGitIgnored(t *testing.T) {
+	root := BuildTree([]Item{
+		{Path: "dir/app.go", TokensFull: 10},
+		{Path: "dir/.app.go", Hidden: true, TokensFull: 10},
+		{Path: "dir/gen.go", GitIgnored: true, TokensFull: 10},
+	})
+	dir := root.findChild("dir")
+	dir.applyMode(ModeSignatures)
+
+	if got := dir.findChild("app.go").Mode; got != ModeSignatures {
+		t.Errorf("app.go Mode = %v, want signatures", got)
+	}
+	if got := dir.findChild(".app.go").Mode; got != ModeSkip {
+		t.Errorf(".app.go Mode = %v, want skip (not propagated)", got)
+	}
+	if got := dir.findChild("gen.go").Mode; got != ModeSkip {
+		t.Errorf("gen.go Mode = %v, want skip (not propagated)", got)
+	}
+}
+
+func TestPatchNodeKeepsHiddenSkipped(t *testing.T) {
+	root := BuildTree([]Item{{Path: "dir/.app.go", Hidden: true, TokensFull: 10}})
+	f := root.findChild("dir").findChild(".app.go")
+	m := newModel(root, Options{})
+
+	// Streaming patch must not flip a hidden entry to full.
+	m.patchNode(f, &Item{Path: "dir/.app.go", Hidden: true, PreferredMode: ModeFull, TokensFull: 10})
+	if f.Mode != ModeSkip {
+		t.Errorf("Mode after patch = %v, want skip", f.Mode)
+	}
+	if f.SelectState != Unselected {
+		t.Errorf("SelectState after patch = %v, want unselected", f.SelectState)
+	}
+}
+
+func TestPatchNodePreservesOptedInHidden(t *testing.T) {
+	root := BuildTree([]Item{{Path: "dir/.app.go", Hidden: true, TokensFull: 10}})
+	f := root.findChild("dir").findChild(".app.go")
+	m := newModel(root, Options{})
+
+	// User explicitly opted in with FULL; a later stream patch must keep it.
+	f.Mode = ModeFull
+	f.SelectState = Selected
+	m.patchNode(f, &Item{Path: "dir/.app.go", Hidden: true, TokensFull: 10})
+	if f.Mode != ModeFull {
+		t.Errorf("Mode after patch = %v, want full (opted in)", f.Mode)
+	}
+}
+
 func TestCycleModeFilteredHidesByVisibility(t *testing.T) {
 	root := BuildTree([]Item{
 		{Path: "dir/app.go", TokensFull: 10},
@@ -197,15 +334,15 @@ func TestCycleModeFilteredHidesByVisibility(t *testing.T) {
 	dir := root.findChild("dir")
 	m.cycleMode(dir) // full -> signatures
 
-	// Visible matching files cycle; hidden and gitignored files stay put.
+	// Visible matching files cycle; hidden and gitignored files stay skipped.
 	if got := dir.findChild("app.go").Mode; got != ModeSignatures {
 		t.Errorf("app.go Mode = %v, want signatures", got)
 	}
-	if got := dir.findChild(".app.go").Mode; got != ModeFull {
-		t.Errorf(".app.go Mode = %v, want full (hidden)", got)
+	if got := dir.findChild(".app.go").Mode; got != ModeSkip {
+		t.Errorf(".app.go Mode = %v, want skip (hidden)", got)
 	}
-	if got := dir.findChild("gen.go").Mode; got != ModeFull {
-		t.Errorf("gen.go Mode = %v, want full (gitignored)", got)
+	if got := dir.findChild("gen.go").Mode; got != ModeSkip {
+		t.Errorf("gen.go Mode = %v, want skip (gitignored)", got)
 	}
 
 	// Revealing hidden files then cycling picks them up.
@@ -216,8 +353,8 @@ func TestCycleModeFilteredHidesByVisibility(t *testing.T) {
 		t.Errorf(".app.go Mode = %v, want signatures after reveal", got)
 	}
 	// Gitignored still hidden: remains untouched by the cycle.
-	if got := dir.findChild("gen.go").Mode; got != ModeFull {
-		t.Errorf("gen.go Mode = %v, want full (still gitignored)", got)
+	if got := dir.findChild("gen.go").Mode; got != ModeSkip {
+		t.Errorf("gen.go Mode = %v, want skip (still gitignored)", got)
 	}
 }
 

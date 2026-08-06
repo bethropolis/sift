@@ -160,9 +160,16 @@ func BuildTree(items []Item) *TreeNode {
 				child.GitIgnored = it.GitIgnored
 				child.RankScore = it.RankScore
 				child.ApproxTokens = it.ApproxTokens
-				child.Mode = ModeFull
-				if it.PreferredMode != "" {
-					child.Mode = it.PreferredMode
+				if child.Hidden || child.GitIgnored {
+					// Hidden and Git-ignored entries are opt-in only: they
+					// start skipped and unselected, contributing no tokens.
+					child.Mode = ModeSkip
+					child.SelectState = Unselected
+				} else {
+					child.Mode = ModeFull
+					if it.PreferredMode != "" {
+						child.Mode = it.PreferredMode
+					}
 				}
 				child.PreferredMode = it.PreferredMode
 				child.Content = it.Content
@@ -262,6 +269,22 @@ func (m *model) applyItem(it *Item) bool {
 // field was applied.
 func (m *model) patchNode(n *TreeNode, it *Item) bool {
 	changed := false
+	if it.Hidden {
+		n.Hidden = true
+		changed = true
+	}
+	if it.GitIgnored {
+		n.GitIgnored = true
+		changed = true
+	}
+	// Hidden and Git-ignored entries stay opt-in: they remain skipped and
+	// unselected unless the user has already switched them to FULL or SIGS.
+	if n.Hidden || n.GitIgnored {
+		if n.Mode != ModeFull && n.Mode != ModeSignatures {
+			n.Mode = ModeSkip
+			n.SelectState = Unselected
+		}
+	}
 	if len(it.Content) > 0 {
 		n.Content = it.Content
 		changed = true

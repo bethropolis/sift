@@ -20,6 +20,60 @@ func candidate(path string, score float64, full, sig int, preferred string, hasS
 	return Candidate{File: file, PreferredMode: preferred}
 }
 
+func hiddenCandidate(path string, hidden, gitIgnored bool) Candidate {
+	file := format.FileEntry{
+		Path:       path,
+		Content:    []byte("full"),
+		SigContent: []byte("sig"),
+		TokensFull: 50,
+		TokensSig:  10,
+		RankScore:  1.0,
+		Hidden:     hidden,
+		GitIgnored: gitIgnored,
+	}
+	return Candidate{File: file, PreferredMode: "full"}
+}
+
+func TestSelectSkipsHiddenAndGitIgnored(t *testing.T) {
+	result := Select([]Candidate{
+		hiddenCandidate(".config/settings", true, false),
+		hiddenCandidate("ignored.log", false, true),
+		candidate("app.go", 0.5, 20, 5, "", true),
+	}, Request{Budget: 100})
+
+	if len(result.Selected) != 1 || result.Selected[0].Path != "app.go" {
+		t.Fatalf("selected = %+v, want only app.go", result.Selected)
+	}
+	if result.UsedTokens != 20 {
+		t.Errorf("used = %d, want 20 (hidden/ignored excluded)", result.UsedTokens)
+	}
+	byPath := map[string]Decision{}
+	for _, d := range result.Decisions {
+		byPath[d.Path] = d
+	}
+	for _, path := range []string{".config/settings", "ignored.log"} {
+		if d := byPath[path]; d.Mode != ModeSkip || d.Selected {
+			t.Errorf("%s decision = %+v, want skipped and unselected", path, d)
+		}
+	}
+}
+
+func TestSelectUnlimitedSkipsHiddenAndGitIgnored(t *testing.T) {
+	result := Select([]Candidate{
+		hiddenCandidate(".config/settings", true, false),
+		hiddenCandidate("ignored.log", false, true),
+	}, Request{})
+
+	if len(result.Selected) != 0 {
+		t.Fatalf("selected %d files, want 0", len(result.Selected))
+	}
+	for _, d := range result.Decisions {
+		if d.Mode != ModeSkip || d.Selected {
+			t.Errorf("%s decision = %+v, want skipped and unselected", d.Path, d)
+		}
+	}
+}
+
 func TestSelectUsesModesAndBudget(t *testing.T) {
 	result := Select([]Candidate{
 		candidate("low.go", 0.1, 20, 5, "skip", true),
