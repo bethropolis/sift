@@ -27,7 +27,9 @@ func (m model) renderFooter(width int) string {
 		} else if active > 0 {
 			pct = active * 100 / m.budget
 		}
-		barLen := max(1, width-60)
+		// Keep the bar a fixed width so it never dominates the footer,
+		// regardless of terminal width; the action hints must stay visible.
+		barLen := 20
 		filled := barLen * pct / 100
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", max(0, barLen-filled))
 

@@ -28,7 +28,7 @@ func TestUnifiedScoresNonGit(t *testing.T) {
 		{Path: "plain.go", TokensFull: 100, TokensSig: 25, DidCompress: true},                // neutral baseline -> skip
 	}
 
-	results := g.CalculateUnifiedScores(dir, params)
+	results := g.CalculateUnifiedScores(dir, params, Weights{})
 	if len(results) != len(params) {
 		t.Fatalf("got %d results, want %d", len(results), len(params))
 	}
@@ -58,8 +58,8 @@ func TestUnifiedScoresNonGit(t *testing.T) {
 	}
 
 	// High fan-in keeps a stable file out of skip despite baseline recency.
-	if res := results["types.go"]; res.Score < scoreSkipBand {
-		t.Errorf("types.go score %v < skip band %v despite fan-in", res.Score, scoreSkipBand)
+	if res := results["types.go"]; res.Score < DefaultWeights().SkipBand {
+		t.Errorf("types.go score %v < skip band %v despite fan-in", res.Score, DefaultWeights().SkipBand)
 	}
 }
 
@@ -100,10 +100,10 @@ func TestUnifiedScoresGitRepo(t *testing.T) {
 		{Path: "quiet.txt", TokensFull: 100, TokensSig: 10, DidCompress: true},
 	}
 
-	results := g.CalculateUnifiedScores(dir, params)
+	results := g.CalculateUnifiedScores(dir, params, Weights{})
 
-	if res := results["hot.txt"]; res.Score < scoreFullBand || res.PreferredMode != "full" {
-		t.Errorf("hot.txt = %+v, want score >= %v and mode full (dirty + high churn)", res, scoreFullBand)
+	if res := results["hot.txt"]; res.Score < DefaultWeights().FullBand || res.PreferredMode != "full" {
+		t.Errorf("hot.txt = %+v, want score >= %v and mode full (dirty + high churn)", res, DefaultWeights().FullBand)
 	}
 	// a.txt was the latest diff (0.32) with a little churn: mid band.
 	if res := results["a.txt"]; res.PreferredMode != "signatures" {

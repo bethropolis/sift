@@ -67,9 +67,10 @@ func runSelect(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	scores := app.WeightsFromScoring(cfg.Scoring)
 	preferred := map[string]rank.FileScoreResult{}
 	if root, rootErr := filepath.Abs(cfg.RootDir); rootErr == nil {
-		ranker := app.NewRanker(root)
+		ranker := app.NewRankerWithWeights(root, scores)
 		results := ranker.Rank(files)
 		preferred = results
 	}
@@ -86,7 +87,11 @@ func runSelect(cmd *cobra.Command, args []string) error {
 			},
 		})
 	}
-	result := selection.Select(candidates, selection.Request{Budget: cfg.Budget, Prompt: cfg.Prompt})
+	result := selection.Select(candidates, selection.Request{
+		Budget: cfg.Budget,
+		Prompt: cfg.Prompt,
+		Tuning: app.TuningFromScoring(cfg.Scoring),
+	})
 	if printSelection || selectionOnly {
 		writer := os.Stderr
 		if selectionOnly {

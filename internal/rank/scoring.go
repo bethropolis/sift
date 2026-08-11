@@ -1,9 +1,10 @@
 package rank
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/bethropolis/sift/internal/lang"
 )
 
 // FileScoreResult is the outcome of the unified scoring engine for one file.
@@ -34,24 +35,43 @@ type ScoringParams struct {
 	FanInCount  int
 }
 
-// Mode thresholds for the continuous relevance score. High-relevance files
-// (active work, entrypoints) get full content; mid-relevance files get
-// signatures; low-relevance background files are skip candidates. The bands
-// mirror the review plan (0.55/0.20).
+// Weights tunes the relevance composite. Zero fields fall back to the
+// defaults below, so callers can override only the knobs they care about.
+// Role knowledge (what each role is worth) lives in internal/lang, not here.
+type Weights struct {
+	RecencyWeight    float64
+	ChurnWeight      float64
+	CentralityWeight float64
+	RoleWeight       float64
+	FullBand         float64
+	SkipBand         float64
+}
+
+// DefaultWeights returns the stock scoring weights.
+func DefaultWeights() Weights {
+	return Weights{
+		RecencyWeight:    0.40,
+		ChurnWeight:      0.20,
+		CentralityWeight: 0.20,
+		RoleWeight:       1.0,
+		FullBand:         0.55,
+		SkipBand:         0.20,
+	}
+}
+
 const (
-	scoreFullBand   = 0.55
-	scoreSkipBand   = 0.20
-	ratioFullCap    = 0.85
 	churnScale      = 10.0
 	centralityScale = 5.0
+	ratioFullCap    = 0.85
 )
 
 // CalculateUnifiedScores evaluates every file, combining git recency, churn
 // frequency, import centrality, file role, and compression yield into one
 // continuous score. The score drives both mode selection (bands above) and
-// budget trimming, which sorts by it. FanInCount is fed by the caller; it is
-// zero until the import-centrality extractor lands.
-func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams) map[string]FileScoreResult {
+// budget trimming, which sorts by it. Role weights come from the lang
+// registry's classification, so the numbers exist in exactly one place.
+func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams, w Weights) map[string]FileScoreResult {
+	w.applyDefaults()
 	results := make(map[string]FileScoreResult, len(params))
 
 	var changes *Changes
@@ -63,39 +83,34 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams) map
 
 	for _, p := range params {
 		relPath := p.Path
-		baseName := strings.ToLower(filepath.Base(relPath))
 
-		// Signal 1: git recency tier (weight 0.40).
+		// Signal 1: git recency tier.
 		recencyScore := ScoreBaseline
 		if changes != nil {
 			recencyScore = changes.Score(relPath)
 		}
 
-		// Signal 2: churn frequency over the last 30 commits (weight 0.20).
+		// Signal 2: churn frequency over the last 30 commits.
 		churnScore := float64(churnMap[relPath]) / churnScale
 		if churnScore > 1.0 {
 			churnScore = 1.0
 		}
 
-		// Signal 3: import centrality, reverse fan-in (weight 0.20).
+		// Signal 3: import centrality, reverse fan-in.
 		centralityScore := float64(p.FanInCount) / centralityScale
 		if centralityScore > 1.0 {
 			centralityScore = 1.0
 		}
 
-		// Signal 4: file role modifier. Entrypoints carry the most context;
-		// tests and mocks are cheap derivations of the code they exercise.
-		roleModifier := 0.0
-		switch {
-		case strings.HasPrefix(relPath, "cmd/") || baseName == "main.go":
-			roleModifier = 0.20
-		case strings.HasSuffix(baseName, "_test.go") || strings.HasSuffix(baseName, ".test.ts"):
-			roleModifier = -0.30
-		case strings.HasPrefix(baseName, "mock_") || strings.HasSuffix(baseName, "_mock.go"):
-			roleModifier = -0.40
-		}
+		// Signal 4: file role from the lang registry. The classification
+		// carries the role adjustment; no role numbers are hardcoded here.
+		classification := lang.Classify(relPath)
+		roleModifier := classification.Adjustment * w.RoleWeight
 
-		compositeScore := recencyScore*0.40 + churnScore*0.20 + centralityScore*0.20 + roleModifier
+		compositeScore := recencyScore*w.RecencyWeight +
+			churnScore*w.ChurnWeight +
+			centralityScore*w.CentralityWeight +
+			roleModifier
 		if compositeScore < 0.0 {
 			compositeScore = 0.0
 		}
@@ -116,10 +131,10 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams) map
 		case !p.DidCompress || ratio > ratioFullCap:
 			mode = "full"
 			reason = "Low compression yield (forced Full)"
-		case compositeScore >= scoreFullBand:
+		case compositeScore >= w.FullBand:
 			mode = "full"
 			reason = "High relevance / active work (Full)"
-		case compositeScore < scoreSkipBand:
+		case compositeScore < w.SkipBand:
 			mode = "skip"
 			reason = "Low relevance background file"
 		}
@@ -136,6 +151,29 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams) map
 	}
 
 	return results
+}
+
+// applyDefaults fills zero fields with the stock weights.
+func (w *Weights) applyDefaults() {
+	def := DefaultWeights()
+	if w.RecencyWeight == 0 {
+		w.RecencyWeight = def.RecencyWeight
+	}
+	if w.ChurnWeight == 0 {
+		w.ChurnWeight = def.ChurnWeight
+	}
+	if w.CentralityWeight == 0 {
+		w.CentralityWeight = def.CentralityWeight
+	}
+	if w.RoleWeight == 0 {
+		w.RoleWeight = def.RoleWeight
+	}
+	if w.FullBand == 0 {
+		w.FullBand = def.FullBand
+	}
+	if w.SkipBand == 0 {
+		w.SkipBand = def.SkipBand
+	}
 }
 
 // GetChurnFrequency counts how many of the last n commits touched each path.

@@ -25,6 +25,87 @@ type Request struct {
 	Budget    int
 	MaxStates int    // zero uses the default sparse-DP state limit.
 	Prompt    string // optional task text used to improve path relevance.
+	// Tuning carries the optimizer's numeric knobs. The zero value means the
+	// built-in defaults; config layers pass an explicit tuning to override.
+	Tuning Tuning
+}
+
+// Tuning holds every numeric knob the utility optimizer reads. Values come
+// from the config [scoring] section; the zero value resolves to the defaults
+// below, so no tuning numbers are hardcoded in the DP itself.
+type Tuning struct {
+	BaseMin         float64
+	BaseMax         float64
+	RelevanceWeight float64
+	PreferenceBonus float64
+	SignatureBonus  float64
+	SkipMultiplier  float64
+	SigQualityMin   float64
+	SigQualityMax   float64
+	// RetentionFloor is the minimum retention value at or above which a file
+	// is guaranteed a slot under budget (its best affordable variant is
+	// reserved first). Files below the floor compete through the DP.
+	RetentionFloor float64
+	// Retention overrides the lang role defaults per role name (e.g.
+	// "entrypoint"). Config takes priority over the lang default.
+	Retention map[string]float64
+}
+
+// DefaultTuning returns the stock optimizer tuning.
+func DefaultTuning() Tuning {
+	return Tuning{
+		BaseMin:         0.01,
+		BaseMax:         1.0,
+		RelevanceWeight: 0.20,
+		PreferenceBonus: 0.05,
+		SignatureBonus:  0.05,
+		SkipMultiplier:  0.35,
+		SigQualityMin:   0.35,
+		SigQualityMax:   0.85,
+		RetentionFloor:  0.15,
+	}
+}
+
+// applyDefaults fills zero fields with the stock tuning.
+func (t *Tuning) applyDefaults() {
+	def := DefaultTuning()
+	if t.BaseMin == 0 {
+		t.BaseMin = def.BaseMin
+	}
+	if t.BaseMax == 0 {
+		t.BaseMax = def.BaseMax
+	}
+	if t.RelevanceWeight == 0 {
+		t.RelevanceWeight = def.RelevanceWeight
+	}
+	if t.PreferenceBonus == 0 {
+		t.PreferenceBonus = def.PreferenceBonus
+	}
+	if t.SignatureBonus == 0 {
+		t.SignatureBonus = def.SignatureBonus
+	}
+	if t.SkipMultiplier == 0 {
+		t.SkipMultiplier = def.SkipMultiplier
+	}
+	if t.SigQualityMin == 0 {
+		t.SigQualityMin = def.SigQualityMin
+	}
+	if t.SigQualityMax == 0 {
+		t.SigQualityMax = def.SigQualityMax
+	}
+	if t.RetentionFloor == 0 {
+		t.RetentionFloor = def.RetentionFloor
+	}
+}
+
+// retentionFor returns the effective retention priority for a candidate,
+// applying the config override on top of the lang role default.
+func (t Tuning) retentionFor(candidate Candidate) float64 {
+	role := string(lang.Classify(candidate.File.Path).Role)
+	if v, ok := t.Retention[role]; ok {
+		return v
+	}
+	return lang.Classify(candidate.File.Path).Retention
 }
 
 // Signals are optional ranking inputs retained for explainable reports.
@@ -88,10 +169,14 @@ type dpState struct {
 const defaultMaxStates = 50000
 
 // Select chooses a mode for every file. With no budget it preserves the
-// established history/filter modes. With a budget it uses sparse dynamic
-// programming to choose among full, signature, and skip variants, maximizing
-// total utility rather than simply taking files in score order.
+// established score/filter modes. With a budget it reserves guaranteed slots
+// for high-retention files (entrypoints, docs, config) and uses sparse dynamic
+// programming for the rest, choosing among full, signature, and skip variants
+// to maximize total utility rather than simply taking files in score order.
 func Select(candidates []Candidate, request Request) Result {
+	request.Tuning.applyDefaults()
+	tuning := request.Tuning
+
 	ordered := append([]Candidate(nil), candidates...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].File.RankScore != ordered[j].File.RankScore {
@@ -105,18 +190,37 @@ func Select(candidates []Candidate, request Request) Result {
 		return selectUnlimited(ordered, result, request.Prompt)
 	}
 
+	// Reserve guaranteed slots for high-retention files before the DP so an
+	// important entrypoint or README is never traded away for cheap filler.
+	guaranteed := make([]bool, len(ordered))
+	remaining := request.Budget
+	for index, candidate := range ordered {
+		if candidate.File.Hidden || candidate.File.GitIgnored {
+			continue
+		}
+		if tuning.retentionFor(candidate) >= tuning.RetentionFloor {
+			if variant := bestAffordable(candidate, remaining, tuning, request.Prompt); variant.Tokens > 0 {
+				guaranteed[index] = true
+				remaining -= variant.Tokens
+			}
+		}
+	}
+
 	limit := request.MaxStates
 	if limit <= 0 {
 		limit = defaultMaxStates
 	}
 	states := map[int]dpState{0: {}}
 	for index, candidate := range ordered {
+		if guaranteed[index] {
+			continue
+		}
 		next := make(map[int]dpState, len(states))
 		for tokens, state := range states {
 			keepState(next, tokens, state)
-			for _, variant := range variants(candidate, request.Prompt) {
+			for _, variant := range variants(candidate, request.Prompt, tuning) {
 				newTokens := tokens + variant.Tokens
-				if newTokens > request.Budget {
+				if newTokens > remaining {
 					continue
 				}
 				choices := append(append([]choice(nil), state.Choices...), choice{Index: index, Mode: variant.Mode})
@@ -134,9 +238,21 @@ func Select(candidates []Candidate, request Request) Result {
 	for _, choice := range best.Choices {
 		chosen[choice.Index] = choice.Mode
 	}
+	used := 0
 	for index, candidate := range ordered {
 		if candidate.File.Hidden || candidate.File.GitIgnored {
 			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "hidden or git-ignored; opt-in required", request.Prompt))
+			continue
+		}
+		if guaranteed[index] {
+			variant := bestAffordable(candidate, request.Budget-used, tuning, request.Prompt)
+			decision := makeDecision(candidate, variant.Mode, variant.Utility, variant.Reason, request.Prompt)
+			decision.Selected = true
+			decision.Tokens = variant.Tokens
+			result.Decisions = append(result.Decisions, decision)
+			result.Selected = append(result.Selected, finalize(candidate.File, variant.Mode, variant.Tokens))
+			result.UsedTokens += variant.Tokens
+			used += variant.Tokens
 			continue
 		}
 		mode, ok := chosen[index]
@@ -144,7 +260,7 @@ func Select(candidates []Candidate, request Request) Result {
 			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "not selected by utility optimizer", request.Prompt))
 			continue
 		}
-		variant := findVariant(candidate, mode, request.Prompt)
+		variant := findVariant(candidate, mode, request.Prompt, tuning)
 		decision := makeDecision(candidate, mode, variant.Utility, variant.Reason, request.Prompt)
 		decision.Selected = true
 		decision.Tokens = variant.Tokens
@@ -153,6 +269,25 @@ func Select(candidates []Candidate, request Request) Result {
 		result.UsedTokens += variant.Tokens
 	}
 	return result
+}
+
+// bestAffordable returns the highest-utility variant that fits within budget,
+// or a zero-token skip variant when nothing fits. It prefers the most useful
+// representation of a file that the remaining budget can still pay for.
+func bestAffordable(candidate Candidate, budget int, tuning Tuning, prompt string) Variant {
+	var best Variant
+	for _, v := range variants(candidate, prompt, tuning) {
+		if v.Tokens == 0 {
+			continue
+		}
+		if v.Tokens > budget {
+			continue
+		}
+		if v.Utility > best.Utility {
+			best = v
+		}
+	}
+	return best
 }
 
 func selectUnlimited(candidates []Candidate, result Result, prompt string) Result {
@@ -177,7 +312,7 @@ func selectUnlimited(candidates []Candidate, result Result, prompt string) Resul
 				continue
 			}
 		}
-		variant := findVariant(candidate, mode, prompt)
+		variant := findVariant(candidate, mode, prompt, DefaultTuning())
 		decision := makeDecision(candidate, mode, variant.Utility, reason, prompt)
 		decision.Selected = true
 		decision.Tokens = variant.Tokens
@@ -215,7 +350,7 @@ func makeDecision(candidate Candidate, mode Mode, utility float64, reason, promp
 	}
 }
 
-func variants(candidate Candidate, prompt string) []Variant {
+func variants(candidate Candidate, prompt string, tuning Tuning) []Variant {
 	file := candidate.File
 	if file.Hidden || file.GitIgnored {
 		// Hidden and Git-ignored entries are opt-in only: the optimizer never
@@ -225,25 +360,25 @@ func variants(candidate Candidate, prompt string) []Variant {
 	}
 	classification := lang.Classify(file.Path)
 	relevance := taskRelevance(file.Path, prompt)
-	base := clamp(file.RankScore+classification.Adjustment+0.20*relevance, 0.01, 1.0)
+	base := clamp(file.RankScore+classification.Adjustment+tuning.RelevanceWeight*relevance, tuning.BaseMin, tuning.BaseMax)
 	preferenceBonus := 0.0
 	switch Mode(candidate.PreferredMode) {
 	case ModeFull, ModeSignatures:
-		preferenceBonus = 0.05
+		preferenceBonus = tuning.PreferenceBonus
 	case ModeSkip:
 		// A skip hint is soft. The file can still be selected if its other
 		// signals make it useful, but it starts with lower utility.
-		base *= 0.35
+		base *= tuning.SkipMultiplier
 	}
 
 	fullUtility := base * (1.0 + preferenceBonus)
 	result := []Variant{{Mode: ModeFull, Tokens: file.TokensFull, Utility: fullUtility, Reason: "full content; " + classification.Reason}}
 	if file.TokensSig > 0 && file.TokensSig < file.TokensFull {
 		ratio := float64(file.TokensSig) / float64(file.TokensFull)
-		quality := clamp(0.35+0.5*(1.0-ratio), 0.35, 0.85)
+		quality := clamp(tuning.SigQualityMin+(tuning.SigQualityMax-tuning.SigQualityMin)*(1.0-ratio), tuning.SigQualityMin, tuning.SigQualityMax)
 		sigUtility := base * quality
 		if Mode(candidate.PreferredMode) == ModeSignatures {
-			sigUtility *= 1.05
+			sigUtility *= tuning.SignatureBonus
 		}
 		result = append(result, Variant{
 			Mode:    ModeSignatures,
@@ -294,9 +429,9 @@ func plannedMode(candidate Candidate) (Mode, string) {
 	classification := lang.Classify(candidate.File.Path)
 	switch Mode(candidate.PreferredMode) {
 	case ModeFull:
-		return ModeFull, "history preference: full; " + classification.Reason
+		return ModeFull, "score band preference: full; " + classification.Reason
 	case ModeSignatures:
-		return ModeSignatures, "history preference: signatures; " + classification.Reason
+		return ModeSignatures, "score band preference: signatures; " + classification.Reason
 	case ModeSkip:
 		return ModeSkip, "low relevance background file; " + classification.Reason
 	}
@@ -306,8 +441,8 @@ func plannedMode(candidate Candidate) (Mode, string) {
 	return ModeFull, "full content selected; " + classification.Reason
 }
 
-func findVariant(candidate Candidate, mode Mode, prompt string) Variant {
-	for _, variant := range variants(candidate, prompt) {
+func findVariant(candidate Candidate, mode Mode, prompt string, tuning Tuning) Variant {
+	for _, variant := range variants(candidate, prompt, tuning) {
 		if variant.Mode == mode {
 			return variant
 		}

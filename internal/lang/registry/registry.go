@@ -51,13 +51,31 @@ func Classify(path string) types.Classification {
 	base := strings.ToLower(filepath.Base(norm))
 	ext := strings.ToLower(filepath.Ext(base))
 
-	if c, ok := common(norm, base, ext); ok {
-		return c
+	var c types.Classification
+	if cc, ok := common(norm, base, ext); ok {
+		c = cc
+	} else if l, ok := ForPath(norm); ok {
+		c = l.Classify(norm, base)
+	} else {
+		c = types.Classification{Role: types.RoleUnknown}
 	}
+	if c.Retention == 0 {
+		c.Retention = types.DefaultRetention(c.Role)
+	}
+	return c
+}
+
+// Imports returns the import targets referenced by a file, resolved to
+// repo-relative path prefixes. The path's language driver owns the import
+// syntax; paths with no registered ImportScanner contribute no fan-in.
+func Imports(path, moduleRoot string, content []byte) []string {
+	norm := strings.ToLower(filepath.ToSlash(path))
 	if l, ok := ForPath(norm); ok {
-		return l.Classify(norm, base)
+		if sc, ok := l.(types.ImportScanner); ok {
+			return sc.Imports(norm, moduleRoot, content)
+		}
 	}
-	return types.Classification{Role: types.RoleUnknown}
+	return nil
 }
 
 // ShouldSkipSmart reports whether any registered language's smart rules skip

@@ -1,6 +1,8 @@
 package langts
 
 import (
+	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/bethropolis/sift/internal/lang/registry"
@@ -49,4 +51,39 @@ func classifyTS(path, filename string) types.Classification {
 		return types.Classification{Role: types.RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "TypeScript configuration"}
 	}
 	return types.Classification{Role: types.RoleImpl, Confidence: 0.50, Reason: "TypeScript source"}
+}
+
+var (
+	tsImportFrom = regexp.MustCompile(`\bimport\b[^'"]*?from\s*['"]([^'"]+)['"]`)
+	tsImportSide = regexp.MustCompile(`\bimport\s*['"]([^'"]+)['"]`)
+	tsImportType = regexp.MustCompile(`\bimport\s+type\s+[^'"]*?from\s*['"]([^'"]+)['"]`)
+)
+
+// Imports returns the local import targets of a TS/TSX file. Bare package
+// specifiers are external and omitted; relative imports are resolved against
+// the importing file's directory.
+func (tsDriver) Imports(path, _ string, content []byte) []string { return tsImports(path, content) }
+
+// Imports returns the local import targets of a TSX file. See tsDriver.
+func (tsxDriver) Imports(path, _ string, content []byte) []string { return tsImports(path, content) }
+
+func tsImports(path string, content []byte) []string {
+	dir := filepath.ToSlash(filepath.Dir(path))
+	var targets []string
+	add := func(spec string) {
+		if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
+			return
+		}
+		targets = append(targets, filepath.ToSlash(filepath.Clean(filepath.Join(dir, spec))))
+	}
+	for _, m := range tsImportFrom.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range tsImportType.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range tsImportSide.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	return targets
 }

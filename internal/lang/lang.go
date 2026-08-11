@@ -78,6 +78,13 @@ func ForPath(path string) (Language, bool) { return registry.ForPath(path) }
 // Classify applies shared conventions and then the language driver rules.
 func Classify(path string) Classification { return registry.Classify(path) }
 
+// Imports returns the import targets referenced by a file, resolved to
+// repo-relative path prefixes. Paths whose language has no ImportScanner
+// contribute no fan-in.
+func Imports(path, moduleRoot string, content []byte) []string {
+	return registry.Imports(path, moduleRoot, content)
+}
+
 // ShouldSkipSmart reports whether any registered language's smart rules skip
 // the file.
 func ShouldSkipSmart(path, filename string, content []byte) (bool, string) {

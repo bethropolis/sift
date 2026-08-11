@@ -31,6 +31,7 @@ type Profile struct {
 	HighlightMaxBytes int      `toml:"highlight_max_bytes"`
 	WindowTitle       string   `toml:"window_title"`
 	NoWindowTitle     *bool    `toml:"no_window_title"`
+	Scoring           *Scoring `toml:"scoring"`
 }
 
 type profilesFile struct {
@@ -175,6 +176,14 @@ func overlay(dst, src Profile) Profile {
 	if src.NoWindowTitle != nil {
 		dst.NoWindowTitle = src.NoWindowTitle
 	}
+	if src.Scoring != nil {
+		merged := *src.Scoring
+		if dst.Scoring != nil {
+			merged = *dst.Scoring
+			merged.Merge(*src.Scoring)
+		}
+		dst.Scoring = &merged
+	}
 	return dst
 }
 
@@ -234,5 +243,8 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	}
 	if p.NoWindowTitle != nil && !fs.Changed("no-window-title") {
 		c.NoWindowTitle = *p.NoWindowTitle
+	}
+	if p.Scoring != nil {
+		c.Scoring.Merge(*p.Scoring)
 	}
 }

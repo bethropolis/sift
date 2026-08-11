@@ -54,6 +54,14 @@ func applyProfile(cmd *cobra.Command) error {
 	return nil
 }
 
+// init wires the shared config flags (--budget, --dir, --style, ...) onto the
+// root command so a bare invocation like "sift --budget 60000" launches the
+// picker with the same options as "sift pick". Subcommands register their own
+// copies via config.RegisterFlags.
+func init() {
+	config.RegisterFlags(cfg, rootCmd.Flags())
+}
+
 func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -37,6 +37,36 @@ sift dump . --profile review
 To apply a profile automatically when `--profile` is omitted, set
 `default_profile` in the global configuration file.
 
+### Tuning selection (`[scoring]`)
+
+A profile may carry a `scoring` table that tunes relevance scoring and the
+token-budget optimizer. Unset keys keep the built-in defaults, so only the
+knobs you want to change need to be listed. `retention` overrides how strongly
+a role is kept under budget; config takes priority over the language default.
+
+```toml
+[profiles.min]
+scoring = { retention = { docs = 0.0 } }        # don't guarantee docs under budget
+
+[profiles.lean]
+[profiles.lean.scoring]
+recency_weight = 0.40
+churn_weight   = 0.20
+centrality_weight = 0.20
+role_weight    = 1.0
+full_band      = 0.55
+skip_band      = 0.20
+base_min       = 0.01
+base_max       = 1.0
+relevance_weight = 0.20
+preference_bonus = 0.05
+signature_bonus  = 0.05
+skip_multiplier  = 0.35
+sig_quality_min  = 0.35
+sig_quality_max  = 0.85
+retention        = { entrypoint = 0.30, docs = 0.22, config = 0.18, api = 0.12 }
+```
+
 ## Settings reference
 
 ### Output

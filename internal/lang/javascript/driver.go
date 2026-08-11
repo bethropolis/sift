@@ -1,6 +1,8 @@
 package langjs
 
 import (
+	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/bethropolis/sift/internal/lang/registry"
@@ -36,4 +38,34 @@ func (jsDriver) Classify(path, filename string) types.Classification {
 		return types.Classification{Role: types.RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "JavaScript configuration"}
 	}
 	return types.Classification{Role: types.RoleImpl, Confidence: 0.50, Reason: "JavaScript source"}
+}
+
+var (
+	jsImportFrom = regexp.MustCompile(`\bimport\b[^'"]*?from\s*['"]([^'"]+)['"]`)
+	jsImportSide = regexp.MustCompile(`\bimport\s*['"]([^'"]+)['"]`)
+	jsRequire    = regexp.MustCompile(`\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)`)
+)
+
+// Imports returns the local import targets of a JS/JSX file. Bare package
+// specifiers (no leading ".") are external and omitted; relative imports are
+// resolved against the importing file's directory.
+func (jsDriver) Imports(path, _ string, content []byte) []string {
+	dir := filepath.ToSlash(filepath.Dir(path))
+	var targets []string
+	add := func(spec string) {
+		if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
+			return
+		}
+		targets = append(targets, filepath.ToSlash(filepath.Clean(filepath.Join(dir, spec))))
+	}
+	for _, m := range jsImportFrom.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range jsImportSide.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range jsRequire.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	return targets
 }

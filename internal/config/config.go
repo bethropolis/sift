@@ -58,6 +58,12 @@ type Config struct {
 	// NoNerdFonts forces ASCII glyphs in the interactive picker.
 	NoNerdFonts bool
 
+	// Scoring tunes the relevance and selection optimizer. Zero fields mean
+	// "use the default"; the shared engine fills them in. Values are loaded
+	// from a [scoring] section and apply to both rank scoring and the utility
+	// optimizer, so no tuning numbers are hardcoded outside internal/lang.
+	Scoring Scoring
+
 	// Profile selection
 	Profile string
 

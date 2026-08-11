@@ -1,6 +1,7 @@
 package langgo
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/bethropolis/sift/internal/lang/registry"
@@ -42,4 +43,84 @@ func (goDriver) Classify(path, filename string) types.Classification {
 		return types.Classification{Role: types.RoleGenerated, Adjustment: -0.35, Confidence: 0.95, Reason: "generated Go source"}
 	}
 	return types.Classification{Role: types.RoleImpl, Confidence: 0.50, Reason: "Go source"}
+}
+
+// Imports returns the import targets of a Go file as repo-relative path
+// prefixes. Module-rooted imports are stripped of the module prefix; standard
+// library and third-party (dotless/other-domain) imports are omitted since
+// they do not resolve inside the repo.
+func (goDriver) Imports(path, moduleRoot string, content []byte) []string {
+	var targets []string
+	forEachImportSpec(content, func(spec string) {
+		target := stripModulePrefix(spec, moduleRoot)
+		if target == "" {
+			return
+		}
+		// Drop file suffix if present; a package import resolves to a dir.
+		if ext := filepath.Ext(target); ext != "" {
+			target = strings.TrimSuffix(target, ext)
+		}
+		targets = append(targets, target)
+	})
+	return targets
+}
+
+// forEachImportSpec calls fn for every quoted import path in a Go file,
+// handling single-line and parenthesized import blocks.
+func forEachImportSpec(content []byte, fn func(spec string)) {
+	lines := strings.Split(string(content), "\n")
+	inBlock := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "import ("):
+			inBlock = true
+			line = strings.TrimPrefix(line, "import (")
+		case line == ")" && inBlock:
+			inBlock = false
+			continue
+		case strings.HasPrefix(line, "import "):
+			line = strings.TrimPrefix(line, "import ")
+		}
+		if !inBlock && !strings.HasPrefix(line, "import ") && !strings.HasPrefix(line, "\"") {
+			continue
+		}
+		for _, token := range splitQuoted(line) {
+			if token != "" {
+				fn(token)
+			}
+		}
+	}
+}
+
+// splitQuoted extracts every double-quoted string literal from s.
+func splitQuoted(s string) []string {
+	var out []string
+	rest := s
+	for {
+		start := strings.IndexByte(rest, '"')
+		if start == -1 {
+			return out
+		}
+		rest = rest[start+1:]
+		end := strings.IndexByte(rest, '"')
+		if end == -1 {
+			return out
+		}
+		out = append(out, rest[:end])
+		rest = rest[end+1:]
+	}
+}
+
+// stripModulePrefix removes a Go module path prefix from an import spec,
+// returning the repo-relative remainder. It returns "" when the spec is not
+// rooted at the module (standard library, third-party, or no module).
+func stripModulePrefix(spec, moduleRoot string) string {
+	if moduleRoot == "" || spec == moduleRoot {
+		return ""
+	}
+	if strings.HasPrefix(spec, moduleRoot+"/") {
+		return strings.TrimPrefix(spec, moduleRoot+"/")
+	}
+	return ""
 }

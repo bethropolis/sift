@@ -48,6 +48,11 @@ type Classification struct {
 	Adjustment float64
 	Confidence float64
 	Reason     string
+	// Retention is the default importance of the file's role: how strongly
+	// the utility optimizer should keep it under a token budget. Zero means
+	// the role carries no retention guarantee. Drivers and the shared role
+	// table may set it; the config layer can override per role.
+	Retention float64
 }
 
 // Language is the contract every driver implements. Signature extraction
@@ -71,6 +76,21 @@ type SignatureResolver interface {
 	SignatureLanguage(path string) ID
 }
 
+// ImportScanner is an optional capability of a Language that returns the
+// import paths referenced by a file's content. It powers reverse import
+// fan-in for centrality scoring. Import syntax is language knowledge, so the
+// parsing and module-root stripping rules live in each driver rather than in
+// the ranker.
+type ImportScanner interface {
+	// Imports returns the import targets referenced by content as
+	// repo-relative path prefixes (e.g. "internal/app" for a Go import of
+	// "example.com/mod/internal/app"). moduleRoot is the repo's module path
+	// (e.g. the go.mod module line); drivers use it to strip the module
+	// prefix from absolute imports. Unresolvable or external references may
+	// be omitted.
+	Imports(path, moduleRoot string, content []byte) []string
+}
+
 // DeclMap builds a lookup set of AST node types for a SignatureSpec.
 func DeclMap(tags ...string) map[string]bool {
 	m := make(map[string]bool, len(tags))
@@ -78,4 +98,25 @@ func DeclMap(tags ...string) map[string]bool {
 		m[t] = true
 	}
 	return m
+}
+
+// DefaultRetention returns the baseline retention priority for a role: how
+// strongly the utility optimizer should keep files of that role under a token
+// budget. Entrypoints and docs carry the most context for an LLM, so they get
+// the highest guarantees; derivations and noise get none.
+func DefaultRetention(role Role) float64 {
+	switch role {
+	case RoleEntrypoint:
+		return 0.30
+	case RoleDocs:
+		return 0.22
+	case RoleConfig:
+		return 0.18
+	case RoleAPI, RoleSchema:
+		return 0.12
+	case RoleImpl:
+		return 0.05
+	default:
+		return 0.0
+	}
 }

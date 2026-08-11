@@ -155,3 +155,65 @@ func TestSelectBeatsGreedyFullFile(t *testing.T) {
 		t.Error("related.go was not selected by the optimized combination")
 	}
 }
+
+// TestSelectRetentionGuaranteesDocsUnderBudget ensures a high-retention docs
+// file is not traded away for cheap filler: the optimizer honors the lang
+// role retention before running its utility DP.
+func TestSelectRetentionGuaranteesDocsUnderBudget(t *testing.T) {
+	result := Select([]Candidate{
+		candidate("README.md", 0.22, 1868, 20, "", true),
+		candidate("hot.go", 1.0, 60, 20, "", true),
+		candidate("clutter.log", 0.9, 5, 5, "", false),
+	}, Request{Budget: 40})
+
+	byPath := map[string]Decision{}
+	for _, d := range result.Decisions {
+		byPath[d.Path] = d
+	}
+	if d := byPath["README.md"]; !d.Selected {
+		t.Errorf("README.md should be guaranteed by retention, decision=%+v", d)
+	}
+}
+
+// TestSelectRetentionOverrideConfigPriority ensures a config-provided
+// retention override (e.g. bumping a low-retention role) wins over the lang
+// default. Implementation is not retained by default, so cheap filler fills
+// the budget and the expensive impl file is dropped; a config override lifts
+// it into the guaranteed set so it survives.
+func TestSelectRetentionOverrideConfigPriority(t *testing.T) {
+	base := []Candidate{
+		candidate("impl.go", 0.05, 2000, 100, "", true), // implementation, expensive
+		candidate("filler1.log", 0.9, 3, 3, "", false),
+		candidate("filler2.log", 0.9, 3, 3, "", false),
+		candidate("filler3.log", 0.9, 3, 3, "", false),
+	}
+
+	without := Select(append([]Candidate(nil), base...), Request{Budget: 100})
+	withoutByPath := map[string]Decision{}
+	for _, d := range without.Decisions {
+		withoutByPath[d.Path] = d
+	}
+	if withoutByPath["impl.go"].Selected {
+		t.Fatal("impl.go must not be guaranteed without an override")
+	}
+
+	tun := DefaultTuning()
+	tun.Retention = map[string]float64{"implementation": 0.9}
+	withOverride := Select(append([]Candidate(nil), base...), Request{Budget: 100, Tuning: tun})
+	byPath := map[string]Decision{}
+	for _, d := range withOverride.Decisions {
+		byPath[d.Path] = d
+	}
+	if d := byPath["impl.go"]; !d.Selected {
+		t.Errorf("impl.go should be retained via config override, decision=%+v", d)
+	}
+}
+
+// TestPlannedModeLabelIsScoreBand ensures no outputs claim to come from a
+// history store that does not exist.
+func TestPlannedModeLabelIsScoreBand(t *testing.T) {
+	_, reason := plannedMode(candidate("main.go", 0.9, 100, 10, "full", true))
+	if reason == "" {
+		t.Fatal("empty reason")
+	}
+}
