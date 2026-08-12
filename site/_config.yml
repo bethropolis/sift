@@ -1,10 +1,37 @@
-title: Sift
-description: An LLM-friendly codebase context picker
-url: https://bethropolis.github.io
-baseurl: /sift
-theme: minima
+title: sift
+tagline: Turn a codebase into an LLM-ready context document
+description: >-
+  sift is a command-line tool that walks a project directory, ranks files by
+  relevance, and renders an LLM-ready context document with token budgeting,
+  secret redaction, and signature-only compression.
+url: "https://bethropolis.github.io"
+baseurl: "/sift"
+
+repository: bethropolis/sift
+github_user: bethropolis
+latest_release_url: "https://github.com/bethropolis/sift/releases/latest"
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+permalink: pretty
+
+sass:
+  style: compressed
+
 include:
   - install.sh
+
 exclude:
   - Gemfile
   - Gemfile.lock
+  - README.md
+  - SITE-NOTES.md
+  - vendor
+  - node_modules
+
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap

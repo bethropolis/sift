@@ -1,0 +1,139 @@
+---
+layout: default
+title: Install
+permalink: /install/
+---
+
+<div class="page-head">
+  <div class="container">
+    <p class="page-head__eyebrow">Install</p>
+    <h1 class="page-head__title">Get sift running</h1>
+    <p class="page-head__lede">
+      A single self-contained binary. No runtime dependencies for the
+      prebuilt releases; building from source needs Go 1.26 or newer.
+    </p>
+  </div>
+</div>
+
+<div class="install-page">
+  <div class="container">
+
+    <div class="tabs">
+      <input type="radio" name="install-tabs" id="tab-curl" checked>
+      <input type="radio" name="install-tabs" id="tab-brew">
+      <input type="radio" name="install-tabs" id="tab-scoop">
+      <input type="radio" name="install-tabs" id="tab-go">
+      <input type="radio" name="install-tabs" id="tab-src">
+
+      <div class="tabs__nav">
+        <label for="tab-curl">macOS / Linux</label>
+        <label for="tab-brew">Homebrew</label>
+        <label for="tab-scoop">Windows (Scoop)</label>
+        <label for="tab-go">go install</label>
+        <label for="tab-src">Build from source</label>
+      </div>
+
+      <div class="tabs__panels">
+        <div class="tabs__panel" id="panel-curl">
+          <div class="code-block">
+            <pre id="cmd-curl">curl -fsSL https://bethropolis.github.io/sift/install.sh | sh</pre>
+            <button class="copy-btn" data-copy-target="#cmd-curl">copy</button>
+          </div>
+          <p class="note">
+            Installs to <code>~/.local/bin</code>. Set <code>SIFT_INSTALL_DIR</code>
+            first to install somewhere else, e.g.
+            <code>SIFT_INSTALL_DIR="$HOME/bin" curl -fsSL https://bethropolis.github.io/sift/install.sh | sh</code>.
+            If <code>~/.local/bin</code> isn't already on your <code>PATH</code>, add
+            <code>export PATH="$HOME/.local/bin:$PATH"</code> to your shell profile.
+          </p>
+        </div>
+
+        <div class="tabs__panel" id="panel-brew">
+          <div class="code-block">
+            <pre id="cmd-brew">brew install bethropolis/tap/sift</pre>
+            <button class="copy-btn" data-copy-target="#cmd-brew">copy</button>
+          </div>
+        </div>
+
+        <div class="tabs__panel" id="panel-scoop">
+          <div class="code-block">
+            <pre id="cmd-scoop">scoop bucket add bethropolis https://github.com/bethropolis/scoop-bucket
+scoop install sift</pre>
+            <button class="copy-btn" data-copy-target="#cmd-scoop">copy</button>
+          </div>
+        </div>
+
+        <div class="tabs__panel" id="panel-go">
+          <div class="code-block">
+            <pre id="cmd-go">go install github.com/bethropolis/sift/cmd/sift@latest</pre>
+            <button class="copy-btn" data-copy-target="#cmd-go">copy</button>
+          </div>
+          <p class="note">
+            Builds a copy without the CGO-only signature engine unless your
+            toolchain has cgo enabled. Prebuilt release binaries always
+            include <code>--mode signatures</code> support.
+          </p>
+        </div>
+
+        <div class="tabs__panel" id="panel-src">
+          <div class="code-block">
+            <pre id="cmd-src">git clone https://github.com/bethropolis/sift.git
+cd sift
+./scripts/install.sh</pre>
+            <button class="copy-btn" data-copy-target="#cmd-src">copy</button>
+          </div>
+          <p class="note">
+            Builds the checkout and installs to <code>~/.local/bin</code>
+            (override with <code>SIFT_INSTALL_DIR</code>). Or build manually
+            with <code>go build -o "$HOME/.local/bin/sift" ./cmd/sift</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <p class="hero__meta">
+      Prebuilt archives for Linux, Windows, macOS, and FreeBSD (amd64, arm64,
+      386, armv7 where Go supports them) are on the
+      <a href="{{ site.latest_release_url }}">releases page</a>.
+    </p>
+
+    <div class="verify-block">
+      <div class="section__head" style="margin-bottom:20px;">
+        <p class="section__eyebrow">Verify</p>
+        <h2 class="section__title">Check the install</h2>
+      </div>
+      <div class="code-block">
+        <pre id="cmd-verify">sift version
+sift dump . --output -</pre>
+        <button class="copy-btn" data-copy-target="#cmd-verify">copy</button>
+      </div>
+      <p class="hero__meta" style="margin-top:14px;">
+        <code class="inline-code">sift version</code> prints the installed
+        version; <code class="inline-code">sift dump . --output -</code>
+        scans the current directory and prints a context document to
+        standard output.
+      </p>
+    </div>
+
+    <div class="verify-block">
+      <div class="section__head" style="margin-bottom:20px;">
+        <p class="section__eyebrow">Upgrading &amp; removing</p>
+        <h2 class="section__title">Staying current</h2>
+      </div>
+      <p class="section__lede" style="max-width:70ch;">
+        Re-run the same install command to upgrade. It overwrites the
+        existing binary. State and preferences live under your application
+        config directory and survive upgrades. To remove sift entirely:
+      </p>
+      <div class="code-block" style="margin-top:16px;">
+        <pre id="cmd-remove">rm -f ~/.local/bin/sift               # curl / local installer
+brew uninstall bethropolis/tap/sift   # Homebrew
+scoop uninstall sift                  # Scoop
+
+rm -rf ~/.config/sift                 # optional: config, state, preferences</pre>
+        <button class="copy-btn" data-copy-target="#cmd-remove">copy</button>
+      </div>
+    </div>
+
+  </div>
+</div>

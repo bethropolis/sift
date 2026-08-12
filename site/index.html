@@ -1,0 +1,151 @@
+---
+layout: default
+title: null
+---
+
+<section class="hero">
+  <div class="container">
+    <span class="hero__eyebrow">
+      <a href="{{ site.latest_release_url }}" style="color:inherit;text-decoration:none;">v1.1.0 released</a>
+    </span>
+
+    <h1 class="hero__title">Sift the repo.<br>Keep the signal.</h1>
+
+    <p class="hero__lede">
+      sift walks a project directory, ranks files by git relevance, and
+      renders one LLM-ready context document. Token budgeting, secret
+      redaction, and signature-only compression are built in.
+    </p>
+
+    <div class="hero__actions">
+      <a class="btn btn--primary" href="{{ '/install/' | relative_url }}">Install sift</a>
+      <a class="btn btn--ghost" href="https://github.com/{{ site.repository }}">View on GitHub ↗</a>
+    </div>
+
+    <p class="hero__meta">
+      Single Go binary, no account or server round-trip.
+      Also on Homebrew, Scoop, and <a href="{{ '/install/' | relative_url }}">as prebuilt binaries</a>.
+    </p>
+
+    <div class="sieve" role="img" aria-label="A raw repository tree of many files being narrowed down to a small, ranked, token-budgeted set of files.">
+      <div class="sieve__pane sieve__pane--before">
+        <div class="sieve__label"><span>your-project/</span><span class="sieve__count">214 files</span></div>
+        <div class="sieve__row">node_modules/lodash/index.js</div>
+        <div class="sieve__row">vendor/github.com/pkg/errors/errors.go</div>
+        <div class="sieve__row">.git/objects/3f/91a2…</div>
+        <div class="sieve__row">dist/bundle.min.js</div>
+        <div class="sieve__row">package-lock.json</div>
+        <div class="sieve__row sieve__row--cut">internal/api/handler.go</div>
+        <div class="sieve__row sieve__row--cut">internal/api/router.go</div>
+        <div class="sieve__row">coverage/lcov.info</div>
+        <div class="sieve__row sieve__row--cut">README.md</div>
+        <div class="sieve__row">testdata/fixture_003.json</div>
+        <div class="sieve__row">+ 204 more</div>
+      </div>
+
+      <div class="sieve__mesh" aria-hidden="true"></div>
+
+      <div class="sieve__pane sieve__pane--after">
+        <div class="sieve__label"><span>codebase.md</span><span class="sieve__count">42 files · 58,940 tok</span></div>
+        <div class="sieve__row"><span>internal/api/handler.go</span><span>FULL</span></div>
+        <div class="sieve__row"><span>internal/api/router.go</span><span>FULL</span></div>
+        <div class="sieve__row"><span>internal/api/middleware.go</span><span>SIGS</span></div>
+        <div class="sieve__row"><span>cmd/api/main.go</span><span>FULL</span></div>
+        <div class="sieve__row"><span>internal/store/postgres.go</span><span>SIGS</span></div>
+        <div class="sieve__row"><span>README.md</span><span>FULL</span></div>
+        <div class="sieve__row sieve__row--dim"><span>internal/store/query.go</span><span>SIGS</span></div>
+        <div class="sieve__row sieve__row--dim"><span>go.mod</span><span>FULL</span></div>
+        <div class="sieve__row sieve__row--dim"><span>+ 34 more, budget-fit</span><span></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="what-it-does">
+  <div class="container">
+    <div class="section__head">
+      <p class="section__eyebrow">What it does</p>
+      <h2 class="section__title">One document, ranked and trimmed to fit</h2>
+      <p class="section__lede">
+        Six things sift handles on every run so you don't have to curate
+        context by hand.
+      </p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <span class="card__index">git</span>
+        <h3 class="card__title">Git-relevance ranking</h3>
+        <p class="card__body">Modified files first, then recent diffs, then recent commits, weighted with churn and import fan-in.</p>
+      </div>
+      <div class="card">
+        <span class="card__index">tok</span>
+        <h3 class="card__title">Token budgets</h3>
+        <p class="card__body">Set <code>--budget</code> and sift keeps the highest-priority files inside your model's context window.</p>
+      </div>
+      <div class="card">
+        <span class="card__index">sig</span>
+        <h3 class="card__title">Signature compression</h3>
+        <p class="card__body"><code>--mode signatures</code> keeps declarations and doc comments via tree-sitter, drops function bodies.</p>
+      </div>
+      <div class="card">
+        <span class="card__index">key</span>
+        <h3 class="card__title">Secret redaction</h3>
+        <p class="card__body">AWS, GitHub, Slack, Google, and Stripe keys are redacted before anything renders. On by default.</p>
+      </div>
+      <div class="card">
+        <span class="card__index">tui</span>
+        <h3 class="card__title">Interactive picker</h3>
+        <p class="card__body">A dual-pane TUI with per-file <code>FULL</code>/<code>SIGS</code>/<code>SKIP</code> modes, smart-select, and task prompts.</p>
+      </div>
+      <div class="card">
+        <span class="card__index">&Delta;</span>
+        <h3 class="card__title">Incremental deltas</h3>
+        <p class="card__body"><code>sift delta</code> renders only what changed since your last dump, as full files or a raw patch.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container">
+    <div class="section__head">
+      <p class="section__eyebrow">Commands</p>
+      <h2 class="section__title">Six ways to generate the document</h2>
+      <p class="section__lede">
+        Run <code class="inline-code">sift --help</code> or
+        <code class="inline-code">sift &lt;command&gt; --help</code> for the full flag list.
+      </p>
+    </div>
+
+    <div class="cmd-strip">
+      <div class="cmd-row"><code>sift</code><span>Launch the interactive picker (bare invocation)</span></div>
+      <div class="cmd-row"><code>sift dump [path]</code><span>Render every eligible file in the tree</span></div>
+      <div class="cmd-row"><code>sift pick [path]</code><span>Select files interactively, then render</span></div>
+      <div class="cmd-row"><code>sift select [path]</code><span>Auto-select the most useful files and render them</span></div>
+      <div class="cmd-row"><code>sift diff [ref]</code><span>Render only files changed relative to a git ref</span></div>
+      <div class="cmd-row"><code>sift delta [path]</code><span>Render only changes since the last recorded dump</span></div>
+      <div class="cmd-row"><code>sift watch [path]</code><span>Re-render the document whenever files change</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <div class="section__head">
+      <p class="section__eyebrow">Get started</p>
+      <h2 class="section__title">Install in one line</h2>
+      <p class="section__lede">macOS and Linux:</p>
+    </div>
+
+    <div class="install-quick">
+      <div class="install-quick__prompt" id="quick-install-cmd">curl -fsSL https://bethropolis.github.io/sift/install.sh | sh</div>
+      <button class="copy-btn" data-copy-target="#quick-install-cmd">copy</button>
+    </div>
+
+    <p class="hero__meta" style="margin-top:16px;">
+      Homebrew, Scoop, <code class="inline-code">go install</code>, and building from
+      source are on the <a href="{{ '/install/' | relative_url }}">install page</a>.
+    </p>
+  </div>
+</section>
