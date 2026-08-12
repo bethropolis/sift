@@ -87,7 +87,7 @@ type Config struct {
 // New returns a Config populated with built-in defaults.
 func New() *Config {
 	return &Config{
-		Version:           "1.1.0",
+		Version:           "1.1.1",
 		IgnoreHidden:      true,
 		IgnoreGit:         true,
 		SecretScan:        true,
