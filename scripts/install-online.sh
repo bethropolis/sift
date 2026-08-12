@@ -62,9 +62,9 @@ esac
 info "platform: ${os}/${arch}"
 
 info "resolving latest release ..."
-tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
-    | sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' \
-    | head -n 1)
+tag=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+    "https://github.com/$repo/releases/latest")
+tag=${tag##*/}
 [ -n "$tag" ] || die "could not determine the latest sift release"
 version=${tag#v}
 archive="sift_${version}_${os}_${arch}.tar.gz"
