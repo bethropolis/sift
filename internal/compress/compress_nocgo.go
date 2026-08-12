@@ -17,6 +17,9 @@ func New() *Compressor { return &Compressor{} }
 
 func (c *Compressor) LanguageForPath(path string) (lang.ID, bool) {
 	l, ok := lang.ForPath(path)
+	if !ok {
+		return "", false
+	}
 	return l.ID(), ok
 }
 
