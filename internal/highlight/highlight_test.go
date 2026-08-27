@@ -40,3 +40,34 @@ func TestRenderSkipsUnsupportedAndOversizedContent(t *testing.T) {
 		t.Errorf("oversized content changed: %q", got)
 	}
 }
+
+func TestRenderLineTrailingEscapeDoesNotPanic(t *testing.T) {
+	opts := Options{Enabled: true, Theme: ThemeAuto}
+	lines := []string{
+		`name := "path\`,
+		`s := "abc" + '\'`,
+		`s := "unterminated`,
+		`s := 'single\'`,
+		`f("a" + "b")`,
+	}
+	for _, line := range lines {
+		got := RenderLine("main.go", line, opts)
+		if stripANSI(got) != line {
+			t.Errorf("RenderLine(%q) altered content: %q", line, got)
+		}
+	}
+}
+
+func stripANSI(s string) string {
+	b := &strings.Builder{}
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\033' && i+1 < len(s) && s[i+1] == '[' {
+			for i < len(s) && s[i] != 'm' {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}

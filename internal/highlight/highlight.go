@@ -69,6 +69,9 @@ func RenderLine(path, line string, options Options) string {
 			for j < len(line) {
 				if line[j] == '\\' {
 					j += 2
+					if j > len(line) {
+						j = len(line)
+					}
 					continue
 				}
 				if line[j] == quote {
