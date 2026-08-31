@@ -74,28 +74,76 @@ func RankParams(files []format.FileEntry, fanIn map[string]int) []rank.ScoringPa
 // is counted as imported when its own path equals it or lives beneath it, so
 // every file in an imported package gains centrality. Uses the language
 // registry's ImportScanner so import syntax lives in internal/lang.
+//
+// Paths are organized as a trie so each import target increments a single
+// package node and a single post-order pass distributes that centrality to
+// every file at or beneath it. This is near-linear in input instead of the
+// previous O(files × imports × files) triple loop.
 func (r *Ranker) computeFanIn(files []format.FileEntry) map[string]int {
 	moduleRoot := r.moduleRoot()
-	imports := make([][]string, len(files))
-	for i, f := range files {
-		imports[i] = lang.Imports(filepath.ToSlash(f.Path), moduleRoot, f.Content)
+	root := &fanNode{children: map[string]*fanNode{}}
+	nodeByPath := make(map[string]*fanNode, len(files))
+	for _, f := range files {
+		path := filepath.ToSlash(f.Path)
+		node := root
+		prefix := ""
+		for _, seg := range strings.Split(path, "/") {
+			if prefix == "" {
+				prefix = seg
+			} else {
+				prefix += "/" + seg
+			}
+			child := node.children[seg]
+			if child == nil {
+				child = &fanNode{children: map[string]*fanNode{}, path: prefix}
+				node.children[seg] = child
+			}
+			node = child
+			// Register every node (directory or file) so import targets that
+			// resolve to a package directory can be found even when no collected
+			// file has that exact path.
+			nodeByPath[prefix] = node
+		}
+		node.isFile = true
 	}
-	paths := make([]string, len(files))
-	for i, f := range files {
-		paths[i] = filepath.ToSlash(f.Path)
-	}
-	fanIn := make(map[string]int, len(files))
-	for _, imps := range imports {
-		for _, target := range imps {
-			target = filepath.ToSlash(target)
-			for _, p := range paths {
-				if p == target || strings.HasPrefix(p, target+"/") {
-					fanIn[p]++
-				}
+
+	for _, f := range files {
+		for _, target := range lang.Imports(filepath.ToSlash(f.Path), moduleRoot, f.Content) {
+			target = strings.TrimSuffix(filepath.ToSlash(target), "/")
+			if target == "" {
+				continue
+			}
+			// A package node present in collected paths receives one hit per
+			// importer; it is distributed to itself and its descendants below.
+			if node, ok := nodeByPath[target]; ok {
+				node.hits++
 			}
 		}
 	}
+
+	fanIn := make(map[string]int, len(files))
+	var accumulate func(node *fanNode, running int)
+	accumulate = func(node *fanNode, running int) {
+		total := running + node.hits
+		if node.isFile {
+			fanIn[node.path] = total
+		}
+		for _, child := range node.children {
+			accumulate(child, total)
+		}
+	}
+	accumulate(root, 0)
 	return fanIn
+}
+
+// fanNode is a single node in the trie built by computeFanIn. The trie is
+// shared across files, so each import prefix exists once rather than once per
+// file under it.
+type fanNode struct {
+	path     string
+	isFile   bool
+	hits     int // number of collected importers targeting exactly this node
+	children map[string]*fanNode
 }
 
 // moduleRoot reads the repository's module path (e.g. the go.mod module

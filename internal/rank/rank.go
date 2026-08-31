@@ -83,9 +83,14 @@ func (g *Git) ChangesFor(ref string) *Changes {
 	}()
 	go func() {
 		defer wg.Done()
-		for _, p := range g.runList("diff", "--name-only", ref+"^.."+ref) {
-			if p = strings.TrimSpace(p); p != "" {
-				changes.Diffed[p] = true
+		if parent := g.Parent(ref); parent != "" {
+			// Root commits (a single-commit history) have no parent, so the diff
+			// range "ref^..ref" is invalid; skip it rather than silently returning
+			// an empty list.
+			for _, p := range g.runList("diff", "--name-only", parent+".."+ref) {
+				if p = strings.TrimSpace(p); p != "" {
+					changes.Diffed[p] = true
+				}
 			}
 		}
 	}()

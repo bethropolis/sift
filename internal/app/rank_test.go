@@ -126,6 +126,41 @@ func TestApplyRankScoresBaseline(t *testing.T) {
 	}
 }
 
+// TestComputeFanIn verifies the reverse import fan-in trie: every file in an
+// imported package gains one centrality hit per importer, files under nested
+// subpackages inherit it, and files outside any imported package get zero.
+// This locks in the behavior of the O(files × imports) trie rewrite against
+// the previous O(files × imports × files) implementation.
+func TestComputeFanIn(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/repo\n")
+
+	r := NewRanker(dir)
+	files := []format.FileEntry{
+		{Path: "main.go", Content: []byte("package main\nimport \"example.com/repo/internal/app\"\n")},
+		{Path: "cmd/tool/main.go", Content: []byte("package main\nimport \"example.com/repo/internal/app\"\n")},
+		{Path: "internal/app/app.go", Content: []byte("package app\n")},
+		{Path: "internal/app/store.go", Content: []byte("package app\n")},
+		{Path: "internal/app/sub/extra.go", Content: []byte("package sub\n")},
+		{Path: "other.go", Content: []byte("package main\n")},
+	}
+	fanIn := r.computeFanIn(files)
+
+	want := map[string]int{
+		"main.go":                   0,
+		"cmd/tool/main.go":          0,
+		"internal/app/app.go":       2, // imported by main.go and cmd/tool
+		"internal/app/store.go":     2,
+		"internal/app/sub/extra.go": 2, // inherits from the internal/app package node
+		"other.go":                  0,
+	}
+	for path, wantCount := range want {
+		if got := fanIn[path]; got != wantCount {
+			t.Errorf("fanIn[%q] = %d, want %d", path, got, wantCount)
+		}
+	}
+}
+
 func paths(files []format.FileEntry) []string {
 	out := make([]string, len(files))
 	for i, f := range files {
