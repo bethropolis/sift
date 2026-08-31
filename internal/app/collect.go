@@ -105,10 +105,14 @@ func (a *App) collect(mode collectMode) ([]format.FileEntry, []walker.SkippedIte
 	}
 
 	// Order files by git relevance so the most important context survives the
-	// token budget. Outside a git repository the order is left unchanged.
+	// token budget. Outside a git repository the order is left unchanged. If the
+	// root cannot be resolved we cannot rank; log it so the changed ordering
+	// (or lack thereof) is diagnosable.
 	absRootDir, absErr := a.absRoot()
 	if absErr == nil {
 		a.applyRank(mode, absRootDir, &files)
+	} else {
+		a.log.Debug("Skipping git-relevance ranking: %v", absErr)
 	}
 	return files, skipped, nil
 }
@@ -307,6 +311,25 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 	if err != nil {
 		return format.FileEntry{}, err
 	}
+
+	// Mirror the walker's pre-read safety checks so a selected-but-not-yet-
+	// streamed file is never pulled wholesale into RAM: stat first, drop
+	// non-regular entries, enforce the size cap, and reject binary files the
+	// same way the walker's processFile does.
+	info, err := os.Stat(absFile)
+	if err != nil {
+		return format.FileEntry{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return format.FileEntry{}, fmt.Errorf("%w: not a regular file", ErrFileSkipped)
+	}
+	if maxMB := a.effectiveMaxFileSizeMB(collectPicker); maxMB > 0 && info.Size() > maxMB*1024*1024 {
+		return format.FileEntry{}, fmt.Errorf("%w: exceeds max size limit (%d MB)", ErrFileSkipped, maxMB)
+	}
+	if !a.cfg.IncludeBinary && walker.IsBinaryFile(absFile) {
+		return format.FileEntry{}, fmt.Errorf("%w: binary file", ErrFileSkipped)
+	}
+
 	content, err := os.ReadFile(absFile)
 	if err != nil {
 		return format.FileEntry{}, err
@@ -339,17 +362,22 @@ func (a *App) absRoot() (string, error) {
 	return absRootDir, nil
 }
 
+// effectiveMaxFileSizeMB returns the configured per-file size limit for a
+// collection mode, applying the picker's default cap when none is set so
+// oversized files are never read into memory in picker flows.
+func (a *App) effectiveMaxFileSizeMB(mode collectMode) int64 {
+	max := a.cfg.MaxFileSizeMB
+	if mode == collectPicker && max <= 0 {
+		max = pickDefaultMaxFileSizeMB
+	}
+	return max
+}
+
 // walkerOptions assembles the ignore matcher and walker options for the scan
 // root, including the picker's default size cap and the OnlyPaths/output-path
 // path filter.
 func (a *App) walkerOptions(absRootDir string, ctx context.Context, mode collectMode) (*ignore.IgnoreMatcher, []walker.Option, error) {
-	maxFileSizeMB := a.cfg.MaxFileSizeMB
-	if mode == collectPicker && maxFileSizeMB <= 0 {
-		// The picker's smart filter would reject oversized files anyway, but
-		// reading them into memory first is wasted work. Cap the read so huge
-		// files are skipped by the walker before content is loaded.
-		maxFileSizeMB = pickDefaultMaxFileSizeMB
-	}
+	maxFileSizeMB := a.effectiveMaxFileSizeMB(mode)
 	walkerConfig := setup.WalkerConfig{
 		RootDir:       absRootDir,
 		Concurrent:    a.cfg.Concurrent,
