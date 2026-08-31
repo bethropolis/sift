@@ -37,21 +37,18 @@ func (r *jsonRenderer) Render(doc *Document, w io.Writer) error {
 
 	if doc.Instructions == "" {
 		if len(entries) == 0 {
-			fmt.Fprint(w, "[]\n")
-			return nil
+			return fprint(w, "[]\n")
 		}
 		data, err := json.MarshalIndent(entries, "", "  ")
 		if err != nil {
 			return fmt.Errorf("format: marshal json: %w", err)
 		}
-		fmt.Fprintf(w, "%s\n", data)
-		return nil
+		return fprint(w, "%s\n", data)
 	}
 
 	data, err := json.MarshalIndent(jsonDoc{Instructions: doc.Instructions, Files: entries}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("format: marshal json: %w", err)
 	}
-	fmt.Fprintf(w, "%s\n", data)
-	return nil
+	return fprint(w, "%s\n", data)
 }

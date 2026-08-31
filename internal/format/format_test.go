@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -258,6 +259,35 @@ func TestParseStyle(t *testing.T) {
 	for _, tc := range tests {
 		if got := ParseStyle(tc.in); got != tc.want {
 			t.Errorf("ParseStyle(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// errWriter always fails writes, letting tests confirm renderers surface
+// disk-full / broken-pipe conditions instead of silently swallowing them.
+type errWriter struct{ err error }
+
+func (w errWriter) Write(p []byte) (int, error) { return 0, w.err }
+
+// TestRenderPropagatesWriteErrors ensures every renderer returns a write
+// failure (e.g. disk full, broken pipe) rather than reporting success, so
+// callers can produce a non-zero exit code when output cannot be persisted.
+func TestRenderPropagatesWriteErrors(t *testing.T) {
+	doc := &Document{
+		DirectoryTree: ".\n",
+		Instructions:  "task",
+		Files: []FileEntry{
+			{Path: "a.txt", Content: []byte("hello")},
+		},
+	}
+	want := errors.New("disk full")
+	for _, style := range []Style{StylePlain, StyleMarkdown, StyleJSON, StyleXML} {
+		r, err := NewRenderer(style, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Render(doc, errWriter{want}); !errors.Is(err, want) {
+			t.Errorf("style %s: Render error = %v, want %v", style, err, want)
 		}
 	}
 }

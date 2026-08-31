@@ -97,6 +97,14 @@ func ParseStyle(s string) Style {
 	}
 }
 
+// fprint writes a formatted string to w, returning the first write error. It
+// lets renderers propagate disk-full and broken-pipe failures that would
+// otherwise be silently swallowed, so callers can surface a non-zero exit.
+func fprint(w io.Writer, format string, args ...any) error {
+	_, err := fmt.Fprintf(w, format, args...)
+	return err
+}
+
 // BuildTree renders an indented directory tree for the given relative paths.
 func BuildTree(paths []string) string {
 	root := &treeNode{children: map[string]*treeNode{}}
