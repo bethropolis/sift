@@ -32,3 +32,6 @@ vendor/
 
 # sift files
 /codebase*
+
+# local eval harness (not part of product)
+/eval/
