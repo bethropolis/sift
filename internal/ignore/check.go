@@ -101,7 +101,7 @@ func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 			return match.Ignore()
 		}
 	} else {
-		m.logger.Debug("ignore.ShouldIgnore: No repository ignore patterns loaded (m.repoIgnore is nil).", relativePath)
+		m.logger.Debug("ignore.ShouldIgnore: No repository ignore patterns loaded (m.repoIgnore is nil).")
 	}
 
 	// Fall back to the built-in default patterns. They are the lowest-priority

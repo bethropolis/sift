@@ -33,29 +33,55 @@ type SkippedItem struct {
 	IsDir  bool          `json:"is_dir"`
 }
 
+// defaultMaxSkippedItems caps the number of skipped paths a tracker retains.
+// A heavily filtered tree (every node_modules file, extension-filtered file,
+// etc.) can otherwise grow the skip list without bound and balloon memory.
+const defaultMaxSkippedItems = 10000
+
 // SkippedTracker is a struct to track skipped items
 type SkippedTracker struct {
-	items []SkippedItem
-	mutex sync.Mutex
+	items    []SkippedItem
+	mutex    sync.Mutex
+	maxItems int // retention cap; additional skips are counted as dropped
+	dropped  int // skips not recorded because the cap was reached
 }
 
 // NewSkippedTracker creates a new SkippedTracker
 func NewSkippedTracker(capacity int) *SkippedTracker {
-	return &SkippedTracker{
-		items: make([]SkippedItem, 0, capacity),
+	st := &SkippedTracker{
+		items:    make([]SkippedItem, 0, capacity),
+		maxItems: defaultMaxSkippedItems,
 	}
+	// A caller that asks for more than the default cap gets what it asked for.
+	if capacity > st.maxItems {
+		st.maxItems = capacity
+	}
+	return st
 }
 
-// Track adds a skipped item to the tracker
+// Track adds a skipped item to the tracker, up to the retention cap. Beyond
+// that the item is dropped and counted so callers can detect overflow.
 func (st *SkippedTracker) Track(path string, reason SkippedReason, isDir bool) {
 	st.mutex.Lock()
 	defer st.mutex.Unlock()
+	if len(st.items) >= st.maxItems {
+		st.dropped++
+		return
+	}
 	st.items = append(st.items, SkippedItem{Path: path, Reason: reason, IsDir: isDir})
 }
 
-// Items returns the tracked skipped items
+// Items returns a copy of the tracked skipped items.
 func (st *SkippedTracker) Items() []SkippedItem {
 	st.mutex.Lock()
 	defer st.mutex.Unlock()
-	return st.items
+	return append([]SkippedItem(nil), st.items...)
+}
+
+// Dropped reports how many skip events were not recorded because the retention
+// cap was reached, so callers can know the skip list was truncated.
+func (st *SkippedTracker) Dropped() int {
+	st.mutex.Lock()
+	defer st.mutex.Unlock()
+	return st.dropped
 }

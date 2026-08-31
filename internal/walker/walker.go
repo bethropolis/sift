@@ -145,7 +145,12 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 			// Triple check - make sure this isn't the root dir or "."
 			if path != absRootDir && relativePath != "." {
 				options.Logger.Debug("Walker Processing Sequentially: File [%s]", relativePath)
-				processFile(path, relativePath, options, walkFn, tracker, stats)
+				if cbErr := processFile(path, relativePath, options, walkFn, tracker, stats); cbErr != nil {
+					// The callback asked to stop; abort the walk so the caller's
+					// error surfaces instead of being silently swallowed.
+					options.Logger.Error("Walker: Aborting traversal after %q callback error: %v", relativePath, cbErr)
+					return cbErr
+				}
 			}
 		}
 		return nil

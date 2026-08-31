@@ -2,6 +2,7 @@ package walker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -561,6 +562,107 @@ func TestWalkKeepsUnignoredNewHeavyDir(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("got %v, want %v", got, want)
 		}
+	}
+}
+
+// TestWalkCallbackErrorAbortsSequential verifies a non-nil error from the
+// WalkFunc aborts traversal in the sequential path so the caller's error is
+// surfaced and later files are not processed.
+func TestWalkCallbackErrorAbortsSequential(t *testing.T) {
+	root := t.TempDir()
+	writeTestTree(t, root)
+
+	matcher, err := ignore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	sentinel := errors.New("stop")
+	_, err = Walk(root, matcher, func(string, []byte, error) error {
+		count++
+		return sentinel
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Walk error = %v, want the callback's sentinel", err)
+	}
+	if count == 0 {
+		t.Fatal("callback was never invoked")
+	}
+	if count >= 3 {
+		t.Errorf("callback invoked %d times, want traversal aborted after the first file", count)
+	}
+}
+
+// TestWalkCallbackErrorAbortsConcurrent verifies a callback error aborts a
+// concurrent walk and surfaces as the returned error, rather than being logged
+// and ignored while the walk completes.
+func TestWalkCallbackErrorAbortsConcurrent(t *testing.T) {
+	root := t.TempDir()
+	writeTestTree(t, root)
+
+	matcher, err := ignore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sentinel := errors.New("stop now")
+	_, err = Walk(root, matcher, func(string, []byte, error) error {
+		return sentinel
+	}, WithConcurrency(true), WithMaxWorkers(4))
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Walk error = %v, want the callback's sentinel", err)
+	}
+}
+
+// TestWalkStatErrorCountsSkipped verifies a file that cannot be stat'd (a
+// dangling symlink) is counted as a skipped file, so Processed + Skipped
+// reconciles with TotalFiles instead of silently dropping the file from stats.
+func TestWalkStatErrorCountsSkipped(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "ok.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "does-not-exist"), filepath.Join(root, "dangling.dat")); err != nil {
+		t.Skipf("cannot create symlink: %v", err)
+	}
+
+	matcher, err := ignore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got WalkStats
+	if _, err := Walk(root, matcher, func(string, []byte, error) error { return nil },
+		WithStats(func(st WalkStats) { got = st })); err != nil {
+		t.Fatalf("Walk returned an unexpected error: %v", err)
+	}
+	if got.TotalFiles != 2 {
+		t.Fatalf("TotalFiles = %d, want 2 (ok.txt + dangling symlink)", got.TotalFiles)
+	}
+	if got.ProcessedFiles != 1 {
+		t.Errorf("ProcessedFiles = %d, want 1", got.ProcessedFiles)
+	}
+	if got.SkippedFiles != 1 {
+		t.Errorf("SkippedFiles = %d, want 1 (stat error must be counted)", got.SkippedFiles)
+	}
+	if got.ProcessedFiles+got.SkippedFiles != got.TotalFiles {
+		t.Errorf("Processed(%d)+Skipped(%d) != Total(%d); stats do not reconcile",
+			got.ProcessedFiles, got.SkippedFiles, got.TotalFiles)
+	}
+}
+
+// TestSkippedTrackerCap verifies the tracker truncates beyond its retention cap
+// and reports how many events were dropped.
+func TestSkippedTrackerCap(t *testing.T) {
+	st := &SkippedTracker{maxItems: 3, items: make([]SkippedItem, 0, 3)}
+	for i := 0; i < 10; i++ {
+		st.Track("f", ReasonSkippedReadError, false)
+	}
+	if got := len(st.Items()); got != 3 {
+		t.Fatalf("Items() len = %d, want 3 (capped)", got)
+	}
+	if got := st.Dropped(); got != 7 {
+		t.Errorf("Dropped() = %d, want 7 over the cap", got)
 	}
 }
 

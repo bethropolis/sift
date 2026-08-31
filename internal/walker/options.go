@@ -58,7 +58,9 @@ type Option func(*WalkOptions)
 // WithLogger sets a custom logger for the walker
 func WithLogger(logger utils.Logger) Option {
 	return func(opts *WalkOptions) {
-		opts.Logger = logger
+		if logger != nil {
+			opts.Logger = logger
+		}
 	}
 }
 

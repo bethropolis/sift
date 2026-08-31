@@ -6,8 +6,12 @@ import (
 	"os"
 )
 
-// processFile handles reading a file and calling the walkFn with its content
-func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc, tracker *SkippedTracker, stats *walkStats) {
+// processFile handles reading a file and calling the walkFn with its content.
+// It returns the error returned by walkFn (when non-nil) so callers can abort
+// traversal; a non-nil return signals "stop walking". Stat/read failures are
+// reported to walkFn via the err argument and return nil from here (the walk
+// continues), but they are counted as skipped so stats stay consistent.
+func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc, tracker *SkippedTracker, stats *walkStats) error {
 	options.Logger.Debug("processFile: Reading [%s]", relativePath)
 	stats.currentFile.Store(&relativePath)
 
@@ -19,15 +23,16 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	if err != nil {
 		options.Logger.Error("processFile Error [%s]: Failed to get file info: %v", relativePath, err)
 		tracker.Track(relativePath, ReasonSkippedInfoError, false)
+		stats.skippedFiles.Add(1)
 		walkFn(relativePath, nil, fmt.Errorf("failed to get file info: %w", err))
-		return
+		return nil
 	}
 
 	if !info.Mode().IsRegular() {
 		options.Logger.Debug("processFile Skipping [%s]: Not a regular file.", relativePath)
 		tracker.Track(relativePath, ReasonSkippedNotRegular, false)
 		stats.skippedFiles.Add(1)
-		return
+		return nil
 	}
 
 	if options.MaxFileSize > 0 && info.Size() > options.MaxFileSize {
@@ -39,7 +44,7 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 		tracker.Track(relativePath, ReasonSkippedSizeLimit, false)
 		stats.sizeSkipped.Add(1)
 		stats.skippedFiles.Add(1)
-		return
+		return nil
 	}
 
 	// Skip binary files before reading them, using extension fast-paths and
@@ -49,7 +54,7 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 		tracker.Track(relativePath, ReasonSkippedBinary, false)
 		stats.binarySkipped.Add(1)
 		stats.skippedFiles.Add(1)
-		return
+		return nil
 	}
 
 	// Read file content
@@ -57,8 +62,9 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	if err != nil {
 		options.Logger.Error("processFile Error [%s]: Failed to read file: %v", relativePath, err)
 		tracker.Track(relativePath, ReasonSkippedReadError, false)
+		stats.skippedFiles.Add(1)
 		walkFn(relativePath, nil, fmt.Errorf("failed to read file: %w", err))
-		return
+		return nil
 	}
 	stats.bytesRead.Add(int64(len(content)))
 
@@ -66,7 +72,9 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	options.Logger.Debug("processFile Success [%s]: Read %d bytes. Calling walkFn.", relativePath, len(content))
 	if err := walkFn(relativePath, content, nil); err != nil {
 		options.Logger.Error("processFile Error [%s]: Callback function returned error: %v", relativePath, err)
+		return err
 	}
 
 	stats.processedFiles.Add(1)
+	return nil
 }
