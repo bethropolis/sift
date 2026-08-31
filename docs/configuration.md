@@ -1,48 +1,166 @@
-# Configuration and profiles
+# Configuration
 
-Command-line flags configure a single run. **Profiles** package a set of
-settings for reuse across projects.
+Command-line flags configure a single run. Profiles and targets make those
+settings reusable and committable so `sift dump` does the right thing without
+flags — suitable for CI and automated dumping.
+
+## Quick start: `[sift]` defaults
+
+Put repository-wide defaults in `.sift.toml` (project-local, committed) so
+any clone can run `sift dump` with no flags:
+
+```toml
+[sift]
+style = "xml"
+budget = 40000
+mode = "full"
+output = "codebase.md"
+smart = true
+extensions = ["go", "md", "ts"]
+ignore = ["vendor/**", "dist/**"]
+prompt = "Review for correctness."
+# prompt_file = "prompts/review.md"   # file path instead of inline prompt
+```
+
+Flags still win: `sift dump --budget 80000` overrides `budget = 40000`.
 
 ## Profiles
 
-Create a `.sift.toml` in the scanned directory (project-local), or a global
-`~/.config/sift/config.toml`:
+Profiles are named presets you select with `--profile` (or via a target):
 
 ```toml
 [profiles.review]
 style = "markdown"
 budget = 60000
 mode = "signatures"
-secrets = true
 prompt = "Review this codebase for correctness and security issues."
 extensions = ["go", "md"]
 
-[profiles.docs]
+[profiles.claude]
 style = "xml"
-highlight = true
-```
+budget = 60000
 
-Select a profile with:
+[profiles.rust-strict]
+extends = ["claude"]           # inherit, then override
+extensions = ["rs"]
+mode = "signatures"
+prompt_file = "prompts/rust-review.md"
+output = "rust-context.md"
+```
 
 ```sh
 sift dump . --profile review
+sift dump . --profile rust-strict
 ```
 
-### Precedence
+`extends` composes profiles: ancestors are overlaid in order, then the
+profile's own fields win. Cycles are an error.
 
-1. **Explicit command-line flags** win.
-2. Then the selected profile's values.
-3. Then built-in defaults.
+## Targets: multiple artifacts from one file
 
-To apply a profile automatically when `--profile` is omitted, set
-`default_profile` in the global configuration file.
+Each `[[targets]]` is one dump artifact. Select one with `--target`:
 
-### Tuning selection (`[scoring]`)
+```toml
+[[targets]]
+name = "full"
+profile = "claude"             # optional; inherits that profile first
+output = "codebase.md"
 
-A profile may carry a `scoring` table that tunes relevance scoring and the
-token-budget optimizer. Unset keys keep the built-in defaults, so only the
-knobs you want to change need to be listed. `retention` overrides how strongly
-a role is kept under budget; config takes priority over the language default.
+[[targets]]
+name = "sig"
+profile = "rust-strict"
+output = "codebase.sig.xml"
+style = "xml"
+
+[[targets]]
+name = "docs"
+extensions = ["md"]
+prompt = "Summarize the architecture for a new teammate."
+output = "docs-context.md"
+budget = 12000
+```
+
+```sh
+sift dump --target full        # codebase.md
+sift dump --target sig         # codebase.sig.xml
+sift dump --target docs        # docs-context.md (md-only, short budget)
+```
+
+Target fields (`style`, `budget`, `mode`, `output`, `prompt`/`prompt_file`,
+`extensions`, `ignore`, `scoring`) override the resolved profile and `[sift]`
+defaults. Flags override everything.
+
+## Prompts
+
+Inline `prompt` or file-backed `prompt_file` on `[sift]`, any profile, or any
+target:
+
+```toml
+[profiles.review]
+prompt_file = "prompts/review.md"
+
+[[targets]]
+name = "api"
+prompt_file = "prompts/api.md"
+```
+
+A reusable prompt library is also available:
+
+```toml
+[prompts.review]
+text = "Review for correctness and security."
+
+[prompts.docs]
+file = "prompts/docs.md"
+```
+
+Selected with the resolver's `WithPromptRef("review")` (programmatic) or via
+future `--prompt-ref` CLI flag.
+
+## Automation hints
+
+Declarative hints for `watch` / hooks (opt-in; nothing runs from TOML alone):
+
+```toml
+[automation]
+watch_interval = "500ms"
+git_hook = "post-commit"       # `sift hook install` reads this
+hook_targets = ["full", "sig"]
+```
+
+## Precedence
+
+```
+Built-in defaults (Config.New())
+  → global ~/.config/sift/config.toml
+  → local .sift.toml [sift] defaults
+  → selected profile (+ extends expansion)
+  → selected target overrides
+  → explicit --flags (pflag.Changed guard)
+```
+
+Local `.sift.toml` overlays global; `sift dump /path` resolves
+`.sift.toml` relative to the scanned root, not just `cwd`.
+
+## Legacy
+
+`default_profile = "NAME"` in either config file, and bare
+`[profiles.NAME]` without `[sift]`/`[[targets]]`, continue to work:
+
+```toml
+[profiles.claude]
+style = "xml"
+budget = 60000
+```
+
+`extensions` and `ignore` as TOML arrays (e.g. `extensions = ["go", "md"]`)
+are canonical; comma strings are a CLI concern (`--ext go,md`), not TOML.
+
+## Tuning selection (`[scoring]`)
+
+Any `[sift]`, profile, or target may carry a `scoring` table. Unset keys keep
+built-in defaults; `retention` overrides per-role retention under budget
+(config priority over language default):
 
 ```toml
 [profiles.min]
@@ -67,6 +185,8 @@ sig_quality_max  = 0.85
 retention        = { entrypoint = 0.30, docs = 0.22, config = 0.18, api = 0.12 }
 ```
 
+Top-level `[scoring]` is also honored.
+
 ## Settings reference
 
 ### Output
@@ -77,6 +197,8 @@ retention        = { entrypoint = 0.30, docs = 0.22, config = 0.18, api = 0.12 }
 | `--style` | `markdown` | `plain`, `markdown`, `json`, or `xml` |
 | `--mode` | `full` | `full` content or `signatures` outline |
 | `--clipboard` | off | Copy the rendered output to the system clipboard |
+| `--target` | — | Target from `.sift.toml` (`--target NAME`) |
+| `--profile` | — | Profile from config (`--profile NAME`) |
 
 ### Context and tokens
 

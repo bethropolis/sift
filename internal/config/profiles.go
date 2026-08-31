@@ -13,25 +13,29 @@ import (
 // Profile is a named set of configuration overrides loaded from TOML.
 // Pointer fields distinguish "not set" from an explicit value.
 type Profile struct {
-	Style             string   `toml:"style"`
-	TokenizeModel     string   `toml:"tokenize_model"`
-	Budget            int      `toml:"budget"`
-	Mode              string   `toml:"compress_mode"`
-	Prompt            string   `toml:"prompt"`
-	SecretScan        *bool    `toml:"secret_scan"`
-	ForceSecrets      *bool    `toml:"force_secrets"`
-	IgnoreHidden      *bool    `toml:"ignore_hidden"`
-	IgnoreGit         *bool    `toml:"ignore_git"`
-	Extensions        []string `toml:"extensions"`
-	SmartFilter       *bool    `toml:"smart_filter"`
-	SmartMaxTokens    int      `toml:"smart_max_tokens"`
-	Highlight         *bool    `toml:"highlight"`
-	NoHighlight       *bool    `toml:"no_highlight"`
-	Theme             string   `toml:"theme"`
-	HighlightMaxBytes int      `toml:"highlight_max_bytes"`
-	WindowTitle       string   `toml:"window_title"`
-	NoWindowTitle     *bool    `toml:"no_window_title"`
-	Scoring           *Scoring `toml:"scoring"`
+	Style             string     `toml:"style"`
+	TokenizeModel     string     `toml:"tokenize_model"`
+	Budget            int        `toml:"budget"`
+	Mode              string     `toml:"compress_mode"`
+	Output            string     `toml:"output"`
+	Prompt            string     `toml:"prompt"`
+	PromptFile        string     `toml:"prompt_file"`
+	SecretScan        *bool      `toml:"secret_scan"`
+	ForceSecrets      *bool      `toml:"force_secrets"`
+	IgnoreHidden      *bool      `toml:"ignore_hidden"`
+	IgnoreGit         *bool      `toml:"ignore_git"`
+	Extensions        StringList `toml:"extensions"`
+	Ignore            StringList `toml:"ignore"`
+	SmartFilter       *bool      `toml:"smart_filter"`
+	SmartMaxTokens    int        `toml:"smart_max_tokens"`
+	Highlight         *bool      `toml:"highlight"`
+	NoHighlight       *bool      `toml:"no_highlight"`
+	Theme             string     `toml:"theme"`
+	HighlightMaxBytes int        `toml:"highlight_max_bytes"`
+	WindowTitle       string     `toml:"window_title"`
+	NoWindowTitle     *bool      `toml:"no_window_title"`
+	Scoring           *Scoring   `toml:"scoring"`
+	Extends           []string   `toml:"extends"`
 }
 
 type profilesFile struct {
@@ -134,8 +138,14 @@ func overlay(dst, src Profile) Profile {
 	if src.Mode != "" {
 		dst.Mode = src.Mode
 	}
+	if src.Output != "" {
+		dst.Output = src.Output
+	}
 	if src.Prompt != "" {
 		dst.Prompt = src.Prompt
+	}
+	if src.PromptFile != "" {
+		dst.PromptFile = src.PromptFile
 	}
 	if src.SecretScan != nil {
 		dst.SecretScan = src.SecretScan
@@ -151,6 +161,9 @@ func overlay(dst, src Profile) Profile {
 	}
 	if len(src.Extensions) > 0 {
 		dst.Extensions = src.Extensions
+	}
+	if len(src.Ignore) > 0 {
+		dst.Ignore = src.Ignore
 	}
 	if src.SmartFilter != nil {
 		dst.SmartFilter = src.SmartFilter
@@ -184,6 +197,9 @@ func overlay(dst, src Profile) Profile {
 		}
 		dst.Scoring = &merged
 	}
+	if len(src.Extends) > 0 {
+		dst.Extends = src.Extends
+	}
 	return dst
 }
 
@@ -202,8 +218,16 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	if p.Mode != "" && !fs.Changed("mode") {
 		c.Mode = p.Mode
 	}
+	if p.Output != "" && !fs.Changed("output") {
+		c.OutputFile = p.Output
+	}
 	if p.Prompt != "" && !fs.Changed("prompt") {
 		c.Prompt = p.Prompt
+	}
+	if p.PromptFile != "" && !fs.Changed("prompt") {
+		if content, err := readPromptFileWithRoot(c.RootDir, p.PromptFile); err == nil {
+			c.Prompt = content
+		}
 	}
 	if p.SecretScan != nil && !fs.Changed("secrets") {
 		c.SecretScan = *p.SecretScan
@@ -218,7 +242,10 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 		c.IgnoreGit = *p.IgnoreGit
 	}
 	if len(p.Extensions) > 0 && !fs.Changed("ext") {
-		c.Extensions = strings.Join(p.Extensions, ",")
+		c.Extensions = strings.Join([]string(p.Extensions), ",")
+	}
+	if len(p.Ignore) > 0 && !fs.Changed("ignore") {
+		c.CustomIgnore = strings.Join([]string(p.Ignore), ",")
 	}
 	if p.SmartFilter != nil && !fs.Changed("smart") {
 		c.SmartFilter = *p.SmartFilter

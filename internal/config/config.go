@@ -66,6 +66,8 @@ type Config struct {
 
 	// Profile selection
 	Profile string
+	// Target selection (named [[targets]] entry)
+	Target string
 
 	// Token and context settings
 	Budget        int
@@ -160,6 +162,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.StringVar(&c.Style, "style", c.Style, "Output style: plain, markdown, json, xml")
 	fs.BoolVar(&c.NoNerdFonts, "no-nerd-fonts", c.NoNerdFonts, "Use plain ASCII glyphs in the interactive picker")
 	fs.StringVar(&c.Profile, "profile", c.Profile, "Config profile to use (see config.toml)")
+	fs.StringVar(&c.Target, "target", c.Target, "Target to use from .sift.toml (see [[targets]])")
 	fs.IntVar(&c.Budget, "budget", c.Budget, "Maximum token budget (0 = no limit)")
 	fs.StringVar(&c.TokenizeModel, "tokenize-model", c.TokenizeModel, "Tokenizer model encoding (default: cl100k_base)")
 	fs.StringVar(&c.Mode, "mode", c.Mode, "Compression mode: full, signatures")

@@ -37,20 +37,16 @@ Use "sift dump" for a one-shot scan of the current directory.`,
 
 // applyProfile loads the selected profile (or the default profile) and
 // overlays it onto cfg, without overriding flags the user set explicitly.
+// It now delegates to config.ResolveConfig which also handles [sift] defaults,
+// target selection, extends, and top-level scoring.
 func applyProfile(cmd *cobra.Command) error {
-	name := cfg.Profile
-	if name == "" {
-		name, _ = config.DefaultProfileName()
+	opts := []config.ResolveOption{}
+	if cfg.Target != "" {
+		opts = append(opts, config.WithTarget(cfg.Target))
 	}
-	if name == "" {
-		return nil
+	if err := config.ResolveConfig(cfg, cmd.Flags(), opts...); err != nil {
+		return err
 	}
-
-	profile, err := config.LoadProfile(name)
-	if err != nil {
-		return fmt.Errorf("load profile %q: %w", name, err)
-	}
-	profile.Apply(cfg, cmd.Flags())
 	return nil
 }
 
