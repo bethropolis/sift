@@ -103,7 +103,20 @@ func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped 
 	if len(chosen) == 0 {
 		return fmt.Errorf("nothing selected")
 	}
-	if f, ok := s.env.App.Output().(*os.File); ok {
+
+	// Render fully into memory first so a failed render (disk full, bad
+	// content, etc.) never destroys the previous dump. Only after the document
+	// is complete do we replace the output file's contents.
+	rendered, err := s.env.App.RenderFinalToBuffer(chosen, prompt)
+	if err != nil {
+		return fmt.Errorf("render output: %w", err)
+	}
+
+	out := s.env.App.Output()
+	if f, ok := out.(*os.File); ok && f != os.Stdout && f != os.Stderr {
+		// Truncate after a successful render so repeated generates replace the
+		// previous dump instead of appending to it, without risking data loss
+		// on failure.
 		if err := f.Truncate(0); err != nil {
 			return err
 		}
@@ -111,9 +124,10 @@ func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped 
 			return err
 		}
 	}
-	if err := s.env.App.RenderFinalWithPrompt(chosen, skipped, time.Since(start), nil, prompt); err != nil {
+	if _, err := out.Write(rendered); err != nil {
 		return err
 	}
+
 	// Update the baseline so a later delta dump knows what was just rendered.
 	return s.env.RecordDump(s.cfg.RootDir, chosen, "HEAD")
 }

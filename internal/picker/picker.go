@@ -117,7 +117,13 @@ func (s *service) run(ctx context.Context) (Result, error) {
 	}
 
 	stream := newPickStream()
-	go streamScan(ctx, application, preferredModes, absRoot, skeletonFilePaths,
+	// The background scan must be canceled whenever the picker returns, even
+	// when tui.RunStreaming returns early with an error. Without this, a
+	// long-lived caller context (e.g. context.Background) would leave streamScan
+	// blocked forever on a full channel once the TUI stops draining.
+	scanCtx, cancelScan := context.WithCancel(ctx)
+	defer cancelScan()
+	go streamScan(scanCtx, application, preferredModes, absRoot, skeletonFilePaths,
 		&stateMu, &collected, &skippedMu, &skipped,
 		totalFiles, totalDirs, stream)
 

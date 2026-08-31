@@ -101,11 +101,12 @@ func (t *Tuning) applyDefaults() {
 // retentionFor returns the effective retention priority for a candidate,
 // applying the config override on top of the lang role default.
 func (t Tuning) retentionFor(candidate Candidate) float64 {
-	role := string(lang.Classify(candidate.File.Path).Role)
+	classification := lang.Classify(candidate.File.Path)
+	role := string(classification.Role)
 	if v, ok := t.Retention[role]; ok {
 		return v
 	}
-	return lang.Classify(candidate.File.Path).Retention
+	return classification.Retention
 }
 
 // Signals are optional ranking inputs retained for explainable reports.
@@ -161,9 +162,20 @@ type choice struct {
 	Mode  Mode
 }
 
+// choiceNode is one node in a persistent, shared-tail linked list of selected
+// choices. Each DP transition allocates a single node pointing back at its
+// parent state's tail, so the per-state choice history is never deep-copied.
+// This turns the previous O(states × files) allocation blow-up into O(1) per
+// transition, which matters at the default 50k-state sparse DP.
+type choiceNode struct {
+	choice
+	prev *choiceNode
+}
+
 type dpState struct {
 	Utility float64
-	Choices []choice
+	count   int // number of choices in the chain (for tie-breaking)
+	last    *choiceNode
 }
 
 const defaultMaxStates = 50000
@@ -192,7 +204,13 @@ func Select(candidates []Candidate, request Request) Result {
 
 	// Reserve guaranteed slots for high-retention files before the DP so an
 	// important entrypoint or README is never traded away for cheap filler.
-	guaranteed := make([]bool, len(ordered))
+	// The exact reserved variant is stored and reused in the final pass so the
+	// reserved token count (which sizes the DP budget below) is honored and the
+	// selection can never exceed request.Budget. Re-picking bestAffordable
+	// against the running total at finalize time would let a guaranteed file
+	// upgrade to a more expensive variant than reserved, silently overrunning
+	// the budget relative to the DP files already accounted for.
+	reserved := make([]Variant, len(ordered))
 	remaining := request.Budget
 	for index, candidate := range ordered {
 		if candidate.File.Hidden || candidate.File.GitIgnored {
@@ -200,7 +218,7 @@ func Select(candidates []Candidate, request Request) Result {
 		}
 		if tuning.retentionFor(candidate) >= tuning.RetentionFloor {
 			if variant := bestAffordable(candidate, remaining, tuning, request.Prompt); variant.Tokens > 0 {
-				guaranteed[index] = true
+				reserved[index] = variant
 				remaining -= variant.Tokens
 			}
 		}
@@ -212,7 +230,7 @@ func Select(candidates []Candidate, request Request) Result {
 	}
 	states := map[int]dpState{0: {}}
 	for index, candidate := range ordered {
-		if guaranteed[index] {
+		if reserved[index].Tokens > 0 {
 			continue
 		}
 		next := make(map[int]dpState, len(states))
@@ -223,10 +241,11 @@ func Select(candidates []Candidate, request Request) Result {
 				if newTokens > remaining {
 					continue
 				}
-				choices := append(append([]choice(nil), state.Choices...), choice{Index: index, Mode: variant.Mode})
+				node := &choiceNode{choice: choice{Index: index, Mode: variant.Mode}, prev: state.last}
 				keepState(next, newTokens, dpState{
 					Utility: state.Utility + variant.Utility,
-					Choices: choices,
+					count:   state.count + 1,
+					last:    node,
 				})
 			}
 		}
@@ -234,25 +253,26 @@ func Select(candidates []Candidate, request Request) Result {
 	}
 
 	_, best := bestState(states)
-	chosen := make(map[int]Mode, len(best.Choices))
-	for _, choice := range best.Choices {
-		chosen[choice.Index] = choice.Mode
+	chosen := make(map[int]Mode, best.count)
+	for node := best.last; node != nil; node = node.prev {
+		chosen[node.Index] = node.Mode
 	}
-	used := 0
 	for index, candidate := range ordered {
 		if candidate.File.Hidden || candidate.File.GitIgnored {
 			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "hidden or git-ignored; opt-in required", request.Prompt))
 			continue
 		}
-		if guaranteed[index] {
-			variant := bestAffordable(candidate, request.Budget-used, tuning, request.Prompt)
+		if reserved[index].Tokens > 0 {
+			// Reuse the exact variant reserved above: its token count already
+			// reduced the DP budget (remaining), so committing the same amount
+			// here keeps the total at or under request.Budget.
+			variant := reserved[index]
 			decision := makeDecision(candidate, variant.Mode, variant.Utility, variant.Reason, request.Prompt)
 			decision.Selected = true
 			decision.Tokens = variant.Tokens
 			result.Decisions = append(result.Decisions, decision)
 			result.Selected = append(result.Selected, finalize(candidate.File, variant.Mode, variant.Tokens))
 			result.UsedTokens += variant.Tokens
-			used += variant.Tokens
 			continue
 		}
 		mode, ok := chosen[index]
@@ -475,7 +495,7 @@ func betterState(a, b dpState) bool {
 	if a.Utility != b.Utility {
 		return a.Utility > b.Utility
 	}
-	return len(a.Choices) > len(b.Choices)
+	return a.count > b.count
 }
 
 func pruneStates(states map[int]dpState, limit int) map[int]dpState {
@@ -513,11 +533,11 @@ func pruneStates(states map[int]dpState, limit int) map[int]dpState {
 }
 
 func bestState(states map[int]dpState) (int, dpState) {
-	bestTokens := 0
-	best := states[0]
+	bestTokens, hasBest := 0, false
+	var best dpState
 	for tokens, state := range states {
-		if betterState(state, best) || (state.Utility == best.Utility && tokens < bestTokens) {
-			bestTokens, best = tokens, state
+		if !hasBest || betterState(state, best) || (state.Utility == best.Utility && tokens < bestTokens) {
+			hasBest, bestTokens, best = true, tokens, state
 		}
 	}
 	return bestTokens, best

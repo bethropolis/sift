@@ -209,6 +209,30 @@ func TestSelectRetentionOverrideConfigPriority(t *testing.T) {
 	}
 }
 
+// TestSelectNeverExceedsBudget is a budget-invariant guard: guaranteed
+// (high-retention) slots are reserved before the utility DP, and the exact
+// reserved variant must be committed at finalize time so the sum of guaranteed
+// picks plus the DP selection never runs past request.Budget. Sweep many
+// budgets over a mix of guaranteed docs/entrypoints and ordinary filler whose
+// optimizable full/signature variants interact with the reserved amounts.
+func TestSelectNeverExceedsBudget(t *testing.T) {
+	cands := []Candidate{
+		candidate("README.md", 0.22, 60, 10, "", true), // doc: guaranteed slot
+		candidate("main.go", 1.0, 90, 20, "", true),    // entrypoint: guaranteed slot
+		candidate("util.go", 0.9, 55, 15, "", true),
+		candidate("hot.go", 0.85, 70, 5, "", true),
+		candidate("model.go", 0.8, 200, 40, "", true),
+		candidate("a.go", 0.7, 12, 12, "", false),
+		candidate("b.log", 0.95, 3, 3, "", false),
+	}
+	for budget := 1; budget <= 300; budget++ {
+		result := Select(append([]Candidate(nil), cands...), Request{Budget: budget})
+		if result.UsedTokens > budget {
+			t.Fatalf("budget %d: used %d tokens exceeds budget", budget, result.UsedTokens)
+		}
+	}
+}
+
 // TestPlannedModeLabelIsScoreBand ensures no outputs claim to come from a
 // history store that does not exist.
 func TestPlannedModeLabelIsScoreBand(t *testing.T) {
