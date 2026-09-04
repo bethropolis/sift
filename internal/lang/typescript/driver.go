@@ -48,6 +48,7 @@ func classifyTS(path, filename string) types.Classification {
 	case filename == "index.ts" || filename == "index.tsx" || filename == "main.ts" || filename == "main.tsx" ||
 		filename == "app.ts" || filename == "app.tsx" || filename == "server.ts" ||
 		filename == "route.ts" || filename == "route.tsx" || filename == "page.tsx" || filename == "layout.tsx" ||
+		filename == "middleware.ts" || filename == "middleware.tsx" ||
 		strings.HasPrefix(path, "bin/"):
 		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.85, Reason: "TypeScript entrypoint/route"}
 	case strings.HasSuffix(filename, ".config.ts") || strings.HasSuffix(filename, ".config.mts"):
@@ -74,10 +75,18 @@ func tsImports(path string, content []byte) []string {
 	dir := filepath.ToSlash(filepath.Dir(path))
 	var targets []string
 	add := func(spec string) {
-		if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
+		if strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../") {
+			targets = append(targets, filepath.ToSlash(filepath.Clean(filepath.Join(dir, spec))))
 			return
 		}
-		targets = append(targets, filepath.ToSlash(filepath.Clean(filepath.Join(dir, spec))))
+		// Workspace path aliases ("@/" and "~/") resolve from the repo root.
+		if rest, ok := strings.CutPrefix(spec, "@/"); ok {
+			targets = append(targets, filepath.ToSlash(filepath.Clean(rest)))
+			return
+		}
+		if rest, ok := strings.CutPrefix(spec, "~/"); ok {
+			targets = append(targets, filepath.ToSlash(filepath.Clean(rest)))
+		}
 	}
 	for _, m := range tsImportFrom.FindAllSubmatch(content, -1) {
 		add(string(m[1]))

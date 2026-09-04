@@ -29,7 +29,8 @@ func common(path, base, ext string) (types.Classification, bool) {
 		base == "cargo.toml" || base == "pyproject.toml" || base == "package.json" ||
 		base == "tsconfig.json" || base == "pnpm-workspace.yaml" || base == "turbo.json" ||
 		base == "lerna.json" || base == "nx.json" || base == "build.gradle" || base == "build.gradle.kts" ||
-		base == "pom.xml" || base == "gemfile" || base == "composer.json" ||
+		base == "pom.xml" || base == "settings.gradle" || base == "settings.gradle.kts" ||
+		base == "gemfile" || base == "composer.json" ||
 		strings.HasPrefix(base, "vite.config.") || strings.HasPrefix(base, "webpack.config.") ||
 		strings.HasPrefix(base, "next.config.") || strings.HasPrefix(base, "astro.config."):
 		return types.Classification{Role: types.RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "project or workspace configuration"}, true

@@ -16,8 +16,13 @@ func TestClassifyConventions(t *testing.T) {
 		{"migrations/001_init.sql", RoleSchema},
 		{"README.md", RoleDocs},
 		{"generated/client.gen.go", RoleGenerated},
-		{"server.js", RoleImpl},
+		{"server.js", RoleEntrypoint},
 		{"src/main.ts", RoleEntrypoint},
+		{"src/middleware.ts", RoleEntrypoint},
+		{"src/app/routes.js", RoleEntrypoint},
+		{"src/app/page.jsx", RoleEntrypoint},
+		{"config/routes.rb", RoleAPI},
+		{"settings.gradle", RoleConfig},
 		{"web.php", RoleImpl},
 		{"MyApp.java", RoleImpl},
 		{"unknown.xyz", RoleUnknown},
@@ -40,5 +45,65 @@ func TestForPathAndShouldSkipSmart(t *testing.T) {
 	}
 	if skip, _ := ShouldSkipSmart("app.js", "app.js", []byte("function x(){}")); skip {
 		t.Errorf("plain js should not be skipped")
+	}
+}
+
+func TestImportsLocalResolution(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		mod  string
+		src  string
+		want []string
+	}{
+		{
+			name: "java same package",
+			path: "services/api/src/main/java/com/example/api/Config.java",
+			src:  "package com.example.api;\nimport com.example.api.sub.Service;\nimport java.util.List;\n",
+			want: []string{"services/api/src/main/java/com/example/api/sub"},
+		},
+		{
+			name: "kotlin static and wildcard",
+			path: "app/src/main/kotlin/com/example/app/Main.kt",
+			src:  "package com.example.app\nimport com.example.app.ConfigKt\nimport static com.example.app.Config.TIMEOUT\n",
+			want: []string{"app/src/main/kotlin/com/example/app"},
+		},
+		{
+			name: "rust super and mod",
+			path: "src/db/pool.rs",
+			src:  "use super::config::Pool;\nmod tests;\n",
+			want: []string{"src/config", "src/config/Pool", "src/db/tests.rs", "src/db/tests/mod.rs"},
+		},
+		{
+			name: "rust crate root in workspace member",
+			path: "crates/auth/src/main.rs",
+			src:  "use crate::config;\n",
+			want: []string{"crates/auth/config"},
+		},
+		{
+			name: "js workspace alias",
+			path: "app/page.jsx",
+			src:  "import Button from '@/components/Button';\nimport x from './local';\nimport React from 'react';\n",
+			want: []string{"components/Button", "app/local"},
+		},
+		{
+			name: "ts workspace alias",
+			path: "src/app/page.tsx",
+			src:  "import { api } from '~/lib/api';\nimport { y } from '../util';\n",
+			want: []string{"lib/api", "src/util"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Imports(tc.path, tc.mod, []byte(tc.src))
+			if len(got) != len(tc.want) {
+				t.Fatalf("Imports(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("Imports(%q) = %v, want %v", tc.path, got, tc.want)
+				}
+			}
+		})
 	}
 }

@@ -40,23 +40,74 @@ func (rsDriver) Classify(path, filename string) types.Classification {
 
 var rsUse = regexp.MustCompile(`(?m)^\s*use\s+([a-zA-Z0-9_:]+)`)
 
-// Imports returns the local import targets of a Rust file. Crate-rooted
-// imports ("crate::a::b") resolve to repo-relative paths; bare and external
-// crate imports are omitted unless they begin a local module path.
+var rsMod = regexp.MustCompile(`(?m)^\s*(?:pub\s*(?:\([^)]*\))?\s+)?mod\s+([a-zA-Z0-9_]+)\s*;`)
+
+// Imports returns the local import targets of a Rust file, resolved to
+// repo-relative paths. Crate-rooted imports ("crate::a::b") resolve beneath
+// the enclosing crate root (the directory above src/, or the repository root
+// when there is no src/ ancestor). Relative imports ("super::", "self::")
+// resolve against the importing file's directory, and "mod foo;" declarations
+// resolve to the candidate file paths (foo.rs or foo/mod.rs). Bare imports
+// are external crates and are omitted.
 func (rsDriver) Imports(path, moduleRoot string, content []byte) []string {
-	_ = path
 	_ = moduleRoot
+	dir := filepath.ToSlash(filepath.Dir(path))
+	base := crateBaseDir(path)
 	var targets []string
 	for _, m := range rsUse.FindAllSubmatch(content, -1) {
 		use := string(m[1])
-		if !strings.HasPrefix(use, "crate::") {
+		var from string
+		var ups int
+		switch {
+		case strings.HasPrefix(use, "crate::"):
+			from = base
+			use = strings.TrimPrefix(use, "crate::")
+		case strings.HasPrefix(use, "self::"):
+			from = dir
+			use = strings.TrimPrefix(use, "self::")
+		case strings.HasPrefix(use, "super::"):
+			from = dir
+			for strings.HasPrefix(use, "super::") {
+				use = strings.TrimPrefix(use, "super::")
+				from = filepath.ToSlash(filepath.Dir(from))
+				ups++
+			}
+			_ = ups
+		default:
 			continue
 		}
-		rel := strings.TrimPrefix(use, "crate::")
-		if i := strings.Index(rel, "::"); i != -1 {
-			rel = rel[:i]
+		// Emit every prefix of the remainder so both module directories and
+		// item paths contribute fan-in to their enclosing package nodes.
+		segments := strings.Split(use, "::")
+		for i := 1; i <= len(segments); i++ {
+			if segments[0] == "" {
+				break
+			}
+			target := filepath.ToSlash(filepath.Clean(filepath.Join(from, filepath.Join(segments[:i]...))))
+			if target != "." && target != "" {
+				targets = append(targets, target)
+			}
 		}
-		targets = append(targets, filepath.ToSlash(rel))
+	}
+	for _, m := range rsMod.FindAllSubmatch(content, -1) {
+		mod := string(m[1])
+		targets = append(targets,
+			filepath.ToSlash(filepath.Join(dir, mod+".rs")),
+			filepath.ToSlash(filepath.Join(dir, mod, "mod.rs")),
+		)
 	}
 	return targets
+}
+
+// crateBaseDir returns the enclosing crate root for a repo-relative Rust
+// path: the directory above the first src/ ancestor (the Cargo convention),
+// or "" when the file is not under a src/ directory.
+func crateBaseDir(path string) string {
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for i, p := range parts {
+		if p == "src" {
+			return strings.Join(parts[:i], "/")
+		}
+	}
+	return filepath.ToSlash(filepath.Dir(path))
 }

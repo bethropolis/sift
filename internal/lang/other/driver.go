@@ -40,6 +40,9 @@ func (d otherDriver) Classify(path, filename string) types.Classification {
 	case ".kt", ".kts":
 		return jvmFile(path, filename, "Kotlin source", ".kt")
 	case ".rb":
+		if filename == "routes.rb" {
+			return types.Classification{Role: types.RoleAPI, Adjustment: 0.10, Confidence: 0.85, Reason: "Rails routes"}
+		}
 		return conventionByName(filename, "Ruby source")
 	case ".php":
 		return conventionByName(filename, "PHP source")
@@ -64,6 +67,8 @@ var (
 	cIncludeRegex    = regexp.MustCompile(`(?m)^\s*#\s*include\s*["<]([^">]+)[">]`)
 	rubyRequireRegex = regexp.MustCompile(`(?m)^\s*require_relative\s*['"]([^'"]+)['"]`)
 	phpRequireRegex  = regexp.MustCompile(`(?m)\b(?:require|require_once|include|include_once)\s*\(?\s*['"]([^'"]+)['"]`)
+	javaPackageRegex = regexp.MustCompile(`(?m)^\s*package\s+([A-Za-z0-9_.]+)`)
+	javaImportRegex  = regexp.MustCompile(`(?m)^\s*import\s+(static\s+)?([A-Za-z0-9_.]+(?:\.\*)?)\s*;?`)
 )
 
 // Imports returns local import targets for files handled by the otherDriver
@@ -98,6 +103,62 @@ func (otherDriver) Imports(path, _ string, content []byte) []string {
 				target := filepath.ToSlash(filepath.Clean(filepath.Join(dir, inc)))
 				targets = append(targets, target)
 			}
+		}
+	case ".java", ".kt", ".kts":
+		targets = append(targets, javaTargets(dir, content)...)
+	}
+	return targets
+}
+
+// javaTargets resolves JVM imports to repo-relative paths using the file's
+// own package declaration as an anchor. The trailing directory segments of
+// the importing file must match the trailing segments of its package (e.g.
+// src/main/java/com/example/demo ↔ com.example.demo); the common prefix is
+// the source root, and imports are mapped beneath it. Imports that cannot be
+// anchored (default package, java.lang, single-segment) are omitted, and
+// non-matching targets are harmless: the fan-in resolver only counts targets
+// that exist as collected paths.
+func javaTargets(dir string, content []byte) []string {
+	pkgMatch := javaPackageRegex.FindSubmatch(content)
+	if pkgMatch == nil {
+		return nil
+	}
+	pkgSegs := strings.Split(string(pkgMatch[1]), ".")
+	dirSegs := strings.Split(dir, "/")
+	anchor := 0
+	for anchor < len(dirSegs) && anchor < len(pkgSegs) &&
+		dirSegs[len(dirSegs)-1-anchor] == pkgSegs[len(pkgSegs)-1-anchor] {
+		anchor++
+	}
+	if anchor == 0 {
+		return nil
+	}
+	root := strings.Join(dirSegs[:len(dirSegs)-anchor], "/")
+	seen := make(map[string]bool)
+	var targets []string
+	for _, m := range javaImportRegex.FindAllSubmatch(content, -1) {
+		imp := string(m[2])
+		if !strings.Contains(imp, ".") || strings.HasPrefix(imp, "java.") {
+			continue
+		}
+		segs := strings.Split(imp, ".")
+		// Drop the trailing class (or constant for static imports, which
+		// carry one extra segment) and any wildcard to reach the package.
+		drop := 1
+		if len(m[1]) > 0 {
+			drop = 2
+		}
+		if segs[len(segs)-1] == "*" {
+			drop = 1
+		}
+		if len(segs) <= drop {
+			continue
+		}
+		pkgPath := strings.Join(segs[:len(segs)-drop], "/")
+		target := filepath.ToSlash(filepath.Clean(root + "/" + pkgPath))
+		if target != "." && target != "" && !seen[target] {
+			seen[target] = true
+			targets = append(targets, target)
 		}
 	}
 	return targets

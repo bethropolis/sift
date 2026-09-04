@@ -28,12 +28,16 @@ func (jsDriver) ShouldSkipSmart(path, filename string, content []byte) (bool, st
 	return false, ""
 }
 func (jsDriver) Classify(path, filename string) types.Classification {
+	stem := strings.TrimSuffix(filename, filepath.Ext(filename))
 	switch {
 	case strings.Contains(path, "/__tests__/") || strings.HasPrefix(path, "__tests__/") ||
 		strings.HasSuffix(filename, ".test.js") || strings.HasSuffix(filename, ".spec.js"):
 		return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.95, Reason: "JavaScript test file"}
-	case filename == "index.js" || filename == "main.js" || strings.HasPrefix(path, "bin/"):
+	case stem == "index" || stem == "main" || strings.HasPrefix(path, "bin/"):
 		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.85, Reason: "JavaScript entrypoint"}
+	case stem == "app" || stem == "server" || stem == "route" || stem == "routes" ||
+		stem == "router" || stem == "page" || stem == "layout" || stem == "middleware":
+		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.80, Reason: "JavaScript framework entrypoint/route"}
 	case strings.HasSuffix(filename, ".config.js") || strings.HasSuffix(filename, ".config.cjs") || strings.HasSuffix(filename, ".config.mjs"):
 		return types.Classification{Role: types.RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "JavaScript configuration"}
 	}
@@ -47,16 +51,24 @@ var (
 )
 
 // Imports returns the local import targets of a JS/JSX file. Bare package
-// specifiers (no leading ".") are external and omitted; relative imports are
-// resolved against the importing file's directory.
+// specifiers (no leading ".") are external and omitted, except for workspace
+// path aliases ("@/" and "~/") which resolve from the repository root.
+// Relative imports are resolved against the importing file's directory.
 func (jsDriver) Imports(path, _ string, content []byte) []string {
 	dir := filepath.ToSlash(filepath.Dir(path))
 	var targets []string
 	add := func(spec string) {
-		if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
+		if strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../") {
+			targets = append(targets, filepath.ToSlash(filepath.Clean(filepath.Join(dir, spec))))
 			return
 		}
-		targets = append(targets, filepath.ToSlash(filepath.Clean(filepath.Join(dir, spec))))
+		if rest, ok := strings.CutPrefix(spec, "@/"); ok {
+			targets = append(targets, filepath.ToSlash(filepath.Clean(rest)))
+			return
+		}
+		if rest, ok := strings.CutPrefix(spec, "~/"); ok {
+			targets = append(targets, filepath.ToSlash(filepath.Clean(rest)))
+		}
 	}
 	for _, m := range jsImportFrom.FindAllSubmatch(content, -1) {
 		add(string(m[1]))
