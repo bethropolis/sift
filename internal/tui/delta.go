@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // DeltaInfo carries the git delta state the picker shows in its delta modal.
@@ -144,13 +146,14 @@ func (m model) deltaRange() (from, to string, ok bool) {
 
 // renderDeltaModal overlays the delta selection modal centered on the view.
 func (m model) renderDeltaModal(view string, width, height int) string {
-	modalWidth := min(width, 64)
+	modalWidth := min(width, 68)
 	if modalWidth < 30 {
 		modalWidth = 30
 	}
 
 	var b strings.Builder
-	b.WriteString(" Incremental Context / Delta Mode ")
+	title := fmt.Sprintf(" %sIncremental Delta ", m.glyphs.Delta)
+	b.WriteString(m.styles.title.Render(ansi.Truncate(title, modalWidth-4, "…")))
 	b.WriteString("\n")
 
 	if m.delta == nil {
@@ -158,25 +161,29 @@ func (m model) renderDeltaModal(view string, width, height int) string {
 		return m.overlay(view, m.boxStyle(modalWidth).Render(b.String()), width, height)
 	}
 
-	b.WriteString(fmt.Sprintf("Project: %s", m.delta.RootDir))
+	b.WriteString(m.styles.muted.Render(fmt.Sprintf("Project: %s", m.delta.RootDir)))
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Last Dumped: %s %s", m.delta.FromHash, truncateString(m.delta.FromMsg, modalWidth-30)))
+	b.WriteString(m.styles.dim.Render(fmt.Sprintf("Baseline: %s  %s",
+		m.delta.FromHash, truncateString(m.delta.FromMsg, modalWidth-22))))
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("HEAD:        %s %s", m.delta.HeadHash, truncateString(m.delta.HeadMsg, modalWidth-30)))
+	b.WriteString(m.styles.dim.Render(fmt.Sprintf("HEAD:     %s  %s",
+		m.delta.HeadHash, truncateString(m.delta.HeadMsg, modalWidth-22))))
 	b.WriteString("\n\n")
-	b.WriteString(m.styles.dim.Render("Commits since last dump:"))
+	b.WriteString(m.styles.title.Render("Commits since baseline:"))
 	b.WriteString("\n")
 
 	// Scrollable commit list, newest first.
-	innerRows := max(1, height-14)
+	innerRows := max(1, height-16)
 	end := min(len(m.delta.Commits), m.deltaOffset+innerRows)
 	for i := m.deltaOffset; i < end; i++ {
 		c := m.delta.Commits[i]
-		mark := " [ ] "
+		var checkMark string
 		if c.Checked {
-			mark = " [x] "
+			checkMark = m.styles.modeFull.Render("[✓]")
+		} else {
+			checkMark = m.styles.dim.Render("[ ]")
 		}
-		line := fmt.Sprintf("%s %s %s", mark, c.Short, c.Subject)
+		line := fmt.Sprintf("%s %s  %s", checkMark, c.Short, c.Subject)
 		line = truncateString(line, modalWidth-4)
 		if i == m.deltaCursor {
 			b.WriteString(m.styles.cursor.Render(line))
@@ -187,22 +194,24 @@ func (m model) renderDeltaModal(view string, width, height int) string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(m.styles.dim.Render("Delta output mode:"))
+	b.WriteString(m.styles.title.Render("Output mode:"))
 	b.WriteString("\n")
 
-	modeFull := "( ) "
 	if m.deltaStrategy == DeltaFull {
-		modeFull = "(*) "
+		b.WriteString(m.styles.modeFull.Render("◉ Full content"))
+		b.WriteString(m.styles.dim.Render(fmt.Sprintf("  (%d files · %d tok)", len(m.delta.Files), m.delta.FilesToken)))
+		b.WriteString("\n")
+		b.WriteString(m.styles.dim.Render("○ Git patch diff"))
+		b.WriteString(m.styles.dim.Render(fmt.Sprintf("  (%d lines · %d tok)", m.delta.PatchLines, m.delta.PatchToken)))
+	} else {
+		b.WriteString(m.styles.dim.Render("○ Full content"))
+		b.WriteString(m.styles.dim.Render(fmt.Sprintf("  (%d files · %d tok)", len(m.delta.Files), m.delta.FilesToken)))
+		b.WriteString("\n")
+		b.WriteString(m.styles.modeFull.Render("◉ Git patch diff"))
+		b.WriteString(m.styles.dim.Render(fmt.Sprintf("  (%d lines · %d tok)", m.delta.PatchLines, m.delta.PatchToken)))
 	}
-	modePatch := "( ) "
-	if m.deltaStrategy == DeltaPatch {
-		modePatch = "(*) "
-	}
-	b.WriteString(fmt.Sprintf("%sFull content of modified files (%d files, %d tokens)", modeFull, len(m.delta.Files), m.delta.FilesToken))
-	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("%sGit unified patch diff (%d lines, %d tokens)", modePatch, m.delta.PatchLines, m.delta.PatchToken))
 	b.WriteString("\n\n")
-	b.WriteString(m.styles.hint.Render("[Enter] perform delta dump | [c] copy | [Esc] cancel"))
+	b.WriteString(m.styles.hint.Render("Space toggle · m mode · Enter dump · c copy · Esc cancel"))
 
 	modal := m.boxStyle(modalWidth).Render(b.String())
 	return m.overlay(view, modal, width, height)

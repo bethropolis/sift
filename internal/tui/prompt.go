@@ -69,31 +69,49 @@ func (m *model) renderPromptModal(view string, width, height int) string {
 	bodyRows := max(1, min(len(promptPresets), height-9))
 	modalHeight := min(max(10, height-2), bodyRows+8)
 	var b strings.Builder
-	b.WriteString(m.styles.title.Render(ansi.Truncate(" Prompt / Task Directive ", modalWidth-4, "…")))
+
+	title := fmt.Sprintf(" %sTask Directive ", m.glyphs.Prompt)
+	b.WriteString(m.styles.title.Render(ansi.Truncate(title, modalWidth-4, "…")))
 	b.WriteString("\n")
-	b.WriteString(m.styles.dim.Render("Choose a preset, or press c to write a custom directive."))
+	b.WriteString(m.styles.dim.Render("Pick a preset or press c to write a custom directive."))
+	b.WriteString("\n")
+
 	for i := 0; i < bodyRows && i < len(promptPresets); i++ {
-		b.WriteString("\n")
-		mark := "  "
+		cur := "  "
 		if i == m.promptCursor && !m.promptCustom {
-			mark = "❯ "
+			cur = m.styles.title.Render("❯ ")
 		}
-		line := fmt.Sprintf("%s%d. %s", mark, i+1, promptPresets[i].Name)
+		line := fmt.Sprintf("%s%d. %s", cur, i+1, promptPresets[i].Name)
 		line = ansi.Truncate(line, modalWidth-4, "…")
 		if i == m.promptCursor && !m.promptCustom {
 			b.WriteString(m.styles.cursor.Render(line))
 		} else {
 			b.WriteString(line)
 		}
+		b.WriteString("\n")
 	}
-	b.WriteString("\n")
-	custom := "Custom: " + m.promptInput
+
+	// Custom input row
+	var customLine string
 	if m.promptCustom {
-		custom = "Custom: " + m.promptInput + "▌"
+		customLine = m.styles.title.Render("❯ ") + m.styles.hint.Render("Custom: ") +
+			m.promptInput + m.styles.title.Render("▌")
+	} else {
+		customLine = m.styles.dim.Render("  Custom: ") + m.styles.dim.Render(ansi.Truncate(m.promptInput, modalWidth-14, "…"))
 	}
-	b.WriteString(m.styles.hint.Render(ansi.Truncate(custom, modalWidth-4, "…")))
+	b.WriteString(ansi.Truncate(customLine, modalWidth-4, "…"))
 	b.WriteString("\n")
-	b.WriteString(m.styles.hint.Render("Enter apply · c edit · g generate · y copy · Esc close"))
+
+	// Active prompt preview
+	activeText := m.prompt
+	if activeText == "" {
+		activeText = "(none)"
+	}
+	preview := ansi.Truncate("Active: "+activeText, modalWidth-4, "…")
+	b.WriteString(m.styles.dim.Render(preview))
+	b.WriteString("\n")
+
+	b.WriteString(m.styles.hint.Render("Enter apply · c custom · g generate · y copy · Esc close"))
 	modal := m.boxStyle(modalWidth).Height(max(1, modalHeight-2)).Render(b.String())
 	return m.overlay(view, modal, width, height)
 }

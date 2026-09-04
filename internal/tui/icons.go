@@ -19,6 +19,11 @@ type Glyphs struct {
 	TreeMiddle string
 	TreeLast   string
 	TreeSpace  string
+
+	Theme  string
+	Delta  string
+	Prompt string
+	Help   string
 }
 
 // NewNerdFontGlyphs returns the Nerd Font glyph set.
@@ -39,6 +44,11 @@ func NewNerdFontGlyphs() Glyphs {
 		TreeMiddle: "├── ",
 		TreeLast:   "└── ",
 		TreeSpace:  "    ",
+
+		Theme:  "󰸌 ",
+		Delta:  "⟳ ",
+		Prompt: "󰞋 ",
+		Help:   "󰋖 ",
 	}
 }
 
@@ -60,5 +70,10 @@ func NewASCIIGlyphs() Glyphs {
 		TreeMiddle: "|-- ",
 		TreeLast:   "`-- ",
 		TreeSpace:  "    ",
+
+		Theme:  "* ",
+		Delta:  "^ ",
+		Prompt: "> ",
+		Help:   "? ",
 	}
 }

@@ -115,7 +115,7 @@ func (m *model) applyTheme(p ThemePreset) {
 // the terminal dimensions and truncates every line to the modal width, so it
 // can never wrap or destabilize the layout.
 func (m *model) renderThemeModal(view string, width, height int) string {
-	modalWidth := min(width, 48)
+	modalWidth := min(width, 52)
 	if modalWidth < 30 {
 		modalWidth = 30
 	}
@@ -135,23 +135,30 @@ func (m *model) renderThemeModal(view string, width, height int) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(m.styles.title.Render(ansi.Truncate(" Select Color Theme ", modalWidth-4, "…")))
+	title := fmt.Sprintf(" %sColor Theme ", m.glyphs.Theme)
+	b.WriteString(m.styles.title.Render(ansi.Truncate(title, modalWidth-4, "…")))
 	for i := m.themeOffset; i < m.themeOffset+bodyRows && i < len(ThemePresets); i++ {
 		b.WriteString("\n")
+		p := ThemePresets[i]
 		mark := "  "
 		if i == m.themeIndex {
-			mark = "●"
+			mark = m.styles.notice.Render("●")
 		}
 		cur := "  "
 		if i == m.themeCursor {
-			cur = "❯"
+			cur = m.styles.title.Render("❯")
 		}
-		line := fmt.Sprintf("%s %s %s", cur, mark, ThemePresets[i].Name)
-		line = ansi.Truncate(line, modalWidth-4, "…")
+		// Three color swatches: border, title, selected
+		swatch := lipgloss.NewStyle().Foreground(p.Border).Render("■") +
+			lipgloss.NewStyle().Foreground(p.Title).Render("■") +
+			lipgloss.NewStyle().Foreground(p.Selected).Render("■")
+
+		name := ansi.Truncate(p.Name, modalWidth-14, "…")
+		line := fmt.Sprintf("%s %s %s %s", cur, mark, swatch, name)
 		if i == m.themeCursor {
-			b.WriteString(m.styles.cursor.Render(line))
+			b.WriteString(m.styles.cursor.Render(ansi.Truncate(line, modalWidth-4, "…")))
 		} else {
-			b.WriteString(line)
+			b.WriteString(ansi.Truncate(line, modalWidth-4, "…"))
 		}
 	}
 	b.WriteString("\n")

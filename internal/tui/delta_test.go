@@ -20,7 +20,7 @@ func TestDeltaModalOpenAndClose(t *testing.T) {
 	if !m.deltaOpen {
 		t.Fatal("d did not open the delta modal")
 	}
-	if view := m.View(); !strings.Contains(view, "Delta Mode") {
+	if view := m.View(); !strings.Contains(view, "Incremental Delta") {
 		t.Errorf("modal view missing title: %q", view)
 	}
 

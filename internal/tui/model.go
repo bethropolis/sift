@@ -108,6 +108,9 @@ type model struct {
 	streamErrClosed      bool
 
 	quit bool
+
+	// spinnerFrame advances every ProgressMsg to animate the scan indicator.
+	spinnerFrame int
 }
 
 // Options configures the picker.
@@ -255,6 +258,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scanFiles = msg.Files
 		m.scanDirs = msg.Dirs
 		m.scanProcessed = msg.Processed
+		m.spinnerFrame++
 		if msg.Done {
 			m.scanDone = true
 		}

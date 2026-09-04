@@ -16,7 +16,7 @@ func TestThemeToggle(t *testing.T) {
 	if !m.themeOpen {
 		t.Fatal("t did not open theme modal")
 	}
-	if view := m.View(); !strings.Contains(view, "Select Color Theme") {
+	if view := m.View(); !strings.Contains(view, "Color Theme") {
 		t.Errorf("theme view missing title: %q", view)
 	}
 

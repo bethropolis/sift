@@ -130,7 +130,7 @@ func TestPreviewScrollbar(t *testing.T) {
 	inThumb := false
 	seenGap := false
 	for _, c := range cols {
-		if c == "█" {
+		if c == "┃" {
 			if seenGap {
 				t.Fatalf("non-contiguous thumb: %v", cols)
 			}
@@ -147,7 +147,7 @@ func TestPreviewScrollbar(t *testing.T) {
 	cols2 := previewScrollbar(80, 10, 100)
 	moved := false
 	for i := range cols {
-		if cols[i] == "█" && cols2[i] != "█" {
+		if cols[i] == "┃" && cols2[i] != "┃" {
 			moved = true
 		}
 	}

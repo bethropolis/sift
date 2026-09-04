@@ -36,16 +36,32 @@ func (m model) renderTreeBox(width, height int) string {
 		BorderForeground(borderColor)
 
 	var b strings.Builder
-	title := fmt.Sprintf(" Explorer (%d files, %d tok) ",
-		m.root.FileCount(), m.root.TotalActiveTokens())
+
+	fileCount := m.root.FileCount()
+	selCount := m.root.SelectedCount()
+
+	titleText := fmt.Sprintf(" Explorer  %d files", fileCount)
 	if m.glyphs.FolderOpen != "" {
-		title = fmt.Sprintf(" %sExplorer (%d files, %d tok) ",
-			m.glyphs.FolderOpen, m.root.FileCount(), m.root.TotalActiveTokens())
+		titleText = fmt.Sprintf(" %sExplorer  %d files", m.glyphs.FolderOpen, fileCount)
 	}
-	title = ansi.Truncate(title, max(1, width-4), "…")
-	b.WriteString(m.styles.title.Render(title))
+	if selCount > 0 {
+		titleText += fmt.Sprintf("  %d selected", selCount)
+	}
+	titleText += " "
+
+	titleText = ansi.Truncate(titleText, max(1, width-4), "…")
+	b.WriteString(m.styles.title.Render(titleText))
+
+	if m.filtering && m.filter != "" {
+		filterLine := ansi.Truncate(fmt.Sprintf(" / %s", m.filter), max(1, width-4), "…")
+		b.WriteString("\n")
+		b.WriteString(m.styles.notice.Render(filterLine))
+	}
 
 	innerRows := max(1, height-3)
+	if m.filtering && m.filter != "" {
+		innerRows = max(1, height-4)
+	}
 	end := min(len(m.rows), m.offset+innerRows)
 	innerWidth := max(10, width-4)
 
@@ -103,10 +119,17 @@ func (m model) treeRow(n *TreeNode, width int) string {
 
 	treeGuide := m.styles.treeGuide.Render(prefix)
 	left := fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
-	right := fmt.Sprintf("%6d tok", tokens)
+
+	// Style the token count based on budget usage and zero-state.
+	var right string
 	if n.Kind == KindFile && n.TokensFull == 0 && n.ApproxTokens > 0 {
 		// Byte-based estimate shown until the exact count streams in.
-		right = fmt.Sprintf("~%6d tok", n.ApproxTokens)
+		right = m.styles.muted.Render(fmt.Sprintf("~%5d tok", n.ApproxTokens))
+	} else if tokens == 0 {
+		right = m.styles.dim.Render(fmt.Sprintf("%6d tok", tokens))
+	} else {
+		tokColor := m.tokenColor(tokens)
+		right = lipgloss.NewStyle().Foreground(tokColor).Render(fmt.Sprintf("%6d tok", tokens))
 	}
 
 	leftWidth := ansi.StringWidth(left)
@@ -144,7 +167,7 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	// that follows it.
 	if n.Hidden || n.GitIgnored {
 		name = m.styles.muted.Render(name)
-		right = m.styles.muted.Render(right)
+		right = m.styles.muted.Render(fmt.Sprintf("%6d tok", tokens))
 		left = fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
 		row = left + strings.Repeat(" ", pad) + right
 		if ansi.StringWidth(row) > width {
@@ -152,4 +175,22 @@ func (m model) treeRow(n *TreeNode, width int) string {
 		}
 	}
 	return row
+}
+
+// tokenColor returns a theme-aware color for a token count relative to the
+// budget. When no budget is set every non-zero count uses the dim (faint) style
+// so it doesn't interfere with the muted style that marks hidden/git-ignored rows.
+func (m model) tokenColor(tokens int) lipgloss.TerminalColor {
+	if m.budget <= 0 || tokens <= 0 {
+		return m.styles.dim.GetForeground()
+	}
+	pct := tokens * 100 / m.budget
+	switch {
+	case pct >= 30:
+		return m.styles.modeSkip.GetForeground()
+	case pct >= 10:
+		return m.styles.modeSig.GetForeground()
+	default:
+		return m.styles.dim.GetForeground()
+	}
 }

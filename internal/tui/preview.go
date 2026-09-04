@@ -102,15 +102,21 @@ func (m model) renderPreviewBox(width, height int) string {
 
 	if n.Kind == KindDir {
 		innerRows := max(1, height-3)
+		fc := n.FileCount()
+		tok := n.TotalActiveTokens()
+		fileWord := "file"
+		if fc != 1 {
+			fileWord = "files"
+		}
 		lines := []string{
-			fmt.Sprintf("%d files, %d tokens", n.FileCount(), n.TotalActiveTokens()),
+			m.styles.muted.Render(fmt.Sprintf("%d %s · %d tokens", fc, fileWord, tok)),
 			"",
-			"Press [Space] to toggle directory selection.",
-			"Press [Enter] or [l] to expand/collapse.",
+			m.styles.hint.Render("Space  toggle selection"),
+			m.styles.hint.Render("Enter / l  expand · h  collapse"),
 		}
 		for i := 0; i < len(lines) && i < innerRows; i++ {
 			b.WriteString("\n")
-			b.WriteString(m.styles.hint.Render(ansi.Truncate(lines[i], innerWidth, "…")))
+			b.WriteString(ansi.Truncate(lines[i], innerWidth, "…"))
 		}
 	} else {
 		content := n.Preview()
@@ -118,7 +124,7 @@ func (m model) renderPreviewBox(width, height int) string {
 			// Structure-only node whose content has not streamed in yet.
 			b.WriteString("\n")
 			if m.stream.active() && !m.scanDone {
-				b.WriteString(m.styles.hint.Render("Scanning… content not loaded yet"))
+				b.WriteString(m.styles.hint.Render(m.spinnerChar() + " Scanning… content not loaded yet"))
 			} else {
 				b.WriteString(m.styles.hint.Render("No content available"))
 			}
@@ -126,6 +132,7 @@ func (m model) renderPreviewBox(width, height int) string {
 		}
 
 		lines := previewLines(content)
+		total := len(lines)
 
 		innerRows := max(1, height-3)
 		if n.SecretCount > 0 {
@@ -134,18 +141,25 @@ func (m model) renderPreviewBox(width, height int) string {
 
 		// Clamp the scroll position in case the pane was resized since the
 		// last scroll.
-		if maxOffset := max(0, len(lines)-innerRows); m.previewOffset > maxOffset {
+		if maxOffset := max(0, total-innerRows); m.previewOffset > maxOffset {
 			m.previewOffset = maxOffset
 		}
 
-		barCols := previewScrollbar(m.previewOffset, innerRows, len(lines))
+		barCols := previewScrollbar(m.previewOffset, innerRows, total)
 
-		end := min(len(lines), m.previewOffset+innerRows)
+		// Line number gutter width: adapt to file size.
+		lineNoWidth := len(fmt.Sprintf("%d", total))
+		if lineNoWidth < 3 {
+			lineNoWidth = 3
+		}
+		gutterFmt := fmt.Sprintf("%%%dd │ ", lineNoWidth)
+
+		end := min(total, m.previewOffset+innerRows)
 		for i := m.previewOffset; i < end; i++ {
 			lineNo := i + 1
 			lineText := lines[i]
 
-			prefix := fmt.Sprintf("%3d │ ", lineNo)
+			prefix := fmt.Sprintf(gutterFmt, lineNo)
 			prefixWidth := lipgloss.Width(prefix)
 
 			barWidth := 0
@@ -179,6 +193,7 @@ func (m model) renderPreviewBox(width, height int) string {
 			b.WriteString(m.styles.warning.Render(fmt.Sprintf("%sWarning: %d secret(s) detected in this file",
 				m.glyphs.Warning, n.SecretCount)))
 		}
+
 	}
 
 	return boxStyle.Render(b.String())
@@ -186,7 +201,8 @@ func (m model) renderPreviewBox(width, height int) string {
 
 // previewScrollbar returns a one-character-per-row scrollbar column for a
 // viewport showing view rows of total lines starting at offset, or nil when
-// the content fits without scrolling.
+// the content fits without scrolling. Uses half-block characters for a
+// smoother look.
 func previewScrollbar(offset, view, total int) []string {
 	if total <= view {
 		return nil
@@ -202,9 +218,9 @@ func previewScrollbar(offset, view, total int) []string {
 	cols := make([]string, track)
 	for i := 0; i < track; i++ {
 		if i >= thumbTop && i < thumbTop+thumb {
-			cols[i] = "█"
+			cols[i] = "┃"
 		} else {
-			cols[i] = "░"
+			cols[i] = "│"
 		}
 	}
 	return cols
