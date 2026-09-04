@@ -145,6 +145,9 @@ die() {
     abort
 }
 
+# --- helpers ----------------------------------------------------------------
+have_cmd() { command -v "$1" >/dev/null 2>&1; }
+
 # --- prerequisites ----------------------------------------------------------
 banner
 
@@ -262,6 +265,43 @@ if ! curl -fL --retry 3 "$url" -o "$tmp_dir/$archive" 2>"$tmp_dir/curl.log"; the
     abort
 fi
 step_ok "$archive"
+
+sums_url="https://github.com/$repo/releases/download/$tag/checksums.txt"
+step_begin "verifying checksum"
+skip_reason=""
+if curl -fsSL "$sums_url" -o "$tmp_dir/checksums.txt" 2>/dev/null; then
+    want=$(awk -v a="$archive" '$2 == a { print $1; exit }' "$tmp_dir/checksums.txt" 2>/dev/null || true)
+    if [ -z "$want" ]; then
+        skip_reason="no entry for $archive"
+    else
+        have=""
+        if have_cmd sha256sum; then
+            have=$(sha256sum "$tmp_dir/$archive" 2>/dev/null | awk '{ print $1 }' || true)
+        elif have_cmd shasum; then
+            have=$(shasum -a 256 "$tmp_dir/$archive" 2>/dev/null | awk '{ print $1 }' || true)
+        elif have_cmd sha256; then
+            # BSD sha256(1): -q prints the bare hash.
+            have=$(sha256 -q "$tmp_dir/$archive" 2>/dev/null || true)
+        fi
+        if [ -z "$have" ]; then
+            skip_reason="no sha256 tool on PATH"
+        elif [ "$have" = "$want" ]; then
+            step_ok "checksum verified"
+        else
+            step_fail "checksum mismatch for $archive"
+            hint "expected $want"
+            hint "got      $have"
+            hint "the download may be corrupt or tampered with; aborting"
+            abort
+        fi
+    fi
+else
+    skip_reason="checksums.txt unavailable"
+fi
+if [ -n "$skip_reason" ]; then
+    warn "skipping checksum verification ($skip_reason)"
+    step_ok "unverified"
+fi
 
 step_begin "extracting archive"
 if ! tar -xzf "$tmp_dir/$archive" -C "$tmp_dir" 2>/dev/null; then
