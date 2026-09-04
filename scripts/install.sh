@@ -370,13 +370,16 @@ if [ -x "$prefix/sift" ]; then
 fi
 
 step_begin "building sift"
+# Stamp the checkout's version into the binary so `sift version` reports the
+# tag instead of "dev". Falls back to "dev" when git metadata is missing.
+ver=$(git -C "$repo_dir" describe --tags --always --dirty 2>/dev/null || printf 'dev')
 set +e
 (
     cd "$repo_dir" || exit 1
     # Keep GOPATH mode from hijacking a checkout that has go.mod.
     GO111MODULE=on
     export GO111MODULE
-    go build -trimpath -ldflags='-s -w' -o "$tmp_bin" ./cmd/sift
+    go build -trimpath -ldflags="-s -w -X github.com/bethropolis/sift/internal/config.Version=$ver" -o "$tmp_bin" ./cmd/sift
 ) >"$build_log" 2>&1
 build_status=$?
 set -e

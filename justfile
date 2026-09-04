@@ -2,6 +2,8 @@
 
 binary := 'bin/sift'
 pkg := './cmd/sift'
+# Version stamped into the binary; falls back to "dev" outside a git checkout.
+version := `git describe --tags --always --dirty 2>/dev/null || echo dev`
 
 # List all recipes
 default:
@@ -20,10 +22,10 @@ fmt-write:
 vet:
   go vet ./...
 
-# Build the sift binary into {{ binary }}
+# Build the sift binary into {{ binary }}, stamped with the git version
 build:
   mkdir -p bin
-  go build -o {{ binary }} {{ pkg }}
+  go build -ldflags "-X github.com/bethropolis/sift/internal/config.Version={{version}}" -o {{ binary }} {{ pkg }}
 
 # Build, vet, and format-check
 check: fmt vet build

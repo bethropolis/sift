@@ -15,7 +15,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w
+      - -s -w -X github.com/bethropolis/sift/internal/config.Version={{.Version}}
     goos:
       - linux
       - windows

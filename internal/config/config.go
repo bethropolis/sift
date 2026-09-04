@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/mattn/go-isatty"
@@ -10,6 +11,15 @@ import (
 
 	"github.com/bethropolis/sift/internal/smart"
 )
+
+// Version is the release version embedded in the binary. It defaults to
+// "dev" for plain `go build` runs and is stamped at build time via:
+//
+//	go build -ldflags "-X github.com/bethropolis/sift/internal/config.Version=v1.2.0"
+//
+// GoReleaser, the justfile build recipe, and scripts/install.sh all pass
+// the current git tag this way, so no source edit is needed per release.
+var Version = "dev"
 
 // Config holds all application configuration settings.
 type Config struct {
@@ -89,7 +99,9 @@ type Config struct {
 // New returns a Config populated with built-in defaults.
 func New() *Config {
 	return &Config{
-		Version:           "1.1.2",
+		// Normalize the leading "v" off git tags so `sift version`
+		// prints "1.2.0" whether the tag was "v1.2.0" or not.
+		Version:           strings.TrimPrefix(Version, "v"),
 		IgnoreHidden:      true,
 		IgnoreGit:         true,
 		SecretScan:        true,
