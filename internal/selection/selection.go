@@ -218,6 +218,15 @@ func Select(candidates []Candidate, request Request) Result {
 		}
 		if tuning.retentionFor(candidate) >= tuning.RetentionFloor {
 			if variant := bestAffordable(candidate, remaining, tuning, request.Prompt); variant.Tokens > 0 {
+				// Prefer the signature variant when full content would take
+				// over half the remaining budget: one guaranteed file must
+				// not starve the DP stage. Leftover slack can upgrade it
+				// back to full later (see opportunisticUpgrade).
+				if variant.Mode == ModeFull {
+					if sig := findVariant(candidate, ModeSignatures, request.Prompt, tuning); sig.Mode == ModeSignatures && sig.Tokens > 0 && variant.Tokens > remaining/2 {
+						variant = sig
+					}
+				}
 				reserved[index] = variant
 				remaining -= variant.Tokens
 			}
@@ -288,9 +297,82 @@ func Select(candidates []Candidate, request Request) Result {
 		result.Selected = append(result.Selected, finalize(candidate.File, mode, variant.Tokens))
 		result.UsedTokens += variant.Tokens
 	}
+	opportunisticUpgrade(&result, ordered, request.Prompt, tuning)
 	return result
 }
 
+// opportunisticUpgrade spends leftover budget upgrading signature selections
+// to full content, highest utility-per-token first. Reservation may hold a
+// large file at signatures to leave room for the DP stage, and state pruning
+// can drop an optimal full variant; when slack remains, upgrading restores
+// the higher-utility representation without ever exceeding the budget.
+func opportunisticUpgrade(result *Result, ordered []Candidate, prompt string, tuning Tuning) {
+	leftover := result.Budget - result.UsedTokens
+	if leftover <= 0 {
+		return
+	}
+	byPath := make(map[string]int, len(ordered))
+	for i := range ordered {
+		byPath[ordered[i].File.Path] = i
+	}
+	selByPath := make(map[string]int, len(result.Selected))
+	for i := range result.Selected {
+		selByPath[result.Selected[i].Path] = i
+	}
+	type upgrade struct {
+		decIdx int
+		selIdx int
+		candIx int
+		gain   float64
+		cost   int
+		full   Variant
+	}
+	var cands []upgrade
+	for di := range result.Decisions {
+		d := &result.Decisions[di]
+		if !d.Selected || d.Mode != ModeSignatures {
+			continue
+		}
+		ci, ok := byPath[d.Path]
+		if !ok {
+			continue
+		}
+		si, ok := selByPath[d.Path]
+		if !ok {
+			continue
+		}
+		full := findVariant(ordered[ci], ModeFull, prompt, tuning)
+		if full.Tokens <= d.Tokens {
+			continue
+		}
+		gain := full.Utility - d.Utility
+		if gain <= 0 {
+			continue
+		}
+		cands = append(cands, upgrade{decIdx: di, selIdx: si, candIx: ci, gain: gain, cost: full.Tokens - d.Tokens, full: full})
+	}
+	sort.SliceStable(cands, func(i, j int) bool {
+		lhs := cands[i].gain / float64(cands[i].cost)
+		rhs := cands[j].gain / float64(cands[j].cost)
+		if lhs != rhs {
+			return lhs > rhs
+		}
+		return cands[i].gain > cands[j].gain
+	})
+	for _, u := range cands {
+		if u.cost > leftover {
+			continue
+		}
+		leftover -= u.cost
+		d := &result.Decisions[u.decIdx]
+		d.Mode = ModeFull
+		d.Tokens = u.full.Tokens
+		d.Utility = u.full.Utility
+		d.Reason = "upgraded to full content with leftover budget; " + u.full.Reason
+		result.Selected[u.selIdx] = finalize(ordered[u.candIx].File, ModeFull, u.full.Tokens)
+		result.UsedTokens += u.cost
+	}
+}
 // bestAffordable returns the highest-utility variant that fits within budget,
 // or a zero-token skip variant when nothing fits. It prefers the most useful
 // representation of a file that the remaining budget can still pay for.

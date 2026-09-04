@@ -233,6 +233,56 @@ func TestSelectNeverExceedsBudget(t *testing.T) {
 	}
 }
 
+// TestReservationPrefersSignaturesForLargeFiles ensures a huge guaranteed
+// file does not starve the DP stage: when full content would take over half
+// the remaining budget, the reservation holds signatures instead.
+func TestReservationPrefersSignaturesForLargeFiles(t *testing.T) {
+	result := Select([]Candidate{
+		candidate("main.go", 1.0, 90, 20, "", true),
+		candidate("small.go", 0.5, 10, 10, "", false),
+	}, Request{Budget: 100})
+
+	byPath := map[string]Decision{}
+	for _, d := range result.Decisions {
+		byPath[d.Path] = d
+	}
+	// Leftover slack (100 - 20 - 10 = 70) exactly covers the upgrade gap
+	// (90 - 20), so main.go is restored to full; small.go must survive.
+	if d := byPath["main.go"]; !d.Selected || d.Mode != ModeFull {
+		t.Errorf("main.go decision = %+v, want selected full after slack upgrade", d)
+	}
+	if d := byPath["small.go"]; !d.Selected {
+		t.Errorf("small.go decision = %+v, want selected (not starved)", d)
+	}
+	if result.UsedTokens > 100 {
+		t.Errorf("used = %d, want <= 100", result.UsedTokens)
+	}
+}
+
+// TestReservationDowngradeWithoutSlackStaysSignatures covers the same setup
+// with a filler that consumes the slack: the large file must stay at
+// signatures rather than starving the filler or exceeding the budget.
+func TestReservationDowngradeWithoutSlackStaysSignatures(t *testing.T) {
+	result := Select([]Candidate{
+		candidate("main.go", 1.0, 90, 20, "", true),
+		candidate("filler.go", 0.5, 60, 60, "", false),
+	}, Request{Budget: 100})
+
+	byPath := map[string]Decision{}
+	for _, d := range result.Decisions {
+		byPath[d.Path] = d
+	}
+	if d := byPath["main.go"]; !d.Selected || d.Mode != ModeSignatures {
+		t.Errorf("main.go decision = %+v, want selected signatures", d)
+	}
+	if d := byPath["filler.go"]; !d.Selected {
+		t.Errorf("filler.go decision = %+v, want selected (not starved)", d)
+	}
+	if result.UsedTokens > 100 {
+		t.Errorf("used = %d, want <= 100", result.UsedTokens)
+	}
+}
+
 // TestPlannedModeLabelIsScoreBand ensures no outputs claim to come from a
 // history store that does not exist.
 func TestPlannedModeLabelIsScoreBand(t *testing.T) {
