@@ -3,95 +3,315 @@ set -eu
 
 # sift online installer
 #   curl -fsSL https://bethropolis.github.io/sift/install.sh | sh
+#
+# Environment:
+#   SIFT_REPOSITORY    GitHub repo (default: bethropolis/sift)
+#   SIFT_INSTALL_DIR   destination directory (default: ~/.local/bin)
+#   NO_COLOR           disable ANSI colors
 
-repo=${SIFT_REPOSITORY:-bethropolis/sift}
-prefix=${SIFT_INSTALL_DIR:-"$HOME/.local/bin"}
+# --- usage ------------------------------------------------------------------
+usage() {
+    cat <<'EOF'
+Usage: install.sh [options]
+
+Download the latest sift release and install the binary.
+
+Options:
+  -h, --help    show this help
+  -q, --quiet   only print errors and the final result
+
+Environment:
+  SIFT_REPOSITORY   GitHub repository (default: bethropolis/sift)
+  SIFT_INSTALL_DIR  install directory (default: ~/.local/bin)
+  NO_COLOR          disable ANSI colors
+EOF
+}
+
+quiet=0
+while [ $# -gt 0 ]; do
+    case $1 in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -q|--quiet)
+            quiet=1
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            printf 'unknown option: %s (try --help)\n' "$1" >&2
+            exit 1
+            ;;
+        *)
+            printf 'unexpected argument: %s (try --help)\n' "$1" >&2
+            exit 1
+            ;;
+    esac
+done
 
 # --- output helpers ---------------------------------------------------------
-# Colors only when stdout is a TTY and NO_COLOR is unset. POSIX-portable:
-# escape sequences come from printf, never from $'...' (dash does not support it).
-if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+# Colors only when stdout is a TTY, TERM is usable, and NO_COLOR is unset.
+# POSIX-portable: escape sequences come from printf, never from $'...'.
+use_tty=0
+use_color=0
+if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
+    use_tty=1
+    if [ -z "${NO_COLOR:-}" ]; then
+        use_color=1
+    fi
+fi
+
+if [ "$use_color" -eq 1 ]; then
     c_bold=$(printf '\033[1m')
     c_green=$(printf '\033[32m')
     c_yellow=$(printf '\033[33m')
     c_red=$(printf '\033[31m')
     c_cyan=$(printf '\033[36m')
+    c_blue=$(printf '\033[94m')
     c_dim=$(printf '\033[2m')
     c_reset=$(printf '\033[0m')
+    c_erase=$(printf '\r\033[2K')
 else
-    c_bold=""; c_green=""; c_yellow=""; c_red=""; c_cyan=""; c_dim=""; c_reset=""
+    c_bold=""; c_green=""; c_yellow=""; c_red=""; c_cyan=""; c_blue=""
+    c_dim=""; c_reset=""; c_erase=""
 fi
 
-info()  { printf '%s→%s %s\n'  "$c_cyan" "$c_reset" "$*"; }
-ok()    { printf '%s✔%s %s\n'  "$c_green" "$c_reset" "$*"; }
-warn()  { printf '%s!%s %s\n'  "$c_yellow" "$c_reset" "$*" >&2; }
-fail()  { printf '%s✘%s %s\n'  "$c_red" "$c_reset" "$*" >&2; }
+info()  { printf '  %s→%s %s\n'  "$c_cyan" "$c_reset" "$*"; }
+ok()    { printf '  %s✔%s %s\n'  "$c_green" "$c_reset" "$*"; }
+warn()  { printf '  %s!%s %s\n'  "$c_yellow" "$c_reset" "$*" >&2; }
+fail()  { printf '  %s✘%s %s\n'  "$c_red" "$c_reset" "$*" >&2; }
+hint()  { printf '         %s%s%s\n' "$c_dim" "$*" "$c_reset" >&2; }
+
+step_msg=""
+step_begin() {
+    step_msg=$1
+    [ "$quiet" -eq 1 ] && return 0
+    if [ "$use_tty" -eq 1 ]; then
+        printf '  %s…%s %s' "$c_dim" "$c_reset" "$step_msg"
+    else
+        printf '  ... %s\n' "$step_msg"
+    fi
+}
+
+step_ok() {
+    detail=${1:-}
+    [ "$quiet" -eq 1 ] && return 0
+    if [ "$use_tty" -eq 1 ]; then
+        printf '%s  %s✔%s %s' "$c_erase" "$c_green" "$c_reset" "$step_msg"
+        if [ -n "$detail" ]; then
+            printf '  %s%s%s' "$c_dim" "$detail" "$c_reset"
+        fi
+        printf '\n'
+    else
+        if [ -n "$detail" ]; then
+            printf '  ok %s (%s)\n' "$step_msg" "$detail"
+        else
+            printf '  ok %s\n' "$step_msg"
+        fi
+    fi
+}
+
+step_fail() {
+    detail=${1:-}
+    if [ "$use_tty" -eq 1 ] && [ "$quiet" -eq 0 ]; then
+        printf '%s' "$c_erase" >&2
+    fi
+    if [ -n "$detail" ]; then
+        fail "$step_msg — $detail"
+    else
+        fail "$step_msg"
+    fi
+}
 
 banner() {
-    printf '%s\n' "${c_bold}==============================================${c_reset}"
-    printf '%s%s sift installer %s\n' "$c_bold" "$c_cyan" "$c_reset"
-    printf '%s\n' "${c_bold}==============================================${c_reset}"
+    [ "$quiet" -eq 1 ] && return 0
     printf '\n'
+    printf '  %s▍ sift%s  online installer\n' "$c_bold$c_blue" "$c_reset"
+    printf '  %s  download the latest release and install the binary%s\n' "$c_dim" "$c_reset"
+    printf '\n'
+}
+
+abort() {
+    printf '\n  %s%sInstallation aborted.%s\n\n' "$c_red" "$c_bold" "$c_reset" >&2
+    exit 1
 }
 
 die() {
     fail "$*"
-    printf '\n%s%sInstallation aborted.%s\n' "$c_red" "$c_bold" "$c_reset" >&2
-    exit 1
+    abort
 }
 
 # --- prerequisites ----------------------------------------------------------
 banner
 
-command -v curl >/dev/null 2>&1 || die "curl is required"
-command -v tar  >/dev/null 2>&1 || die "tar is required"
+repo=${SIFT_REPOSITORY:-bethropolis/sift}
 
+step_begin "checking prerequisites"
+have_curl=1; command -v curl >/dev/null 2>&1 || have_curl=0
+have_tar=1;  command -v tar  >/dev/null 2>&1 || have_tar=0
+if [ "$have_curl" -eq 0 ] || [ "$have_tar" -eq 0 ]; then
+    missing=""
+    [ "$have_curl" -eq 0 ] && missing="curl"
+    [ "$have_tar" -eq 0 ]  && missing="$missing tar"
+    step_fail "missing: $missing"
+    hint "install ${missing} with your package manager, then re-run"
+    abort
+fi
+step_ok "curl, tar"
+
+step_begin "detecting platform"
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 machine=$(uname -m)
 case "$os" in
     linux|darwin|freebsd) ;;
-    *) die "unsupported operating system: $os (use Homebrew or Scoop on Windows)" ;;
+    *)
+        step_fail "unsupported OS: $os"
+        hint "use Homebrew or Scoop on Windows"
+        abort
+        ;;
 esac
 case "$machine" in
     x86_64|amd64)   arch=amd64 ;;
     aarch64|arm64)  arch=arm64 ;;
     i386|i686)      arch=386 ;;
     armv7*|armv6*)  arch=armv7 ;;
-    *) die "unsupported architecture: $machine" ;;
+    *)
+        step_fail "unsupported architecture: $machine"
+        hint "build from source instead: https://bethropolis.github.io/sift/install/#build-from-source"
+        abort
+        ;;
 esac
-info "platform: ${os}/${arch}"
+step_ok "${os}/${arch}"
 
-info "resolving latest release ..."
+step_begin "resolving latest release"
 tag=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
-    "https://github.com/$repo/releases/latest")
+    "https://github.com/$repo/releases/latest" 2>/dev/null || true)
 tag=${tag##*/}
-[ -n "$tag" ] || die "could not determine the latest sift release"
+if [ -z "$tag" ]; then
+    step_fail "could not determine the latest release"
+    hint "check https://github.com/$repo/releases in a browser"
+    hint "your network may block github.com, or no release may exist yet"
+    abort
+fi
 version=${tag#v}
 archive="sift_${version}_${os}_${arch}.tar.gz"
 url="https://github.com/$repo/releases/download/$tag/$archive"
-ok "found $tag (${arch})"
+step_ok "$tag"
+
+if [ -z "${SIFT_INSTALL_DIR+x}" ] || [ -z "${SIFT_INSTALL_DIR}" ]; then
+    [ -n "${HOME:-}" ] || die "HOME is not set; export HOME or set SIFT_INSTALL_DIR"
+    prefix=$HOME/.local/bin
+else
+    prefix=$SIFT_INSTALL_DIR
+fi
+
+step_begin "preparing install directory"
+case $prefix in
+    /*) ;;
+    *) prefix=$(CDPATH= cd -- "$(pwd)" && printf '%s/%s' "$(pwd)" "$prefix") ;;
+esac
+if [ -e "$prefix" ] && [ ! -d "$prefix" ]; then
+    step_fail "$prefix exists and is not a directory"
+    hint "set SIFT_INSTALL_DIR to a directory you can write to"
+    abort
+fi
+if ! mkdir -p "$prefix" 2>/dev/null; then
+    step_fail "cannot create $prefix"
+    hint "set SIFT_INSTALL_DIR or fix permissions on the parent directory"
+    abort
+fi
+prefix=$(CDPATH= cd -- "$prefix" && pwd) || die "cannot resolve install directory"
+if [ ! -w "$prefix" ]; then
+    step_fail "$prefix is not writable"
+    hint "set SIFT_INSTALL_DIR to a directory you can write to"
+    abort
+fi
+if [ -e "$prefix/sift" ] && [ -d "$prefix/sift" ]; then
+    step_fail "$prefix/sift is a directory"
+    hint "move that directory aside, then re-run"
+    abort
+fi
+step_ok "$prefix"
 
 # --- download & install -----------------------------------------------------
-tmp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t sift)
+tmp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t sift 2>/dev/null || true)
+if [ -z "$tmp_dir" ] || [ ! -d "$tmp_dir" ]; then
+    tmp_dir="${TMPDIR:-/tmp}/sift-install.$$"
+    mkdir -p "$tmp_dir" || die "cannot create a temporary directory"
+fi
 trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
 
-info "downloading $c_dim$archive$c_reset ..."
-curl -fL --retry 3 "$url" -o "$tmp_dir/$archive" 2>/dev/null \
-    || die "download failed (is $tag published for ${os}/${arch}?)"
+old_ver=""
+if [ -x "$prefix/sift" ]; then
+    old_ver=$("$prefix/sift" version 2>/dev/null || true)
+fi
 
-info "extracting archive ..."
-tar -xzf "$tmp_dir/$archive" -C "$tmp_dir"
+step_begin "downloading release"
+if ! curl -fL --retry 3 "$url" -o "$tmp_dir/$archive" 2>"$tmp_dir/curl.log"; then
+    step_fail "download failed"
+    if grep -q -e '404' "$tmp_dir/curl.log" 2>/dev/null; then
+        hint "$tag has no asset named $archive"
+        hint "check https://github.com/$repo/releases/tag/$tag for your platform"
+    else
+        hint "check your connection and proxy settings, then re-run"
+    fi
+    abort
+fi
+step_ok "$archive"
 
-info "installing to $c_dim$prefix$c_reset ..."
-mkdir -p "$prefix"
-install -m 755 "$tmp_dir/sift" "$prefix/sift"
+step_begin "extracting archive"
+if ! tar -xzf "$tmp_dir/$archive" -C "$tmp_dir" 2>/dev/null; then
+    step_fail "archive is corrupt or unreadable"
+    hint "remove any cached download and re-run"
+    abort
+fi
+if [ ! -f "$tmp_dir/sift" ]; then
+    step_fail "archive has no sift binary"
+    hint "the release asset layout may have changed; report it at https://github.com/$repo/issues"
+    abort
+fi
+step_ok "sift binary"
+
+step_begin "installing"
+if ! install -m 755 "$tmp_dir/sift" "$prefix/sift" 2>/dev/null; then
+    step_fail "could not write $prefix/sift"
+    hint "the previous binary, if any, was left in place"
+    abort
+fi
+if ! "$prefix/sift" version >/dev/null 2>&1; then
+    step_fail "installed binary does not run"
+    hint "your platform may need a different archive; see the note above"
+    abort
+fi
+new_ver=$("$prefix/sift" version 2>/dev/null || true)
+step_ok "$prefix/sift"
 
 # --- summary ----------------------------------------------------------------
-printf '\n'
-ok "$c_bold sift $tag installed to $prefix/sift $c_reset"
-case ":${PATH}:" in
-    *:"$prefix":*) ;;
-    *) warn "add $prefix to your PATH to run sift"
-       printf '    %sexport PATH="%s:$PATH"%s\n' "$c_dim" "$prefix" "$c_reset" ;;
+[ "$quiet" -eq 1 ] || printf '\n'
+if [ -n "$old_ver" ] && [ -n "$new_ver" ] && [ "$old_ver" != "$new_ver" ]; then
+    ok "${c_bold}upgraded${c_reset}  ${c_dim}${old_ver}${c_reset} → ${c_bold}${new_ver}${c_reset}"
+elif [ -n "$old_ver" ]; then
+    ok "${c_bold}reinstalled${c_reset}  ${new_ver:-$tag}"
+else
+    ok "${c_bold}installed${c_reset}  ${new_ver:-$tag}"
+fi
+info "binary  $prefix/sift"
+
+in_path=0
+case ":${PATH-}:" in
+    *:"$prefix":*) in_path=1 ;;
 esac
-printf '%s    run %ssift --help%s to get started.%s\n' "$c_dim" "$c_green" "$c_reset" "$c_reset"
+
+if [ "$in_path" -eq 1 ]; then
+    info "PATH    $prefix is already on PATH"
+    [ "$quiet" -eq 1 ] || printf '  %snext%s   %ssift --help%s\n' "$c_dim" "$c_reset" "$c_green" "$c_reset"
+else
+    warn "add $prefix to your PATH"
+    printf '          %sexport PATH="%s:$PATH"%s\n' "$c_dim" "$prefix" "$c_reset"
+    printf '  %snext%s   %s%s/sift --help%s\n' "$c_dim" "$c_reset" "$c_green" "$prefix" "$c_reset"
+fi
+[ "$quiet" -eq 1 ] || printf '\n'
