@@ -155,24 +155,92 @@ type moduleRootInfo struct {
 }
 
 // moduleRoots discovers module definitions across the repository (e.g. root
-// go.mod and nested go.mod files in subpackages/monorepos).
+// go.mod and nested go.mod files in subpackages/monorepos). Workspace
+// members declared via go.work `use` directives are included even when their
+// go.mod files were not collected.
 func (r *Ranker) moduleRoots(files []format.FileEntry) []moduleRootInfo {
 	var roots []moduleRootInfo
-	// 1. Root module
-	if mod := parseGoMod(filepath.Join(r.rootDir, "go.mod")); mod != "" {
-		roots = append(roots, moduleRootInfo{dir: "", moduleName: mod})
+	seen := make(map[string]bool)
+	add := func(dir, mod string) {
+		if mod == "" || seen[dir] {
+			return
+		}
+		seen[dir] = true
+		roots = append(roots, moduleRootInfo{dir: dir, moduleName: mod})
 	}
+	// 1. Root module
+	add("", parseGoMod(filepath.Join(r.rootDir, "go.mod")))
 	// 2. Discover any nested go.mod from collected files
 	for _, f := range files {
 		p := filepath.ToSlash(f.Path)
 		if filepath.Base(p) == "go.mod" && p != "go.mod" {
 			dir := filepath.Dir(p)
-			if mod := parseGoMod(filepath.Join(r.rootDir, filepath.FromSlash(p))); mod != "" {
-				roots = append(roots, moduleRootInfo{dir: dir, moduleName: mod})
-			}
+			add(dir, parseGoMod(filepath.Join(r.rootDir, filepath.FromSlash(p))))
 		}
 	}
+	// 3. Workspace members from go.work, in case their go.mod was skipped
+	for _, dir := range parseGoWork(filepath.Join(r.rootDir, "go.work")) {
+		add(dir, parseGoMod(filepath.Join(r.rootDir, filepath.FromSlash(dir), "go.mod")))
+	}
 	return roots
+}
+
+// parseGoWork returns the workspace member directories declared by `use`
+// directives in a go.work file, as slash-separated repo-relative paths.
+// Single-line (`use ./services/auth`), block, and single-line block
+// (`use ( ./a ./b )`) forms are all handled.
+func parseGoWork(path string) []string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var dirs []string
+	add := func(field string) {
+		field = strings.Trim(field, `"`)
+		if field == "" || field == ")" || strings.HasPrefix(field, "//") {
+			return
+		}
+		clean := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(field)), "./")
+		if clean != "" && clean != "." {
+			dirs = append(dirs, clean)
+		}
+	}
+	inBlock := false
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		if idx := strings.Index(line, "//"); idx >= 0 {
+			line = strings.TrimSpace(line[:idx])
+		}
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "use (") {
+			inBlock = true
+			line = strings.TrimSpace(strings.TrimPrefix(line, "use ("))
+			if line == "" {
+				continue
+			}
+		} else if inBlock && line == ")" {
+			inBlock = false
+			continue
+		} else if strings.HasPrefix(line, "use ") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "use "))
+		} else if !inBlock {
+			continue
+		}
+		closes := false
+		if strings.HasSuffix(line, ")") {
+			closes = true
+			line = strings.TrimSpace(strings.TrimSuffix(line, ")"))
+		}
+		for _, field := range strings.Fields(line) {
+			add(field)
+		}
+		if closes {
+			inBlock = false
+		}
+	}
+	return dirs
 }
 
 func parseGoMod(path string) string {

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/bethropolis/sift/internal/format"
@@ -167,4 +169,60 @@ func paths(files []format.FileEntry) []string {
 		out[i] = f.Path
 	}
 	return out
+}
+
+func TestParseGoWork(t *testing.T) {
+	dir := t.TempDir()
+	content := "go 1.26\n\nuse (\n\t./services/auth\n\t./services/api // trailing comment\n)\n\nuse ./tools/cli\n"
+	if err := os.WriteFile(filepath.Join(dir, "go.work"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := parseGoWork(filepath.Join(dir, "go.work"))
+	want := []string{"services/auth", "services/api", "tools/cli"}
+	if len(got) != len(want) {
+		t.Fatalf("parseGoWork = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("parseGoWork = %v, want %v", got, want)
+		}
+	}
+	if got := parseGoWork(filepath.Join(dir, "go.work.missing")); got != nil {
+		t.Errorf("parseGoWork missing file = %v, want nil", got)
+	}
+}
+
+func TestModuleRootsIncludesGoWorkMembers(t *testing.T) {
+	dir := t.TempDir()
+	writeGoMod := func(rel, module string) {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("module "+module+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeGoMod("go.mod", "example.com/root")
+	writeGoMod("services/auth/go.mod", "example.com/auth")
+	if err := os.WriteFile(filepath.Join(dir, "go.work"), []byte("go 1.26\n\nuse ./services/auth\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The member go.mod is deliberately NOT among collected files: go.work
+	// must still surface it.
+	r := NewRanker(dir)
+	roots := r.moduleRoots([]format.FileEntry{{Path: "main.go"}})
+	byDir := map[string]string{}
+	for _, rt := range roots {
+		byDir[rt.dir] = rt.moduleName
+	}
+	if byDir[""] != "example.com/root" {
+		t.Errorf("root module = %q, want example.com/root", byDir[""])
+	}
+	if byDir["services/auth"] != "example.com/auth" {
+		t.Errorf("member module = %q, want example.com/auth (via go.work)", byDir["services/auth"])
+	}
+	if got := resolveModuleForFile("services/auth/handler.go", roots); got != "example.com/auth" {
+		t.Errorf("resolveModuleForFile = %q, want example.com/auth", got)
+	}
 }
