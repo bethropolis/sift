@@ -213,8 +213,10 @@ func (n *TreeNode) SelectedCount() int {
 
 // SelectByRank delegates smart selection to the shared utility optimizer.
 // Budget zero means unlimited; otherwise the optimizer considers full,
-// signature, and skipped variants together. Returns the selected file count.
-func (n *TreeNode) SelectByRank(budget int) int {
+// signature, and skipped variants together. The prompt conditions
+// path-relevance scoring so smart selection respects the active task
+// directive. Returns the selected file count.
+func (n *TreeNode) SelectByRank(budget int, prompt string) int {
 	var files []*TreeNode
 	n.collectFiles(&files)
 	candidates := make([]selection.Candidate, 0, len(files))
@@ -233,7 +235,7 @@ func (n *TreeNode) SelectByRank(budget int) int {
 		})
 		byPath[filepath.ToSlash(f.Path)] = f
 	}
-	result := selection.Select(candidates, selection.Request{Budget: budget})
+	result := selection.Select(candidates, selection.Request{Budget: budget, Prompt: prompt})
 	n.ClearSelection()
 	for _, decision := range result.Decisions {
 		f := byPath[decision.Path]

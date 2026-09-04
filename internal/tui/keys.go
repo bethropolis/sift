@@ -433,7 +433,7 @@ func (m *model) selectAll() {
 func (m *model) smartSelect() {
 	// Checkboxes and the token tally react instantly; a notice here would only
 	// linger redundantly.
-	m.root.SelectByRank(m.budget)
+	m.root.SelectByRank(m.budget, m.prompt)
 }
 
 func (m *model) copy() tea.Cmd {

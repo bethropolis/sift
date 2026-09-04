@@ -405,7 +405,7 @@ func TestSmartSelectByRank(t *testing.T) {
 		{Path: "mid.go", TokensFull: 50, RankScore: 0.5},
 		{Path: "hot.go", TokensFull: 30, RankScore: 1.0},
 	})
-	count := root.SelectByRank(100)
+	count := root.SelectByRank(100, "")
 	if count != 2 {
 		t.Errorf("SelectByRank = %d, want 2", count)
 	}
@@ -474,7 +474,7 @@ func TestSmartSelectModeAssignment(t *testing.T) {
 		{Path: "sig.go", TokensFull: 50, TokensSig: 5, RankScore: 0.5, SigContent: []byte("sig")},
 		{Path: "plain.go", TokensFull: 30, RankScore: 0.1},
 	})
-	root.SelectByRank(1000)
+	root.SelectByRank(1000, "")
 	got := map[string]CompressMode{}
 	for _, s := range root.Selections() {
 		got[s.Path] = s.Mode
@@ -495,7 +495,7 @@ func TestSmartSelectBudgetUsesSigTokens(t *testing.T) {
 		{Path: "big.go", TokensFull: 100, TokensSig: 5, RankScore: 1.0, PreferredMode: ModeSignatures},
 		{Path: "small.go", TokensFull: 30, RankScore: 0.5},
 	})
-	if count := root.SelectByRank(35); count != 2 {
+	if count := root.SelectByRank(35, ""); count != 2 {
 		t.Fatalf("SelectByRank = %d, want 2 (big.go charged at sig tokens)", count)
 	}
 	if got := len(root.Selections()); got != 2 {
