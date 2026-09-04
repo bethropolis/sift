@@ -7,6 +7,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+
+	"github.com/bethropolis/sift/internal/highlight"
 )
 
 func TestThemeToggle(t *testing.T) {
@@ -182,5 +184,38 @@ func TestStylesDefaultPalette(t *testing.T) {
 	}
 	if s.accent != lipgloss.Color("12") {
 		t.Errorf("default accent color = %q, want 12", s.accent)
+	}
+}
+
+func TestThemeApplySetsHighlightPalette(t *testing.T) {
+	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{Highlight: true})
+	if m.highlight.Palette == nil {
+		t.Fatal("initial model has no highlight palette")
+	}
+	// The default Classic preset must keep the legacy ANSI rendering.
+	if got := highlight.RenderLine("a.go", "func x() {}", m.highlight); !strings.Contains(got, "\033[1;34mfunc\033[0m") {
+		t.Errorf("classic highlight = %q, want legacy keyword code", got)
+	}
+
+	m.applyTheme(ThemePresets[1]) // Tokyo Night
+	if m.highlight.Palette == nil {
+		t.Fatal("applied theme left highlight palette nil")
+	}
+	got := highlight.RenderLine("a.go", "func x() {}", m.highlight)
+	if !strings.Contains(got, "\033[1;38;2;187;154;247mfunc\033[0m") {
+		t.Errorf("tokyo night highlight = %q, want mauve keyword", got)
+	}
+	if strings.Contains(got, "\033[1;34m") {
+		t.Errorf("legacy palette leaked into tokyo night render: %q", got)
+	}
+}
+
+func TestThemeApplyIsInstanceLocalForHighlight(t *testing.T) {
+	m1 := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{Highlight: true})
+	m2 := newModel(BuildTree([]Item{{Path: "b.go"}}), Options{Highlight: true})
+	m1.applyTheme(ThemePresets[2]) // Dracula
+	got := highlight.RenderLine("b.go", "func x() {}", m2.highlight)
+	if !strings.Contains(got, "\033[1;34mfunc\033[0m") {
+		t.Errorf("theme change leaked into another model: %q", got)
 	}
 }

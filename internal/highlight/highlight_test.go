@@ -31,6 +31,40 @@ func TestRenderThemeAndDisabledModes(t *testing.T) {
 	}
 }
 
+func TestANSIBuildsTruecolorSequences(t *testing.T) {
+	if got := ANSI("#cba6f7", "1"); got != "\033[1;38;2;203;166;247m" {
+		t.Errorf("ANSI bold = %q", got)
+	}
+	if got := ANSI("6c7086", "2"); got != "\033[2;38;2;108;112;134m" {
+		t.Errorf("ANSI faint = %q", got)
+	}
+	if got := ANSI("#fab387"); got != "\033[38;2;250;179;135m" {
+		t.Errorf("ANSI plain = %q", got)
+	}
+	for _, bad := range []string{"", "#12", "not-a-color", "#zzzzzz"} {
+		if got := ANSI(bad); got != "" {
+			t.Errorf("ANSI(%q) = %q, want empty", bad, got)
+		}
+	}
+}
+
+func TestCustomPaletteOverridesTheme(t *testing.T) {
+	pal := Palette{
+		Keyword:  ANSI("#ff79c6", "1"),
+		String:   ANSI("#f1fa8c"),
+		Number:   ANSI("#bd93f9"),
+		Comment:  ANSI("#6272a4", "2"),
+		TypeName: ANSI("#8be9fd"),
+	}
+	got := RenderLine("main.go", "func main() {}", Options{Enabled: true, Theme: ThemeAuto, Palette: &pal})
+	if !strings.Contains(got, "\033[1;38;2;255;121;198mfunc\033[0m") {
+		t.Errorf("custom palette keyword missing: %q", got)
+	}
+	if strings.Contains(got, "\033[1;34m") {
+		t.Errorf("built-in palette leaked through custom palette: %q", got)
+	}
+}
+
 func TestRenderSkipsUnsupportedAndOversizedContent(t *testing.T) {
 	plain := "func main() {}"
 	if got := Render("notes.txt", []byte(plain), Options{Enabled: true}); got != plain {

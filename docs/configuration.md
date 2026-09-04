@@ -266,7 +266,9 @@ Two related but separate settings:
   (`auto`, `none`, `dark`, `light`).
 - The picker's **interactive color palette** (chosen with `t` in the TUI) is
   stored separately under the user's application configuration directory and
-  reloaded on the next picker session.
+  reloaded on the next picker session. Inside the picker, the active palette
+  also drives preview syntax highlighting; `--theme` still governs
+  non-interactive output.
 
 ## Where state lives
 

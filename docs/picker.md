@@ -113,7 +113,9 @@ instructions. The chosen prompt is prepended to generated or copied output.
 
 Press `t` to open the theme selector. Presets include Catppuccin Mocha, Tokyo
 Night, Dracula, Gruvbox Dark, Nord, Rose Pine, and the default/classic theme.
-Your selection applies immediately and is saved for future sessions.
+Your selection applies immediately and is saved for future sessions. The theme
+also recolors preview syntax highlighting to match, so keywords, strings, and
+comments follow the same palette as the rest of the picker.
 
 If your terminal does not show the default Nerd Font glyphs, run with
 `--no-nerd-fonts` to use plain ASCII icons.

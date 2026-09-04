@@ -4,7 +4,9 @@
 package highlight
 
 import (
+	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -23,6 +25,10 @@ type Options struct {
 	Enabled  bool
 	Theme    Theme
 	MaxBytes int
+	// Palette overrides the built-in Theme palette when non-nil. The TUI
+	// sets it from the active color preset so preview highlighting follows
+	// the picker's theme; Theme is kept as the fallback.
+	Palette *Palette
 }
 
 const defaultMaxBytes = 256 * 1024
@@ -54,11 +60,14 @@ func RenderLine(path, line string, options Options) string {
 		return line
 	}
 	styles := palette(options.Theme)
+	if options.Palette != nil {
+		styles = *options.Palette
+	}
 	keywordSet := keywords(path)
 	var b strings.Builder
 	for i := 0; i < len(line); {
 		if strings.HasPrefix(line[i:], "//") || strings.HasPrefix(line[i:], "#") || strings.HasPrefix(line[i:], "--") {
-			b.WriteString(styles.comment)
+			b.WriteString(styles.Comment)
 			b.WriteString(line[i:])
 			b.WriteString(reset)
 			break
@@ -80,7 +89,7 @@ func RenderLine(path, line string, options Options) string {
 				}
 				j++
 			}
-			b.WriteString(styles.string)
+			b.WriteString(styles.String)
 			b.WriteString(line[i:j])
 			b.WriteString(reset)
 			i = j
@@ -91,7 +100,7 @@ func RenderLine(path, line string, options Options) string {
 			for j < len(line) && (unicode.IsDigit(rune(line[j])) || line[j] == '.') {
 				j++
 			}
-			b.WriteString(styles.number)
+			b.WriteString(styles.Number)
 			b.WriteString(line[i:j])
 			b.WriteString(reset)
 			i = j
@@ -106,9 +115,9 @@ func RenderLine(path, line string, options Options) string {
 			style := ""
 			switch {
 			case keywordSet[word]:
-				style = styles.keyword
+				style = styles.Keyword
 			case isTypeName(word):
-				style = styles.typeName
+				style = styles.TypeName
 			}
 			if style != "" {
 				b.WriteString(style)
@@ -128,20 +137,45 @@ func RenderLine(path, line string, options Options) string {
 
 const reset = "\033[0m"
 
-type colors struct {
-	keyword, string, number, comment, typeName string
+// Palette holds the SGR sequences for each token class. The TUI builds one
+// per color preset so preview highlighting matches the picker's theme.
+type Palette struct {
+	Keyword, String, Number, Comment, TypeName string
 }
 
-func palette(theme Theme) colors {
+func palette(theme Theme) Palette {
 	// Auto intentionally uses the terminal's ANSI palette. Dark/light are
 	// explicit but remain conservative so they work on most terminals.
 	if theme == ThemeDark {
-		return colors{"\033[1;34m", "\033[32m", "\033[36m", "\033[2;37m", "\033[35m"}
+		return Palette{"\033[1;34m", "\033[32m", "\033[36m", "\033[2;37m", "\033[35m"}
 	}
 	if theme == ThemeLight {
-		return colors{"\033[1;34m", "\033[31m", "\033[35m", "\033[2;30m", "\033[34m"}
+		return Palette{"\033[1;34m", "\033[31m", "\033[35m", "\033[2;30m", "\033[34m"}
 	}
-	return colors{"\033[1;34m", "\033[32m", "\033[36m", "\033[2m", "\033[35m"}
+	return Palette{"\033[1;34m", "\033[32m", "\033[36m", "\033[2m", "\033[35m"}
+}
+
+// ANSI builds a truecolor SGR sequence for hex (e.g. "#cba6f7" or "cba6f7")
+// with optional SGR modifiers ("1" for bold, "2" for faint). It returns ""
+// for unparseable input so callers degrade to unstyled text.
+func ANSI(hex string, mods ...string) string {
+	hex = strings.TrimPrefix(strings.TrimSpace(hex), "#")
+	if len(hex) == 3 {
+		hex = string([]byte{hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]})
+	}
+	if len(hex) != 6 {
+		return ""
+	}
+	rgb := make([]int64, 3)
+	for i := range rgb {
+		v, err := strconv.ParseUint(hex[2*i:2*i+2], 16, 8)
+		if err != nil {
+			return ""
+		}
+		rgb[i] = int64(v)
+	}
+	code := strings.Join(append(mods, fmt.Sprintf("38;2;%d;%d;%d", rgb[0], rgb[1], rgb[2])), ";")
+	return "\033[" + code + "m"
 }
 
 func supported(path string) bool {
