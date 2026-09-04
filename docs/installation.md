@@ -83,6 +83,24 @@ Confirm it can render by scanning a small project to standard output:
 sift dump . --output -
 ```
 
+## Shell completions
+
+`sift` can generate completion scripts for Bash, Zsh, Fish, and PowerShell:
+
+```sh
+sift completion bash   # or: zsh, fish, powershell
+```
+
+Both installers write Bash, Zsh, and Fish completions into your user-local
+directories automatically when those shells are present (failures are
+non-fatal warnings). Zsh additionally needs the site-functions directory on
+your `fpath`; the installer prints the exact line to add. To load completions
+without reinstalling, source the output directly:
+
+```sh
+source <(sift completion bash)
+```
+
 ## Upgrading
 
 Re-run the same install command you used originally — the installer overwrites

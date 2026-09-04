@@ -330,6 +330,49 @@ fi
 new_ver=$("$prefix/sift" version 2>/dev/null || true)
 step_ok "$prefix/sift"
 
+# --- shell completions ------------------------------------------------------
+# Best-effort: generate completions from the installed binary into user-local
+# directories. Never aborts the install; per-shell failures are warnings.
+step_begin "installing shell completions"
+comp_done=""
+if [ -n "${HOME:-}" ]; then
+    data_home=${XDG_DATA_HOME:-$HOME/.local/share}
+    config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+    # Triplets of shell name and completion destination. PowerShell is
+    # omitted: its profile paths vary and Windows installs go via Scoop.
+    comp_specs="bash $data_home/bash-completion/completions/sift
+zsh $data_home/zsh/site-functions/_sift
+fish $config_home/fish/completions/sift.fish"
+    # Iterate line-by-line without a subshell so comp_done survives.
+    while IFS= read -r spec || [ -n "$spec" ]; do
+        [ -n "$spec" ] || continue
+        shell_name=${spec%% *}
+        dest=${spec#* }
+        have_cmd "$shell_name" || continue
+        dest_dir=$(dirname -- "$dest")
+        if mkdir -p "$dest_dir" 2>/dev/null \
+            && "$prefix/sift" completion "$shell_name" >"$dest.tmp" 2>/dev/null \
+            && mv -f "$dest.tmp" "$dest" 2>/dev/null; then
+            if [ -z "$comp_done" ]; then comp_done=$shell_name; else comp_done="$comp_done, $shell_name"; fi
+        else
+            rm -f "$dest.tmp" 2>/dev/null
+            warn "could not install $shell_name completions to $dest"
+        fi
+    done <<EOF
+$comp_specs
+EOF
+    case ",$comp_done," in
+        *,zsh*) hint "zsh: add $data_home/zsh/site-functions to fpath in your .zshrc" ;;
+    esac
+else
+    warn "HOME is not set; skipping shell completions"
+fi
+if [ -n "$comp_done" ]; then
+    step_ok "$comp_done"
+else
+    step_ok "skipped"
+fi
+
 # --- summary ----------------------------------------------------------------
 [ "$quiet" -eq 1 ] || printf '\n'
 if [ -n "$old_ver" ] && [ -n "$new_ver" ] && [ "$old_ver" != "$new_ver" ]; then
