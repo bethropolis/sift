@@ -80,7 +80,7 @@ func RankParams(files []format.FileEntry, fanIn map[string]int) []rank.ScoringPa
 // every file at or beneath it. This is near-linear in input instead of the
 // previous O(files × imports × files) triple loop.
 func (r *Ranker) computeFanIn(files []format.FileEntry) map[string]int {
-	moduleRoot := r.moduleRoot()
+	moduleRoots := r.moduleRoots(files)
 	root := &fanNode{children: map[string]*fanNode{}}
 	nodeByPath := make(map[string]*fanNode, len(files))
 	for _, f := range files {
@@ -108,7 +108,9 @@ func (r *Ranker) computeFanIn(files []format.FileEntry) map[string]int {
 	}
 
 	for _, f := range files {
-		for _, target := range lang.Imports(filepath.ToSlash(f.Path), moduleRoot, f.Content) {
+		filePath := filepath.ToSlash(f.Path)
+		modRoot := resolveModuleForFile(filePath, moduleRoots)
+		for _, target := range lang.Imports(filePath, modRoot, f.Content) {
 			target = strings.TrimSuffix(filepath.ToSlash(target), "/")
 			if target == "" {
 				continue
@@ -146,11 +148,35 @@ type fanNode struct {
 	children map[string]*fanNode
 }
 
-// moduleRoot reads the repository's module path (e.g. the go.mod module
-// line) so absolute imports can be stripped to repo-relative paths. Returns
-// "" when the root has no recognizable module file or is not a Go module.
-func (r *Ranker) moduleRoot() string {
-	if data, err := os.ReadFile(filepath.Join(r.rootDir, "go.mod")); err == nil {
+// moduleRootInfo maps a workspace directory prefix to its module name.
+type moduleRootInfo struct {
+	dir        string // e.g. "" for root, "services/auth" for nested
+	moduleName string
+}
+
+// moduleRoots discovers module definitions across the repository (e.g. root
+// go.mod and nested go.mod files in subpackages/monorepos).
+func (r *Ranker) moduleRoots(files []format.FileEntry) []moduleRootInfo {
+	var roots []moduleRootInfo
+	// 1. Root module
+	if mod := parseGoMod(filepath.Join(r.rootDir, "go.mod")); mod != "" {
+		roots = append(roots, moduleRootInfo{dir: "", moduleName: mod})
+	}
+	// 2. Discover any nested go.mod from collected files
+	for _, f := range files {
+		p := filepath.ToSlash(f.Path)
+		if filepath.Base(p) == "go.mod" && p != "go.mod" {
+			dir := filepath.Dir(p)
+			if mod := parseGoMod(filepath.Join(r.rootDir, filepath.FromSlash(p))); mod != "" {
+				roots = append(roots, moduleRootInfo{dir: dir, moduleName: mod})
+			}
+		}
+	}
+	return roots
+}
+
+func parseGoMod(path string) string {
+	if data, err := os.ReadFile(path); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 && fields[0] == "module" {
@@ -159,6 +185,29 @@ func (r *Ranker) moduleRoot() string {
 		}
 	}
 	return ""
+}
+
+func resolveModuleForFile(filePath string, roots []moduleRootInfo) string {
+	bestDir := ""
+	bestMod := ""
+	for _, r := range roots {
+		if r.dir == "" {
+			if bestMod == "" {
+				bestMod = r.moduleName
+			}
+		} else if strings.HasPrefix(filePath, r.dir+"/") {
+			if len(r.dir) > len(bestDir) {
+				bestDir = r.dir
+				bestMod = r.moduleName
+			}
+		}
+	}
+	return bestMod
+}
+
+// moduleRoot reads the repository root's module path for backwards compatibility.
+func (r *Ranker) moduleRoot() string {
+	return parseGoMod(filepath.Join(r.rootDir, "go.mod"))
 }
 
 // ApplyRankScores writes the computed scores back into the entries.

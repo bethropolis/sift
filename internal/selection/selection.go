@@ -398,7 +398,7 @@ func variants(candidate Candidate, prompt string, tuning Tuning) []Variant {
 		quality := clamp(tuning.SigQualityMin+(tuning.SigQualityMax-tuning.SigQualityMin)*(1.0-ratio), tuning.SigQualityMin, tuning.SigQualityMax)
 		sigUtility := base * quality
 		if Mode(candidate.PreferredMode) == ModeSignatures {
-			sigUtility *= tuning.SignatureBonus
+			sigUtility *= (1.0 + tuning.SignatureBonus)
 		}
 		result = append(result, Variant{
 			Mode:    ModeSignatures,
@@ -429,13 +429,21 @@ func taskRelevance(path, prompt string) float64 {
 }
 
 func words(value string) []string {
-	value = strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return unicode.ToLower(r)
+	// Split by camelCase, snake_case, slashes, dots, and non-alphanumeric chars
+	var sb strings.Builder
+	var last rune
+	for _, r := range value {
+		if unicode.IsUpper(r) && unicode.IsLower(last) {
+			sb.WriteByte(' ')
 		}
-		return ' '
-	}, value)
-	parts := strings.Fields(value)
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			sb.WriteRune(unicode.ToLower(r))
+		} else {
+			sb.WriteByte(' ')
+		}
+		last = r
+	}
+	parts := strings.Fields(sb.String())
 	filtered := parts[:0]
 	for _, part := range parts {
 		if len(part) >= 3 {

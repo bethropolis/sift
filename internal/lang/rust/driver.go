@@ -30,7 +30,7 @@ func (rsDriver) Classify(path, filename string) types.Classification {
 	switch {
 	case strings.HasPrefix(path, "tests/") || strings.HasSuffix(filename, "_test.rs"):
 		return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.95, Reason: "Rust test"}
-	case strings.HasPrefix(path, "examples/") || filename == "main.rs":
+	case strings.HasPrefix(path, "examples/") || filename == "main.rs" || strings.Contains(path, "/src/bin/") || strings.HasPrefix(path, "src/bin/"):
 		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.90, Reason: "Rust entrypoint/example"}
 	case filename == "lib.rs":
 		return types.Classification{Role: types.RoleAPI, Adjustment: 0.12, Confidence: 0.95, Reason: "Rust public library API"}

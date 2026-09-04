@@ -45,9 +45,12 @@ func classifyTS(path, filename string) types.Classification {
 		return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.96, Reason: "TypeScript test file"}
 	case strings.HasSuffix(filename, ".d.ts"):
 		return types.Classification{Role: types.RoleAPI, Adjustment: 0.12, Confidence: 0.95, Reason: "TypeScript declaration API"}
-	case filename == "index.ts" || filename == "index.tsx" || filename == "main.ts" || filename == "main.tsx" || strings.HasPrefix(path, "bin/"):
-		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.85, Reason: "TypeScript entrypoint"}
-	case strings.HasSuffix(filename, ".config.ts"):
+	case filename == "index.ts" || filename == "index.tsx" || filename == "main.ts" || filename == "main.tsx" ||
+		filename == "app.ts" || filename == "app.tsx" || filename == "server.ts" ||
+		filename == "route.ts" || filename == "route.tsx" || filename == "page.tsx" || filename == "layout.tsx" ||
+		strings.HasPrefix(path, "bin/"):
+		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.85, Reason: "TypeScript entrypoint/route"}
+	case strings.HasSuffix(filename, ".config.ts") || strings.HasSuffix(filename, ".config.mts"):
 		return types.Classification{Role: types.RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "TypeScript configuration"}
 	}
 	return types.Classification{Role: types.RoleImpl, Confidence: 0.50, Reason: "TypeScript source"}

@@ -34,7 +34,7 @@ func (jsDriver) Classify(path, filename string) types.Classification {
 		return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.95, Reason: "JavaScript test file"}
 	case filename == "index.js" || filename == "main.js" || strings.HasPrefix(path, "bin/"):
 		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.85, Reason: "JavaScript entrypoint"}
-	case strings.HasSuffix(filename, ".config.js") || strings.HasSuffix(filename, ".config.cjs"):
+	case strings.HasSuffix(filename, ".config.js") || strings.HasSuffix(filename, ".config.cjs") || strings.HasSuffix(filename, ".config.mjs"):
 		return types.Classification{Role: types.RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "JavaScript configuration"}
 	}
 	return types.Classification{Role: types.RoleImpl, Confidence: 0.50, Reason: "JavaScript source"}

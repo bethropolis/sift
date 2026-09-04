@@ -2,6 +2,7 @@ package langother
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/bethropolis/sift/internal/lang/registry"
@@ -32,7 +33,8 @@ func (otherDriver) ShouldSkipSmart(path, filename string, content []byte) (bool,
 }
 
 func (d otherDriver) Classify(path, filename string) types.Classification {
-	switch strings.ToLower(filepath.Ext(filename)) {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
 	case ".java":
 		return jvmFile(path, filename, "Java source", ".java")
 	case ".kt", ".kts":
@@ -43,14 +45,62 @@ func (d otherDriver) Classify(path, filename string) types.Classification {
 		return conventionByName(filename, "PHP source")
 	case ".cs":
 		return csharpFile(path, filename)
-	case ".c", ".h":
+	case ".h", ".hpp":
+		if strings.Contains(path, "/include/") || strings.HasPrefix(path, "include/") {
+			return types.Classification{Role: types.RoleAPI, Adjustment: 0.14, Confidence: 0.90, Reason: "C/C++ public header"}
+		}
+		return types.Classification{Role: types.RoleAPI, Adjustment: 0.08, Confidence: 0.80, Reason: "C/C++ header"}
+	case ".c":
 		return conventionByName(filename, "C source")
-	case ".cc", ".cpp", ".cxx", ".hpp":
+	case ".cc", ".cpp", ".cxx":
 		return conventionByName(filename, "C++ source")
 	case ".swift":
 		return conventionByName(filename, "Swift source")
 	}
 	return types.Classification{Role: types.RoleUnknown}
+}
+
+var (
+	cIncludeRegex    = regexp.MustCompile(`(?m)^\s*#\s*include\s*["<]([^">]+)[">]`)
+	rubyRequireRegex = regexp.MustCompile(`(?m)^\s*require_relative\s*['"]([^'"]+)['"]`)
+	phpRequireRegex  = regexp.MustCompile(`(?m)\b(?:require|require_once|include|include_once)\s*\(?\s*['"]([^'"]+)['"]`)
+)
+
+// Imports returns local import targets for files handled by the otherDriver
+// (C/C++ local headers, Ruby require_relative, PHP relative includes).
+func (otherDriver) Imports(path, _ string, content []byte) []string {
+	dir := filepath.ToSlash(filepath.Dir(path))
+	ext := strings.ToLower(filepath.Ext(path))
+	var targets []string
+
+	switch ext {
+	case ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp":
+		for _, m := range cIncludeRegex.FindAllSubmatch(content, -1) {
+			inc := string(m[1])
+			// Resolve relative to current file dir, and also add raw inc path
+			// (for include/<inc> style references).
+			target := filepath.ToSlash(filepath.Clean(filepath.Join(dir, inc)))
+			targets = append(targets, target)
+			if inc != target {
+				targets = append(targets, filepath.ToSlash(inc))
+			}
+		}
+	case ".rb":
+		for _, m := range rubyRequireRegex.FindAllSubmatch(content, -1) {
+			req := string(m[1])
+			target := filepath.ToSlash(filepath.Clean(filepath.Join(dir, req)))
+			targets = append(targets, target)
+		}
+	case ".php":
+		for _, m := range phpRequireRegex.FindAllSubmatch(content, -1) {
+			inc := string(m[1])
+			if strings.HasPrefix(inc, "./") || strings.HasPrefix(inc, "../") {
+				target := filepath.ToSlash(filepath.Clean(filepath.Join(dir, inc)))
+				targets = append(targets, target)
+			}
+		}
+	}
+	return targets
 }
 
 // SignatureLanguage maps the secondary extensions this driver owns to the

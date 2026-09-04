@@ -20,12 +20,19 @@ func common(path, base, ext string) (types.Classification, bool) {
 		return types.Classification{Role: types.RoleSchema, Adjustment: 0.10, Confidence: 0.85, Reason: "migration/schema"}, true
 	case ext == ".md" || ext == ".mdx" || base == "readme" || strings.HasPrefix(base, "readme."):
 		return types.Classification{Role: types.RoleDocs, Adjustment: 0.06, Confidence: 0.90, Reason: "documentation"}, true
-	case ext == ".sql" || ext == ".graphql" || ext == ".gql" || ext == ".proto":
-		return types.Classification{Role: types.RoleSchema, Adjustment: 0.10, Confidence: 0.90, Reason: "schema definition"}, true
+	case ext == ".sql" || ext == ".graphql" || ext == ".gql" || ext == ".proto" || ext == ".prisma" ||
+		base == "schema.prisma" || strings.HasPrefix(base, "openapi.") || strings.HasPrefix(base, "swagger."):
+		return types.Classification{Role: types.RoleSchema, Adjustment: 0.10, Confidence: 0.90, Reason: "schema/API specification"}, true
 	case ext == ".html" || ext == ".css" || ext == ".scss" || ext == ".vue" || ext == ".svelte" || ext == ".astro":
 		return types.Classification{Role: types.RoleImpl, Adjustment: 0.02, Confidence: 0.75, Reason: "web source"}, true
-	case base == "dockerfile" || base == "makefile" || base == "go.mod" || base == "cargo.toml" || base == "pyproject.toml" || base == "package.json" || base == "tsconfig.json" || strings.HasPrefix(base, "vite.config.") || strings.HasPrefix(base, "webpack.config."):
-		return types.Classification{Role: types.RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "project configuration"}, true
+	case base == "dockerfile" || base == "makefile" || base == "go.mod" || base == "go.work" ||
+		base == "cargo.toml" || base == "pyproject.toml" || base == "package.json" ||
+		base == "tsconfig.json" || base == "pnpm-workspace.yaml" || base == "turbo.json" ||
+		base == "lerna.json" || base == "nx.json" || base == "build.gradle" || base == "build.gradle.kts" ||
+		base == "pom.xml" || base == "gemfile" || base == "composer.json" ||
+		strings.HasPrefix(base, "vite.config.") || strings.HasPrefix(base, "webpack.config.") ||
+		strings.HasPrefix(base, "next.config.") || strings.HasPrefix(base, "astro.config."):
+		return types.Classification{Role: types.RoleConfig, Adjustment: 0.08, Confidence: 0.90, Reason: "project or workspace configuration"}, true
 	case strings.Contains(base, ".generated.") || strings.HasSuffix(base, "_generated"+ext) || strings.HasSuffix(base, "_gen"+ext):
 		return types.Classification{Role: types.RoleGenerated, Adjustment: -0.35, Confidence: 0.90, Reason: "generated naming convention"}, true
 	}
