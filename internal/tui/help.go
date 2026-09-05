@@ -77,6 +77,7 @@ func helpSections() []helpSection {
 			Rows: []helpRow{
 				{"q / Esc", "Exit picker"},
 				{"?", "Toggle this help"},
+				{"r", "Rescan files and git history"},
 			},
 		},
 	}

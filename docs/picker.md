@@ -66,6 +66,7 @@ cursor.
 | `J` / `K` | Scroll the preview one line at a time |
 | `?` | Toggle the in-app help overlay |
 | `q` / `Esc` | Exit (`Esc` first clears an active filter) |
+| `r` | Rescan the tree (refresh files and git history) |
 
 ## Selecting files and directories
 

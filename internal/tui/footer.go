@@ -89,6 +89,7 @@ func (m model) renderFooter(width int) string {
 		hints := strings.Join([]string{
 			m.keyBadge("p", "Prompt"),
 			m.keyBadge("m", "Mode"),
+			m.keyBadge("s", "Smart"),
 			m.keyBadge("g", "Gen"),
 			m.keyBadge("y", "Copy"),
 			m.keyBadge("q", "Quit"),
@@ -104,6 +105,7 @@ func (m model) renderFooter(width int) string {
 		if width < 80 {
 			hintList = []string{
 				m.keyBadge("m", "Mode"),
+				m.keyBadge("s", "Smart"),
 				m.keyBadge("y", "Copy"),
 				m.keyBadge("?", "Help"),
 				m.keyBadge("q", "Quit"),
@@ -112,6 +114,7 @@ func (m model) renderFooter(width int) string {
 			hintList = []string{
 				m.keyBadge("p", "Prompt"),
 				m.keyBadge("m", "Mode"),
+				m.keyBadge("s", "Smart"),
 				m.keyBadge("g", "Gen"),
 				m.keyBadge("y", "Copy"),
 				m.keyBadge("?", "Help"),

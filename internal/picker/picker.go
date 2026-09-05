@@ -122,7 +122,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 	// long-lived caller context (e.g. context.Background) would leave streamScan
 	// blocked forever on a full channel once the TUI stops draining.
 	scanCtx, cancelScan := context.WithCancel(ctx)
-	defer cancelScan()
+	defer func() { cancelScan() }()
 	go streamScan(scanCtx, application, preferredModes, absRoot, skeletonFilePaths,
 		&stateMu, &collected, &skippedMu, &skipped,
 		totalFiles, totalDirs, stream)
@@ -156,6 +156,48 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		Delta: s.buildDeltaInfo(deltaFiles),
 		OnDelta: func(sel tui.DeltaSelection) error {
 			return s.performDelta(snapshotFiles(), sel)
+		},
+		// OnRescan (pressing r) re-runs the full pipeline — fresh metadata
+		// walk, git-history analysis, content walk, rank patch — and hands the
+		// new stream to the picker, which reconciles it against the live tree
+		// while preserving selections and modes. Shared collection state is
+		// reset first so generate/copy snapshot exactly what the fresh walk
+		// reports.
+		OnRescan: func() (tui.Stream, error) {
+			cancelScan()
+			stateMu.Lock()
+			collected = nil
+			stateMu.Unlock()
+			skippedMu.Lock()
+			skipped = nil
+			skippedMu.Unlock()
+			freshMetas, freshSkipped, err := application.SkeletonPicker(ctx)
+			if err != nil {
+				return tui.Stream{}, err
+			}
+			skippedMu.Lock()
+			skipped = freshSkipped
+			skippedMu.Unlock()
+			freshPreferred := preferredModes
+			if absErr == nil {
+				freshPreferred = rank.New(absRoot).AnalyzeCommitHistory(5)
+			}
+			freshPaths := make([]string, 0, len(freshMetas))
+			freshFiles, freshDirs := 0, 0
+			for _, meta := range freshMetas {
+				if meta.IsDir {
+					freshDirs++
+				} else {
+					freshFiles++
+					freshPaths = append(freshPaths, meta.Path)
+				}
+			}
+			fresh := newPickStream()
+			scanCtx, cancelScan = context.WithCancel(ctx)
+			go streamScan(scanCtx, application, freshPreferred, absRoot, freshPaths,
+				&stateMu, &collected, &skippedMu, &skipped,
+				freshFiles, freshDirs, fresh)
+			return fresh.tuiStream(), nil
 		},
 	}, stream.tuiStream())
 	if err != nil {

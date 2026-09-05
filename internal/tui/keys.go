@@ -295,6 +295,8 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "C":
 			m.root.CollapseAll()
 			m.recomputeRows()
+		case "r":
+			return m, m.rescan()
 		case "q":
 			if m.filter != "" {
 				m.filter = ""

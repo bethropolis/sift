@@ -106,6 +106,14 @@ type model struct {
 	streamNodesClosed    bool
 	streamProgressClosed bool
 	streamErrClosed      bool
+	// onRescan starts a fresh background scan (pressing r). rescanActive
+	// guards the reconcile window; rescanBaseline/rescanSeen track which
+	// pre-rescan paths the fresh walk re-reported so vanished files can be
+	// pruned once every channel is exhausted.
+	onRescan       func() (Stream, error)
+	rescanActive   bool
+	rescanBaseline map[string]bool
+	rescanSeen     map[string]bool
 
 	quit bool
 
@@ -141,6 +149,10 @@ type Options struct {
 	// when the user confirms a delta dump.
 	Delta   *DeltaInfo
 	OnDelta func(DeltaSelection) error
+
+	// OnRescan starts a fresh background scan and returns its stream
+	// (pressing r). When nil the picker reports rescan as unavailable.
+	OnRescan func() (Stream, error)
 }
 
 func newModel(root *TreeNode, opts Options) model {
@@ -170,6 +182,7 @@ func newModel(root *TreeNode, opts Options) model {
 		onGeneratePrompt: opts.OnGeneratePrompt,
 		delta:            opts.Delta,
 		onDelta:          opts.OnDelta,
+		onRescan:         opts.OnRescan,
 		nodeIndex:        nodeIndex,
 	}
 	m.applyTheme(ThemePresets[m.themeIndex])
@@ -242,6 +255,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.Items) > 0 {
 			m.upsertItems(msg.Items)
 		}
+		m.trackRescanSeen(msg.Items)
 		m.recomputeRows()
 		if keepPath != "" {
 			if idx := m.findRow(keepPath); idx >= 0 {
@@ -277,11 +291,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.streamNodesClosed && m.streamProgressClosed && m.streamErrClosed {
 			m.scanDone = true
-			return m, nil
+			return m, m.finishRescan()
 		}
 		return m, m.listenStream()
 	case ErrMsg:
 		m.scanDone = true
+		m.abortRescan()
 		return m, m.setNotice("Scan error: " + msg.Err.Error())
 	}
 	return m, nil
