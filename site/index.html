@@ -5,10 +5,6 @@ title: null
 
 <section class="hero">
   <div class="container">
-    <span class="hero__eyebrow">
-      <a href="{{ site.latest_release_url }}" style="color:inherit;text-decoration:none;">v1.2.0 released</a>
-    </span>
-
     <h1 class="hero__title">Sift the repo.<br>Keep the signal.</h1>
 
     <p class="hero__lede">
@@ -25,40 +21,44 @@ title: null
     <p class="hero__meta">
       Single Go binary, no account or server round-trip.
       Also on Homebrew, Scoop, and <a href="{{ '/install/' | relative_url }}">as prebuilt binaries</a>.
-      Source on <a href="https://github.com/{{ site.repository }}">GitHub</a>.
+      Source on <a href="https://github.com/{{ site.repository }}" target="_blank" rel="noopener">GitHub</a>.
     </p>
 
-    <div class="sieve" role="img" aria-label="A raw repository tree of many files being narrowed down to a small, ranked, token-budgeted set of files.">
+    <div class="sieve" role="img" aria-label="A raw repository tree with noise dimmed out on the left, narrowed to a small, ranked, token-budgeted set of files on the right.">
       <div class="sieve__pane sieve__pane--before">
         <div class="sieve__label"><span>your-project/</span><span class="sieve__count">214 files</span></div>
-        <div class="sieve__row">node_modules/lodash/index.js</div>
-        <div class="sieve__row">vendor/github.com/pkg/errors/errors.go</div>
-        <div class="sieve__row">.git/objects/3f/91a2…</div>
-        <div class="sieve__row">dist/bundle.min.js</div>
-        <div class="sieve__row">package-lock.json</div>
-        <div class="sieve__row sieve__row--cut">internal/api/handler.go</div>
-        <div class="sieve__row sieve__row--cut">internal/api/router.go</div>
-        <div class="sieve__row">coverage/lcov.info</div>
-        <div class="sieve__row sieve__row--cut">README.md</div>
-        <div class="sieve__row">testdata/fixture_003.json</div>
-        <div class="sieve__row">+ 204 more</div>
+        <div class="sieve__row sieve__row--noise">node_modules/lodash/index.js</div>
+        <div class="sieve__row sieve__row--noise">vendor/github.com/pkg/errors/errors.go</div>
+        <div class="sieve__row sieve__row--noise">.git/objects/3f/91a2…</div>
+        <div class="sieve__row sieve__row--noise">dist/bundle.min.js</div>
+        <div class="sieve__row sieve__row--noise">package-lock.json</div>
+        <div class="sieve__row">internal/api/handler.go</div>
+        <div class="sieve__row">internal/api/router.go</div>
+        <div class="sieve__row sieve__row--noise">coverage/lcov.info</div>
+        <div class="sieve__row">README.md</div>
+        <div class="sieve__row sieve__row--noise">testdata/fixture_003.json</div>
+        <div class="sieve__row sieve__row--noise">+ 204 more</div>
       </div>
 
-      <div class="sieve__mesh" aria-hidden="true"></div>
+      <div class="sieve__mesh" aria-hidden="true">
+        <svg viewBox="0 0 24 24" class="sieve__glyph"><path d="M4 4h16l-6 10v6l-4 2v-8z"/></svg>
+      </div>
 
       <div class="sieve__pane sieve__pane--after">
         <div class="sieve__label"><span>codebase.md</span><span class="sieve__count">42 files · 58,940 tok</span></div>
-        <div class="sieve__row"><span>internal/api/handler.go</span><span>FULL</span></div>
-        <div class="sieve__row"><span>internal/api/router.go</span><span>FULL</span></div>
+        <div class="sieve__row"><span>internal/api/handler.go</span><span class="sieve__tag--full">FULL</span></div>
+        <div class="sieve__row"><span>internal/api/router.go</span><span class="sieve__tag--full">FULL</span></div>
         <div class="sieve__row"><span>internal/api/middleware.go</span><span>SIGS</span></div>
-        <div class="sieve__row"><span>cmd/api/main.go</span><span>FULL</span></div>
+        <div class="sieve__row"><span>cmd/api/main.go</span><span class="sieve__tag--full">FULL</span></div>
         <div class="sieve__row"><span>internal/store/postgres.go</span><span>SIGS</span></div>
-        <div class="sieve__row"><span>README.md</span><span>FULL</span></div>
+        <div class="sieve__row"><span>README.md</span><span class="sieve__tag--full">FULL</span></div>
         <div class="sieve__row sieve__row--dim"><span>internal/store/query.go</span><span>SIGS</span></div>
-        <div class="sieve__row sieve__row--dim"><span>go.mod</span><span>FULL</span></div>
+        <div class="sieve__row sieve__row--dim"><span>go.mod</span><span class="sieve__tag--full">FULL</span></div>
         <div class="sieve__row sieve__row--dim"><span>+ 34 more, budget-fit</span><span></span></div>
+        <div class="sieve__row sieve__row--skip"><span>internal/legacy/parser.go</span><span class="sieve__tag--skip">SKIP (budget)</span></div>
       </div>
     </div>
+    <p class="sieve__caption">Noise stays gray and drops out. Everything else gets ranked, then rendered full or as signatures until the budget runs out.</p>
   </div>
 </section>
 

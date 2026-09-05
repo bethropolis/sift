@@ -70,6 +70,8 @@ Tokens
   --code-ink-dim: #7d8492;
   --code-accent: #e3a63f;
   --code-border: #262a33;
+  --skip: #f38ba8;
+  --full: #a6e3a1;
 
   --radius: 6px;
   --radius-lg: 10px;
@@ -96,6 +98,17 @@ body {
 }
 
 a { color: inherit; }
+
+/* External links open in a new tab — mark them so they read as external. */
+a[target="_blank"]::after {
+  content: "\2197";
+  display: inline-block;
+  font-size: 0.72em;
+  line-height: 1;
+  margin-left: 0.28em;
+  white-space: nowrap;
+  text-decoration: none;
+}
 
 .container {
   max-width: var(--container);
@@ -220,27 +233,6 @@ a { color: inherit; }
   border-bottom: 1px solid var(--border);
 }
 
-.hero__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--accent-ink);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-soft-border);
-  padding: 5px 10px;
-  border-radius: 999px;
-  margin-bottom: 22px;
-}
-.hero__eyebrow::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
 .hero__title {
   font-family: var(--font-mono);
   font-weight: 600;
@@ -311,14 +303,13 @@ a { color: inherit; }
 .sieve__count { color: var(--code-ink-dim); }
 
 .sieve__pane--before .sieve__row {
-  color: var(--code-ink-dim);
+  color: var(--code-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.sieve__pane--before .sieve__row--cut {
-  text-decoration: line-through;
-  text-decoration-color: var(--code-accent);
+.sieve__pane--before .sieve__row--noise {
+  color: var(--code-ink-dim);
 }
 
 .sieve__pane--after .sieve__row {
@@ -332,7 +323,27 @@ a { color: inherit; }
   color: var(--code-accent);
   flex: none;
 }
+.sieve__pane--after .sieve__row span:last-child.sieve__tag--full {
+  color: var(--full);
+}
 .sieve__pane--after .sieve__row--dim { color: var(--code-ink-dim); }
+.sieve__pane--after .sieve__row span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sieve__pane--after .sieve__row--skip { color: var(--skip); }
+.sieve__pane--after .sieve__row--skip span.sieve__tag--skip:last-child {
+  color: var(--skip);
+  text-decoration: line-through;
+}
+
+.sieve__caption {
+  margin: 14px auto 0;
+  max-width: 62ch;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
 
 .sieve__mesh {
   position: relative;
@@ -344,18 +355,22 @@ a { color: inherit; }
   justify-content: center;
 }
 .sieve__mesh::after {
-  content: "→";
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--code-accent);
+  content: "";
   width: 26px;
   height: 26px;
-  line-height: 24px;
-  text-align: center;
   border: 1px solid var(--code-border);
   border-radius: 50%;
   background: var(--code-bg);
+}
+.sieve__mesh .sieve__glyph {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--code-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 @media (max-width: 760px) {
