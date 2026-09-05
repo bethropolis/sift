@@ -65,71 +65,61 @@ title: null
 <section class="section" id="why-sift">
   <div class="container">
     <div class="section__head">
-      <p class="section__eyebrow">Why sift</p>
       <h2 class="section__title">Context curation is the bottleneck</h2>
+      <p class="section__lede">
+        Three ways teams feed code to models today — and why each breaks down.
+      </p>
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <span class="card__index">cat</span>
-        <h3 class="card__title">Not raw concatenation</h3>
-        <p class="card__body">Piping every file into a prompt ships vendored code, lockfiles, build output, and secrets — unranked and over budget.</p>
-      </div>
-      <div class="card">
-        <span class="card__index">lik</span>
-        <h3 class="card__title">Not a cloud service</h3>
-        <p class="card__body">Hosted context tools charge per seat and upload your code. sift is a local MIT-licensed binary; nothing leaves your machine.</p>
-      </div>
-      <div class="card">
-        <span class="card__index">hnd</span>
-        <h3 class="card__title">Not hand-picking</h3>
-        <p class="card__body">Choosing files by hand stops scaling past a dozen. Git-relevance ranking re-curates on every run, for free.</p>
-      </div>
-    </div>
+    <ul class="why-list">
+      <li><span><strong>Raw concatenation doesn't rank.</strong> Piping every file into a prompt ships vendored code, lockfiles, build output, and secrets — unranked and over budget.</span></li>
+      <li><span><strong>A cloud service sees your code.</strong> Hosted context tools charge per seat and upload your repository. sift is a local MIT-licensed binary; nothing leaves your machine.</span></li>
+      <li><span><strong>Hand-picking doesn't scale.</strong> Choosing files by hand stops working past a dozen. Git-relevance ranking re-curates on every run, for free.</span></li>
+    </ul>
   </div>
 </section>
 
 <section class="section section--alt" id="what-it-does">
   <div class="container">
     <div class="section__head">
-      <p class="section__eyebrow">What it does</p>
       <h2 class="section__title">One document, ranked and trimmed to fit</h2>
       <p class="section__lede">
-        Six things sift handles on every run so you don't have to curate
-        context by hand.
+        Two ideas do the heavy lifting; four more handle the details.
       </p>
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <span class="card__index">git</span>
-        <h3 class="card__title">Git-relevance ranking</h3>
-        <p class="card__body">Modified files first, then recent diffs, then recent commits, weighted with churn and import fan-in.</p>
+    <div class="feat-primary">
+      <div class="feat">
+        <span class="feat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span>
+        <h3>Git-relevance ranking</h3>
+        <p>Modified files first, then recent diffs, then recent commits — weighted with churn and import fan-in, so the files you actually touched lead the document.</p>
       </div>
-      <div class="card">
-        <span class="card__index">tok</span>
-        <h3 class="card__title">Token budgets</h3>
-        <p class="card__body">Set <code>--budget</code> and sift keeps the highest-priority files inside your model's context window.</p>
+      <div class="feat">
+        <span class="feat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L4 12l5 8"/><path d="M15 4l5 8-5 8"/></svg></span>
+        <h3>Signature compression</h3>
+        <p><code>--mode signatures</code> keeps declarations and doc comments via tree-sitter and drops function bodies — the full structure at a fraction of the tokens.</p>
       </div>
-      <div class="card">
-        <span class="card__index">sig</span>
-        <h3 class="card__title">Signature compression</h3>
-        <p class="card__body"><code>--mode signatures</code> keeps declarations and doc comments via tree-sitter, drops function bodies.</p>
+    </div>
+    <div class="feat-secondary">
+      <div class="feat">
+        <span class="feat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a8 8 0 0 1 16 0"/><path d="M12 15l4.5-5.5"/><path d="M3 19h18"/></svg></span>
+        <h3>Token budgets</h3>
+        <p>Set <code>--budget</code> and sift keeps the highest-priority files inside your model's context window.</p>
       </div>
-      <div class="card">
-        <span class="card__index">key</span>
-        <h3 class="card__title">Secret redaction</h3>
-        <p class="card__body">AWS, GitHub, Slack, Google, and Stripe keys are redacted before anything renders. On by default.</p>
+      <div class="feat">
+        <span class="feat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="10.5" width="12" height="9" rx="2"/><path d="M9 10.5V8a3 3 0 0 1 6 0v2.5"/></svg></span>
+        <h3>Secret redaction</h3>
+        <p>AWS, GitHub, Slack, Google, and Stripe keys are redacted before anything renders. On by default.</p>
       </div>
-      <div class="card">
-        <span class="card__index">tui</span>
-        <h3 class="card__title">Interactive picker</h3>
-        <p class="card__body">A dual-pane TUI with per-file <code>FULL</code>/<code>SIGS</code>/<code>SKIP</code> modes, smart-select, and task prompts.</p>
+      <div class="feat">
+        <span class="feat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 3-3 3"/><path d="M12.5 15.5H17"/></svg></span>
+        <h3>Interactive picker</h3>
+        <p>A dual-pane TUI with per-file <code>FULL</code>/<code>SIGS</code>/<code>SKIP</code> modes, smart-select, and task prompts.</p>
       </div>
-      <div class="card">
-        <span class="card__index">&Delta;</span>
-        <h3 class="card__title">Incremental deltas</h3>
-        <p class="card__body"><code>sift delta</code> renders only what changed since your last dump, as full files or a raw patch.</p>
+      <div class="feat">
+        <span class="feat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5L20.5 19.5h-17z"/><path d="M12 11v5"/></svg></span>
+        <h3>Incremental deltas</h3>
+        <p><code>sift delta</code> renders only what changed since your last dump, as full files or a raw patch.</p>
       </div>
     </div>
   </div>
@@ -138,7 +128,6 @@ title: null
 <section class="section" id="commands">
   <div class="container">
     <div class="section__head">
-      <p class="section__eyebrow">Commands</p>
       <h2 class="section__title">Seven ways to generate the document</h2>
       <p class="section__lede">
         Run <code class="inline-code">sift --help</code> or
@@ -147,6 +136,7 @@ title: null
     </div>
 
     <div class="cmd-strip">
+      <div class="cmd-head"><span>Command</span><span>What it does</span></div>
       <div class="cmd-row"><code>sift</code><span>Launch the interactive picker (bare invocation)</span></div>
       <div class="cmd-row"><code>sift dump [path]</code><span>Render every eligible file in the tree</span></div>
       <div class="cmd-row"><code>sift pick [path]</code><span>Select files interactively, then render</span></div>
@@ -161,7 +151,6 @@ title: null
 <section class="section section--alt" id="get-started">
   <div class="container">
     <div class="section__head">
-      <p class="section__eyebrow">Get started</p>
       <h2 class="section__title">Install in one line</h2>
       <p class="section__lede">macOS and Linux:</p>
     </div>
