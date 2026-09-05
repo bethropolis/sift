@@ -28,6 +28,9 @@ jobs:
           cp scripts/install-online.sh dist/install.sh
           chmod 755 dist/install.sh
 
+      - name: Sync docs into site collection
+        run: bash scripts/sync-docs.sh dist
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

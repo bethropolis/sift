@@ -6,7 +6,7 @@ title: null
 <section class="hero">
   <div class="container">
     <span class="hero__eyebrow">
-      <a href="{{ site.latest_release_url }}" style="color:inherit;text-decoration:none;">v1.1.0 released</a>
+      <a href="{{ site.latest_release_url }}" style="color:inherit;text-decoration:none;">v1.2.0 released</a>
     </span>
 
     <h1 class="hero__title">Sift the repo.<br>Keep the signal.</h1>
@@ -19,12 +19,13 @@ title: null
 
     <div class="hero__actions">
       <a class="btn btn--primary" href="{{ '/install/' | relative_url }}">Install sift</a>
-      <a class="btn btn--ghost" href="https://github.com/{{ site.repository }}">View on GitHub ↗</a>
+      <a class="btn btn--ghost" href="{{ '/docs/' | relative_url }}">Read the docs</a>
     </div>
 
     <p class="hero__meta">
       Single Go binary, no account or server round-trip.
       Also on Homebrew, Scoop, and <a href="{{ '/install/' | relative_url }}">as prebuilt binaries</a>.
+      Source on <a href="https://github.com/{{ site.repository }}">GitHub</a>.
     </p>
 
     <div class="sieve" role="img" aria-label="A raw repository tree of many files being narrowed down to a small, ranked, token-budgeted set of files.">
@@ -61,7 +62,34 @@ title: null
   </div>
 </section>
 
-<section class="section" id="what-it-does">
+<section class="section" id="why-sift">
+  <div class="container">
+    <div class="section__head">
+      <p class="section__eyebrow">Why sift</p>
+      <h2 class="section__title">Context curation is the bottleneck</h2>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <span class="card__index">cat</span>
+        <h3 class="card__title">Not raw concatenation</h3>
+        <p class="card__body">Piping every file into a prompt ships vendored code, lockfiles, build output, and secrets — unranked and over budget.</p>
+      </div>
+      <div class="card">
+        <span class="card__index">lik</span>
+        <h3 class="card__title">Not a cloud service</h3>
+        <p class="card__body">Hosted context tools charge per seat and upload your code. sift is a local MIT-licensed binary; nothing leaves your machine.</p>
+      </div>
+      <div class="card">
+        <span class="card__index">hnd</span>
+        <h3 class="card__title">Not hand-picking</h3>
+        <p class="card__body">Choosing files by hand stops scaling past a dozen. Git-relevance ranking re-curates on every run, for free.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--alt" id="what-it-does">
   <div class="container">
     <div class="section__head">
       <p class="section__eyebrow">What it does</p>
@@ -107,11 +135,11 @@ title: null
   </div>
 </section>
 
-<section class="section section--alt">
+<section class="section" id="commands">
   <div class="container">
     <div class="section__head">
       <p class="section__eyebrow">Commands</p>
-      <h2 class="section__title">Six ways to generate the document</h2>
+      <h2 class="section__title">Seven ways to generate the document</h2>
       <p class="section__lede">
         Run <code class="inline-code">sift --help</code> or
         <code class="inline-code">sift &lt;command&gt; --help</code> for the full flag list.
@@ -130,7 +158,7 @@ title: null
   </div>
 </section>
 
-<section class="section">
+<section class="section section--alt" id="get-started">
   <div class="container">
     <div class="section__head">
       <p class="section__eyebrow">Get started</p>

@@ -18,6 +18,24 @@ kramdown:
 
 permalink: pretty
 
+collections:
+  docs:
+    output: true
+    permalink: /docs/:path/
+
+defaults:
+  - scope:
+      path: ""
+      type: "docs"
+    values:
+      layout: "docs"
+  - scope:
+      path: ""
+    values:
+      # Shared share-image for og:image / twitter cards (made absolute
+      # by jekyll-seo-tag from site.url + baseurl).
+      image: /assets/img/og.png
+
 sass:
   style: compressed
 

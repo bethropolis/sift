@@ -35,3 +35,6 @@ vendor/
 
 # local eval harness (not part of product)
 /eval/
+
+# local Jekyll preview (see `just site-serve`)
+/.site-preview/

@@ -74,6 +74,21 @@ delta-patch:
 sig:
   go run {{ pkg }} dump . --mode signatures --style xml
 
+# Sync docs/*.md into a site source dir as the /docs/ collection (default: site/)
+docs-site dest="site":
+  bash scripts/sync-docs.sh {{ dest }}
+
+# Serve the site locally, mirroring the Pages build (sync docs + installer)
+site-serve:
+  rm -rf .site-preview
+  mkdir -p .site-preview
+  cp -R site/. .site-preview/
+  rm -rf .site-preview/vendor .site-preview/_site
+  bash scripts/sync-docs.sh .site-preview
+  cp scripts/install-online.sh .site-preview/install.sh
+  chmod 755 .site-preview/install.sh
+  cd .site-preview && BUNDLE_GEMFILE="$PWD/Gemfile" BUNDLE_PATH="{{ justfile_directory() }}/site/vendor/bundle" bundle exec jekyll serve --port 4000
+
 # Remove the built binary
 clean:
   rm -rf bin

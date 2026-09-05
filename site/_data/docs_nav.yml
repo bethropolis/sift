@@ -1,0 +1,25 @@
+# Sidebar order + docs landing cards. Mirrors the grouping in docs/README.md
+# (the canonical nav order). `url` values are site paths; use relative_url
+# when rendering so the /sift baseurl keeps working.
+- group: Getting started
+  pages:
+    - title: Installation
+      url: /docs/installation/
+      desc: Install on macOS, Linux, Windows, or FreeBSD, or build from source.
+    - title: Usage
+      url: /docs/usage/
+      desc: Commands, output destinations, filtering, and examples.
+- group: Features in depth
+  pages:
+    - title: Interactive picker
+      url: /docs/picker/
+      desc: The dual-pane TUI — navigation, per-file modes, and task prompts.
+    - title: Configuration and profiles
+      url: /docs/configuration/
+      desc: Flags, .sift.toml profiles, and how precedence works.
+    - title: Output formats and prompts
+      url: /docs/output/
+      desc: The four styles, signature mode, and clipboard output.
+    - title: Incremental deltas
+      url: /docs/delta/
+      desc: Feed an LLM only what changed since the last dump.

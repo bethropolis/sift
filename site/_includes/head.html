@@ -1,0 +1,53 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{% seo %}
+<link rel="icon" href="{{ '/favicon.ico' | relative_url }}" sizes="any">
+<link rel="icon" href="{{ '/icon.svg' | relative_url }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{ '/apple-touch-icon.png' | relative_url }}">
+<link rel="manifest" href="{{ '/site.webmanifest' | relative_url }}">
+<link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+{% if page.url == "/" %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "sift",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": ["macOS", "Linux", "Windows", "FreeBSD"],
+  "url": "{{ '/' | absolute_url }}",
+  "downloadUrl": "{{ site.latest_release_url }}",
+  "installUrl": "{{ '/install/' | absolute_url }}",
+  "description": {{ site.description | jsonify }},
+  "license": "https://opensource.org/licenses/MIT",
+  "author": { "@type": "Person", "name": "bethropolis", "url": "https://github.com/bethropolis" },
+  "offers": { "@type": "Offer", "price": "0" }
+}
+</script>
+{% endif %}
+{% if page.layout == "docs" %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "{{ '/' | absolute_url }}" },
+    { "@type": "ListItem", "position": 2, "name": "Docs", "item": "{{ '/docs/' | absolute_url }}" }
+    {% unless page.url == "/docs/" %},
+    { "@type": "ListItem", "position": 3, "name": {{ page.title | jsonify }}, "item": "{{ page.url | absolute_url }}" }
+    {% endunless %}
+  ]
+}
+</script>
+{% unless page.url == "/docs/" %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": {{ page.title | jsonify }},
+  "description": {{ page.description | default: site.description | jsonify }},
+  "url": "{{ page.url | absolute_url }}",
+  "author": { "@type": "Person", "name": "bethropolis", "url": "https://github.com/bethropolis" }
+}
+</script>
+{% endunless %}
+{% endif %}
