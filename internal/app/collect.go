@@ -176,12 +176,19 @@ func (a *App) walkAndCollect(mode collectMode, ctx context.Context, emit func(fo
 // signature compressor is only constructed for flows that use it (picker and
 // signatures mode), so ordinary full-content scans never load tree-sitter.
 func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
+	// Struct-literal Apps (tests) carry no cache; they get a throwaway
+	// instead of sharing, which is correct but unshared.
+	cache := a.contentCache
+	if cache == nil {
+		cache = scan.NewContentCache()
+	}
 	processor, err := scan.New(scan.Options{
 		TokenizeModel:  a.cfg.TokenizeModel,
 		SmartFilter:    a.cfg.SmartFilter,
 		SmartMaxTokens: a.cfg.SmartMaxTokens,
 		Compress:       mode == collectPicker || (mode == collectBlocking && a.cfg.Mode == "signatures"),
 		Logger:         a.log,
+		Cache:          cache,
 	})
 	if err != nil {
 		return nil, err

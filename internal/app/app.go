@@ -8,6 +8,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/logger"
+	"github.com/bethropolis/sift/internal/scan"
 )
 
 // App encapsulates the main application functionality
@@ -25,6 +26,11 @@ type App struct {
 	// OnlyPaths, when non-nil, restricts the walk to these relative paths.
 	// Used by sift diff to dump a curated set of files.
 	OnlyPaths map[string]bool
+
+	// contentCache memoizes token counts and signature summaries by content
+	// hash across Collect calls, so watch re-renders skip tree-sitter and
+	// BPE work for unchanged files.
+	contentCache *scan.ContentCache
 }
 
 // EnablePickerVisibility lets the interactive picker receive hidden and
@@ -76,10 +82,11 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	return &App{
-		cfg:        cfg,
-		log:        log,
-		output:     output,
-		outputPath: outputPath,
+		cfg:          cfg,
+		log:          log,
+		output:       output,
+		outputPath:   outputPath,
+		contentCache: scan.NewContentCache(),
 	}, nil
 }
 

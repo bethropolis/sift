@@ -46,6 +46,10 @@ type Options struct {
 	// grammars and parser pools are not loaded unnecessarily.
 	Compress bool
 	Logger   *logger.Logger
+	// Cache memoizes token counts and signature summaries by content hash.
+	// When nil, New installs a fresh instance; callers that want hits across
+	// processors (e.g. a long-lived App serving watch re-renders) inject one.
+	Cache *ContentCache
 }
 
 // Processor transforms a file's content into an enriched FileEntry.
@@ -59,6 +63,8 @@ type Processor struct {
 	compressor *compress.Compressor
 	evaluator  *smart.Evaluator
 	log        *logger.Logger
+	cache      *ContentCache
+	model      string
 }
 
 // New returns a Processor for the given options. Tokenizer construction can
@@ -68,9 +74,15 @@ func New(opts Options) (*Processor, error) {
 	if err != nil {
 		return nil, err
 	}
+	cache := opts.Cache
+	if cache == nil {
+		cache = NewContentCache()
+	}
 	p := &Processor{
 		tokenizer: tokenizer,
 		log:       opts.Logger,
+		cache:     cache,
+		model:     opts.TokenizeModel,
 	}
 	if opts.Compress {
 		p.compressor = compress.New()
@@ -93,6 +105,26 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 		if skip, reason := p.evaluator.ShouldSkipPath(path); skip {
 			return format.FileEntry{}, fmt.Errorf("%w: %s", ErrFileSkipped, reason)
 		}
+	}
+
+	// Fast path: identical content under identical options replays the
+	// enriched entry verbatim. Skip decisions are static per process and
+	// name rules already ran above, so a hit cannot resurrect a file the
+	// filter would reject for unchanged bytes.
+	if cached, hit := p.cache.Get(content, mode, p.model); hit {
+		return format.FileEntry{
+			Path:         path,
+			Content:      cached.Content,
+			Tokens:       cached.Tokens,
+			TokensFull:   cached.TokensFull,
+			SigContent:   cached.SigContent,
+			TokensSig:    cached.TokensSig,
+			IsCompressed: cached.IsCompressed,
+			Language:     cached.Language,
+		}, nil
+	}
+
+	if p.evaluator != nil {
 		smartTokens = p.countTokens(content, path)
 		if skip, reason := p.evaluator.ShouldSkip(path, content, smartTokens); skip {
 			return format.FileEntry{}, fmt.Errorf("%w: %s", ErrFileSkipped, reason)
@@ -147,6 +179,16 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 		entry.TokensFull = entry.Tokens
 		entry.TokensSig = entry.Tokens
 	}
+
+	p.cache.Put(content, mode, p.model, CachedResult{
+		Content:      entry.Content,
+		Tokens:       entry.Tokens,
+		TokensFull:   entry.TokensFull,
+		SigContent:   entry.SigContent,
+		TokensSig:    entry.TokensSig,
+		IsCompressed: entry.IsCompressed,
+		Language:     entry.Language,
+	})
 
 	return entry, nil
 }

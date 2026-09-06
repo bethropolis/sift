@@ -1,8 +1,6 @@
 package main
 
 import (
-	"path/filepath"
-
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/state"
@@ -28,7 +26,7 @@ func recordDeltaState(rootDir, ref string, files, tokens int) error {
 }
 
 func recordState(rootDir, ref string, files, tokens int) error {
-	absRootDir, err := filepath.Abs(rootDir)
+	absRootDir, err := state.CanonicalRoot(rootDir)
 	if err != nil {
 		return err
 	}
@@ -48,11 +46,9 @@ func recordState(rootDir, ref string, files, tokens int) error {
 		return nil
 	}
 
-	st, err := state.Load()
-	if err != nil {
-		return err
-	}
 	key := state.GetProjectKey(absRootDir)
-	st.Record(key, hash, subject, files, tokens)
-	return st.Save()
+	return state.MutateState(func(st *state.AppState) error {
+		st.Record(key, hash, subject, files, tokens)
+		return nil
+	})
 }

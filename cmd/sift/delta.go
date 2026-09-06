@@ -51,7 +51,7 @@ diff, or delta for this project, or --since to override it.`,
 		}
 
 		rootDir := cfg.RootDir
-		absRootDir, err := filepath.Abs(rootDir)
+		absRootDir, err := state.CanonicalRoot(rootDir)
 		if err != nil {
 			return fmt.Errorf("invalid root directory path '%s': %w", rootDir, err)
 		}

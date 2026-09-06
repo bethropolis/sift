@@ -18,7 +18,7 @@ import (
 // It returns nil when the directory is not a git repository or no dump
 // baseline has been recorded for it.
 func (s *service) buildDeltaInfo(files []format.FileEntry) *tui.DeltaInfo {
-	absRootDir, err := filepath.Abs(s.cfg.RootDir)
+	absRootDir, err := state.CanonicalRoot(s.cfg.RootDir)
 	if err != nil {
 		return nil
 	}

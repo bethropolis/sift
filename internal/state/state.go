@@ -40,6 +40,18 @@ func GetProjectKey(absPath string) string {
 	return hex.EncodeToString(hash[:8])
 }
 
+// CanonicalRoot resolves rootDir to the absolute, cleaned path every
+// state-key site must use. Writers (record) and readers (delta, diff,
+// picker) share this helper so a dump recorded as "." is found again as
+// ".", an absolute path, or any equivalent spelling.
+func CanonicalRoot(rootDir string) (string, error) {
+	abs, err := filepath.Abs(rootDir)
+	if err != nil {
+		return "", err
+	}
+	return abs, nil
+}
+
 // StatePath returns the JSON state file location in the user's config
 // directory: ~/.config/sift/state.json on Linux, %APPDATA% on Windows.
 func StatePath() (string, error) {
@@ -54,7 +66,12 @@ func StatePath() (string, error) {
 func Load() (*AppState, error) {
 	mu.Lock()
 	defer mu.Unlock()
+	return loadLocked()
+}
 
+// loadLocked is Load without the in-process mutex, for use inside MutateState
+// which already holds it across the whole transaction.
+func loadLocked() (*AppState, error) {
 	path, err := StatePath()
 	if err != nil {
 		return nil, err
@@ -84,7 +101,12 @@ func Load() (*AppState, error) {
 func (s *AppState) Save() error {
 	mu.Lock()
 	defer mu.Unlock()
+	return s.saveLocked()
+}
 
+// saveLocked is Save without the in-process mutex, for use inside MutateState
+// which already holds it across the whole transaction.
+func (s *AppState) saveLocked() error {
 	path, err := StatePath()
 	if err != nil {
 		return err
@@ -113,6 +135,48 @@ func (s *AppState) Save() error {
 		return err
 	}
 	return os.Rename(tmpName, path)
+}
+
+// LockPath returns the advisory lock file alongside state.json. It must be
+// held across every read-modify-write so concurrent processes (e.g. a watch
+// session and a manual dump) cannot clobber each other's records.
+func LockPath() (string, error) {
+	path, err := StatePath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(path), "state.lock"), nil
+}
+
+// MutateState runs fn inside a cross-process file lock plus the in-process
+// mutex, loading the state, applying fn, and saving atomically. All state
+// mutations must go through here; Load/Save remain for lock-free reads and
+// single-shot writes.
+func MutateState(fn func(st *AppState) error) error {
+	lockPath, err := LockPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return err
+	}
+	lock, err := acquireFileLock(lockPath)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	st, err := loadLocked()
+	if err != nil {
+		return err
+	}
+	if err := fn(st); err != nil {
+		return err
+	}
+	return st.saveLocked()
 }
 
 // Get returns the dump record for a project key, if present.
