@@ -23,3 +23,6 @@
     - title: Incremental deltas
       url: /docs/delta/
       desc: Feed an LLM only what changed since the last dump.
+    - title: MCP server
+      url: /docs/mcp/
+      desc: Expose sift to coding agents over stdio.
