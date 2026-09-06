@@ -180,6 +180,15 @@ func (g *Git) RawPatch(from, to string) string {
 	return g.runRaw("diff", from+".."+to)
 }
 
+// RawWorktreePatch returns the unified diff of uncommitted working-tree
+// changes against ref (usually HEAD).
+func (g *Git) RawWorktreePatch(ref string) string {
+	if ref == "" {
+		ref = "HEAD"
+	}
+	return g.runRaw("diff", ref)
+}
+
 // ChangedBetween returns the paths changed between two refs.
 func (g *Git) ChangedBetween(from, to string) []string {
 	set := map[string]bool{}

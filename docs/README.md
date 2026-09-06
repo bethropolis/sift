@@ -22,6 +22,7 @@ most important context fits in a model's window.
   task directives, and clipboard output
 - [Incremental deltas](delta.md) — feed an LLM only what changed since the
   last dump
+- [MCP server](mcp.md) — expose sift to coding agents over stdio
 
 ## Command cheat-sheet
 
@@ -34,6 +35,7 @@ most important context fits in a model's window.
 | `sift diff [ref]` | Render only files changed relative to a Git ref |
 | `sift delta [path]` | Render only changes since the last recorded dump |
 | `sift watch [path]` | Re-render the document whenever files change |
+| `sift mcp [path]` | Start an MCP server over stdio for coding agents |
 
 Every command accepts `--help`; `sift --help` lists the shared flags.
 
