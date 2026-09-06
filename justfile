@@ -87,7 +87,7 @@ site-serve:
   bash scripts/sync-docs.sh .site-preview
   cp scripts/install-online.sh .site-preview/install.sh
   chmod 755 .site-preview/install.sh
-  cd .site-preview && BUNDLE_GEMFILE="$PWD/Gemfile" BUNDLE_PATH="{{ justfile_directory() }}/site/vendor/bundle" bundle exec jekyll serve --port 3000
+  cd .site-preview && BUNDLE_GEMFILE="$PWD/Gemfile" BUNDLE_PATH="{{ justfile_directory() }}/site/vendor/bundle" bundle exec jekyll serve --host 0.0.0.0 --port 3000
 
 # Remove the built binary
 clean:

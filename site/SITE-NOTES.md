@@ -43,7 +43,8 @@ just site-serve
 ```
 
 This mirrors the Pages build (copies `site/` to `.site-preview/`, syncs
-docs, stages the installer) and serves on `http://localhost:3000/sift/`.
+docs, stages the installer) and serves `http://localhost:3000/sift/`, bound
+to `0.0.0.0` so it's also reachable from other devices on your network.
 Or step through it manually:
 
 ```bash
