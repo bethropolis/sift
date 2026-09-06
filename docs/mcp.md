@@ -57,7 +57,7 @@ comes down to how the client starts the subprocess:
 
 Global config (no path — recommended) unless noted otherwise.
 
-<details>
+<details markdown="1">
 <summary><strong>Claude Code</strong></summary>
 
 CLI, one-time, user-scoped (applies to every project you open):
@@ -84,7 +84,7 @@ it scoped to one repo, or need a different `sift` build per project.
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><strong>Claude Desktop</strong></summary>
 
 Not project-scoped, so cwd can't move with you — pass the path explicitly.
@@ -105,7 +105,7 @@ Add one entry per repo you want available (`sift-myrepo`, `sift-otherrepo`, …)
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><strong>OpenAI Codex (CLI &amp; IDE extension — shared config)</strong></summary>
 
 Codex uses TOML, not JSON. Either:
@@ -128,7 +128,7 @@ per-project overrides (only loaded for trusted directories).
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><strong>OpenCode</strong></summary>
 
 Global: `~/.config/opencode/opencode.json`. Project (overrides global):
@@ -154,7 +154,7 @@ subfolder.
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><strong>Cursor</strong></summary>
 
 Global: `~/.cursor/mcp.json`. Project: `.cursor/mcp.json` in the repo.
@@ -172,7 +172,7 @@ Global: `~/.cursor/mcp.json`. Project: `.cursor/mcp.json` in the repo.
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><strong>Windsurf</strong></summary>
 
 `~/.codeium/windsurf/mcp_config.json`:
@@ -190,7 +190,7 @@ Global: `~/.cursor/mcp.json`. Project: `.cursor/mcp.json` in the repo.
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><strong>Cline (VS Code extension)</strong></summary>
 
 Via Cline's MCP settings UI, or `cline_mcp_settings.json` directly:
@@ -209,7 +209,7 @@ Via Cline's MCP settings UI, or `cline_mcp_settings.json` directly:
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><strong>Zed</strong></summary>
 
 `settings.json`, under `context_servers`:
@@ -229,7 +229,7 @@ Via Cline's MCP settings UI, or `cline_mcp_settings.json` directly:
 
 </details>
 
-<details>
+<details markdown="1">
 <summary><strong>VS Code (GitHub Copilot MCP)</strong></summary>
 
 `.vscode/mcp.json` (or the user-level MCP settings for a global entry):

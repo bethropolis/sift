@@ -43,12 +43,23 @@ just site-serve
 ```
 
 This mirrors the Pages build (copies `site/` to `.site-preview/`, syncs
-docs, stages the installer) and serves on `http://localhost:4000/sift/`.
+docs, stages the installer) and serves on `http://localhost:3000/sift/`.
 Or step through it manually:
 
 ```bash
 bash scripts/sync-docs.sh site   # writes site/_docs/ (gitignored)
 cd site && bundle exec jekyll serve
+```
+
+## Authoring notes
+
+- Raw HTML in docs markdown is verbatim to kramdown (GFM): fenced code and
+  other markdown inside elements like `<details>` stays unparsed. Add
+  `markdown="1"` to the tag (e.g. the client-setup disclosures in
+  `docs/mcp.md`) so kramdown processes the children; GitHub ignores the
+  attribute and renders the same markdown fine.
+
+## What's deliberately not here
 ```
 
 ## What's deliberately not here

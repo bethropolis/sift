@@ -986,6 +986,43 @@ a[target="_blank"]::after {
 }
 .docs-content blockquote > :last-child { margin-bottom: 0; }
 
+/* Client-setup disclosures (mcp.md): kramdown renders the raw <details>
+   elements bare, so give them card treatment — border, roomy summary,
+   plus/minus affordance. */
+.docs-content details {
+  margin: 0 0 16px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+.docs-content summary {
+  margin: 0 -18px;
+  padding: 12px 46px 12px 18px;
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  position: relative;
+  list-style: none;
+}
+.docs-content summary::-webkit-details-marker { display: none; }
+.docs-content summary:hover { background: var(--bg-alt); }
+.docs-content summary::after {
+  content: "+";
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+.docs-content details[open] > summary { border-bottom: 1px solid var(--border); }
+.docs-content details[open] > summary::after { content: "−"; }
+.docs-content details > :last-child { margin-bottom: 18px; }
+
+
 /* Fenced code blocks (rouge) get the same dark treatment as the
    homepage installer snippet. */
 .docs-content .highlighter-rouge { margin: 0 0 20px; }
