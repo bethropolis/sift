@@ -103,15 +103,25 @@ func TestPackDiffPatchBlock(t *testing.T) {
 
 func TestListTreeMinimal(t *testing.T) {
 	root, _ := writeMCPRepo(t)
+	// Uncommitted nested file: exercises derived directory entries.
+	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "sub", "extra.go"), []byte("package sub\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	text, err := handleListTree(context.Background(), map[string]any{}, mcpTestConfig(root))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(text, "main.go") {
-		t.Errorf("list_tree missing main.go:\n%s", text)
+	if !strings.Contains(text, "main.go") || !strings.Contains(text, "extra.go") {
+		t.Errorf("list_tree missing files:\n%s", text)
 	}
-	if !strings.Contains(text, "files,") {
-		t.Errorf("list_tree missing count line:\n%s", text)
+	if !strings.Contains(text, "sub/") {
+		t.Errorf("list_tree missing derived dir entry:\n%s", text)
+	}
+	if !strings.Contains(text, "2 files, 1 dirs") {
+		t.Errorf("list_tree wrong count line:\n%s", text)
 	}
 	if strings.Contains(text, "package main") {
 		t.Error("list_tree leaked file content")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/bethropolis/sift/internal/app"
@@ -197,7 +198,9 @@ func handlePackDiff(ctx context.Context, args map[string]any, cfg *config.Config
 
 // handleListTree renders the repository structure without reading file
 // contents: indented paths with trailing slashes on directories, plus a
-// file/dir count line.
+// file/dir count line. WalkMeta only emits files, so directory entries are
+// derived from the files' ancestor paths — the tree shows exactly the
+// structure sift would pack, honoring every ignore and ext filter.
 func handleListTree(ctx context.Context, args map[string]any, cfg *config.Config) (string, error) {
 	runCfg := *cfg
 	stringArg(args, "ext", &runCfg.Extensions)
@@ -214,20 +217,31 @@ func handleListTree(ctx context.Context, args map[string]any, cfg *config.Config
 	if err != nil {
 		return "", err
 	}
-	var b strings.Builder
-	files, dirs := 0, 0
+	dirs := map[string]bool{}
 	for _, m := range metas {
-		depth := strings.Count(m.Path, "/")
-		name := filepath.Base(m.Path)
+		for d := filepath.Dir(m.Path); d != "."; d = filepath.Dir(d) {
+			dirs[filepath.ToSlash(d)] = true
+		}
+	}
+	paths := make([]string, 0, len(metas)+len(dirs))
+	for _, m := range metas {
+		paths = append(paths, m.Path)
+	}
+	for d := range dirs {
+		paths = append(paths, d)
+	}
+	sort.Strings(paths) // lexical order puts parents before children
+
+	var b strings.Builder
+	for _, p := range paths {
+		depth := strings.Count(p, "/")
+		name := filepath.Base(p)
 		b.WriteString(strings.Repeat("  ", depth) + name)
-		if m.IsDir {
+		if dirs[p] {
 			b.WriteString("/")
-			dirs++
-		} else {
-			files++
 		}
 		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "\n%d files, %d dirs", files, dirs)
+	fmt.Fprintf(&b, "\n%d files, %d dirs", len(metas), len(dirs))
 	return b.String(), nil
 }
