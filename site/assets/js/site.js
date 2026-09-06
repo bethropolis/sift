@@ -35,4 +35,34 @@
       : btn.getAttribute("data-copy");
     if (text) copyText(text, btn);
   });
+
+  // Mobile nav disclosure: <details> alone stays open, so close it when a
+  // link inside is chosen, on Escape, or on a click anywhere outside it.
+  var navMenu = document.querySelector(".nav-menu");
+  if (navMenu) {
+    navMenu.addEventListener("click", function (e) {
+      if (e.target.closest("a")) navMenu.removeAttribute("open");
+    });
+    document.addEventListener("click", function (e) {
+      if (!navMenu.contains(e.target)) navMenu.removeAttribute("open");
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") navMenu.removeAttribute("open");
+    });
+  }
+
+  // Install tabs (radio pattern): keep aria-selected in sync so screen
+  // readers hear which tab is active. One-off state sync, not a framework.
+  var installTabs = document.querySelectorAll('input[name="install-tabs"]');
+  if (installTabs.length) {
+    installTabs.forEach(function (input) {
+      input.addEventListener("change", function () {
+        document.querySelectorAll('.tabs__nav label[role="tab"]').forEach(function (label) {
+          label.setAttribute("aria-selected", input.checked ? "false" : label.getAttribute("aria-selected"));
+        });
+        var active = document.querySelector('.tabs__nav label[for="' + input.id + '"]');
+        if (active) active.setAttribute("aria-selected", "true");
+      });
+    });
+  }
 })();

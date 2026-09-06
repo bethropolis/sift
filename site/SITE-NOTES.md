@@ -55,7 +55,8 @@ cd site && bundle exec jekyll serve
 
 - No search: seven pages don't need it yet.
 - No JS framework. The install-method tabs are CSS-only (radio inputs);
-  the docs sidebar collapses via `<details>`; the only JS is the
-  copy-button enhancement.
+  the docs sidebar and the mobile nav collapse via `<details>`; the only
+  JS (`assets/js/site.js`) is the copy-button enhancement plus closing the
+  mobile nav sheet when a link is chosen or Escape is pressed.
 - Fonts are self-hosted (`assets/fonts/`, latin subsets of IBM Plex Mono
   + Sans with `font-display: swap`) — no third-party requests at all.

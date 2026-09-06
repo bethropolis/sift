@@ -64,6 +64,7 @@ Tokens
   --accent-ink: #7a5710;
   --accent-soft: #f6ecd9;
   --accent-soft-border: #e9d5ab;
+  --on-accent: #ffffff;
 
   --code-bg: #12141a;
   --code-ink: #e7e9ec;
@@ -155,20 +156,20 @@ a[target="_blank"]::after {
   height: 22px;
   border-radius: 5px;
   background: var(--ink);
-  position: relative;
   flex: none;
 }
-.brand__mark::before,
-.brand__mark::after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  height: 2px;
-  background: var(--code-accent);
+/* Same funnel glyph as the hero sieve, in miniature: amber stroke on the
+   ink tile, so nav and hero read as one logo. */
+.brand__mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--code-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.brand__mark::before { top: 6px; right: 8px; }
-.brand__mark::after { bottom: 6px; left: 8px; }
 
 .nav-links {
   display: flex;
@@ -186,7 +187,81 @@ a[target="_blank"]::after {
 
 .nav-links .btn { padding: 9px 16px; font-size: 14px; }
 .nav-links a.btn { color: var(--ink); }
-.nav-links a.btn:hover { color: #fff; }
+.nav-links a.btn:hover { color: var(--on-accent); }
+
+/* Mobile nav disclosure: at ≤640px the four primary links collapse into
+   a <details> hamburger; "Get sift" stays visible outside it as the CTA.
+   The sheet is position:absolute and anchors to .site-nav (the nearest
+   positioned ancestor), so it spans the full viewport right below the
+   sticky bar. No JS required to open or close. */
+.nav-menu { display: none; }
+
+@media (max-width: 640px) {
+  .nav-links { gap: 12px; }
+  /* Child selector on purpose: the sheet's own links must keep rendering. */
+  .nav-links > a:not(.btn) { display: none; }
+
+  .nav-menu { display: block; }
+  .nav-menu summary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-right: -13px; /* align the icon with the container's right edge */
+    border-radius: var(--radius);
+    cursor: pointer;
+    list-style: none;
+  }
+  .nav-menu summary::-webkit-details-marker { display: none; }
+  .nav-menu summary:hover { background: var(--bg-alt); }
+
+  /* Hamburger that morphs into a close (×) mark while open. */
+  .nav-menu__bars,
+  .nav-menu__bars::before,
+  .nav-menu__bars::after {
+    display: block;
+    width: 18px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--ink);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .nav-menu__bars { position: relative; }
+  .nav-menu__bars::before,
+  .nav-menu__bars::after {
+    content: "";
+    position: absolute;
+    left: 0;
+  }
+  .nav-menu__bars::before { top: -5px; }
+  .nav-menu__bars::after { top: 5px; }
+  .nav-menu[open] .nav-menu__bars { background: transparent; }
+  .nav-menu[open] .nav-menu__bars::before { transform: translateY(5px) rotate(45deg); }
+  .nav-menu[open] .nav-menu__bars::after { transform: translateY(-5px) rotate(-45deg); }
+
+  .nav-menu__sheet {
+    position: absolute;
+    top: var(--nav-h);
+    left: 0;
+    right: 0;
+    display: grid;
+    padding: 6px 24px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 16px 32px rgba(20, 23, 28, 0.09);
+  }
+  .nav-menu__sheet a {
+    padding: 13px 2px;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-menu__sheet a:last-child { border-bottom: 0; }
+  .nav-menu__sheet a:hover { color: var(--accent-ink); }
+}
 
 /* =========================================================
    Buttons
@@ -211,7 +286,7 @@ a[target="_blank"]::after {
   color: var(--ink);
   border-color: var(--accent);
 }
-.btn--primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); color: #fff; }
+.btn--primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); color: var(--on-accent); }
 
 .btn--ghost {
   background: transparent;
@@ -620,12 +695,15 @@ a[target="_blank"]::after {
 .tabs__nav label:last-child { border-right: none; }
 
 /* Keyboard focus follows the checked-tab underline pattern so tabbing
-   through the visually-hidden radios shows where you are. */
-#tab-curl:focus-visible ~ .tabs__nav label[for="tab-curl"],
-#tab-brew:focus-visible ~ .tabs__nav label[for="tab-brew"],
-#tab-scoop:focus-visible ~ .tabs__nav label[for="tab-scoop"],
-#tab-go:focus-visible ~ .tabs__nav label[for="tab-go"],
-#tab-src:focus-visible ~ .tabs__nav label[for="tab-src"] {
+   through the visually-hidden radios shows where you are. :focus (not
+   :focus-visible) on purpose: these radios are invisible, so the ring
+   can never be a visual regression, and Safari historically lags on
+   :focus-visible for radio inputs. */
+#tab-curl:focus ~ .tabs__nav label[for="tab-curl"],
+#tab-brew:focus ~ .tabs__nav label[for="tab-brew"],
+#tab-scoop:focus ~ .tabs__nav label[for="tab-scoop"],
+#tab-go:focus ~ .tabs__nav label[for="tab-go"],
+#tab-src:focus ~ .tabs__nav label[for="tab-src"] {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -692,6 +770,11 @@ a[target="_blank"]::after {
   border-radius: var(--radius);
   font-size: 14px;
 }
+.note > :first-child { margin-top: 0; }
+.note > :last-child { margin-bottom: 0; }
+.note ul { margin: 8px 0 0; padding-left: 20px; }
+.note li { margin: 0 0 4px; }
+.note li:last-child { margin-bottom: 0; }
 .note code { background: rgba(255,255,255,0.5); }
 
 .verify-block { margin-top: 56px; }
@@ -717,10 +800,32 @@ a[target="_blank"]::after {
 .footer-links { display: flex; gap: 20px; }
 
 @media (max-width: 640px) {
-  .nav-links { gap: 16px; }
-  .nav-links a:not(.btn) { display: none; }
   .hero { padding: 48px 0 40px; }
 }
+
+/* Spacing utilities: the handful of one-off rhythm adjustments that used
+   to be inline style="" attributes. Keep these, not inline styles. */
+.mt-sm { margin-top: 14px; }
+.mt-md { margin-top: 16px; }
+.mb-lg { margin-bottom: 20px; }
+.lede-measure { max-width: 70ch; }
+
+/* Visually hidden until focused: the skip link is the first tab stop on
+   every page. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 12px 20px;
+  background: var(--bg);
+  color: var(--accent-ink);
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  border-radius: 0 0 var(--radius) 0;
+}
+.skip-link:focus { left: 0; }
 
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -909,7 +1014,45 @@ a[target="_blank"]::after {
 .docs-content .highlight .kn,
 .docs-content .highlight .kp,
 .docs-content .highlight .kr,
-.docs-content .highlight .kt { color: var(--code-accent); font-weight: 600; }
+.docs-content .highlight .kt,
+.docs-content .highlight .kc { color: var(--code-accent); font-weight: 600; }
+/* Strings read as "kept" (green), numbers and calls as accent, operators
+   recede — a deliberate 4-color scheme on the dark code background. */
+.docs-content .highlight .s,
+.docs-content .highlight .s1,
+.docs-content .highlight .s2,
+.docs-content .highlight .sb,
+.docs-content .highlight .sc,
+.docs-content .highlight .sd,
+.docs-content .highlight .se,
+.docs-content .highlight .sh,
+.docs-content .highlight .si,
+.docs-content .highlight .sx,
+.docs-content .highlight .sr { color: var(--full); }
+.docs-content .highlight .mi,
+.docs-content .highlight .mf,
+.docs-content .highlight .mh,
+.docs-content .highlight .il,
+.docs-content .highlight .mo { color: var(--code-accent); }
+.docs-content .highlight .nb,
+.docs-content .highlight .nf,
+.docs-content .highlight .fm,
+.docs-content .highlight .nc,
+.docs-content .highlight .nn,
+.docs-content .highlight .no,
+.docs-content .highlight .nx { color: var(--accent); }
+/* YAML/JSON keys carry the structure: brighter ink, semibold, no new hue. */
+.docs-content .highlight .nt,
+.docs-content .highlight .na,
+.docs-content .highlight .nl { color: var(--code-ink); font-weight: 600; }
+.docs-content .highlight .o,
+.docs-content .highlight .ow { color: var(--code-ink-dim); }
+.docs-content .highlight .nv,
+.docs-content .highlight .vc,
+.docs-content .highlight .vi,
+.docs-content .highlight .vg { color: var(--code-ink); }
+.docs-content .highlight .cp,
+.docs-content .highlight .cpf { color: var(--code-ink-dim); font-style: italic; }
 .docs-content .highlight .err { color: var(--code-ink); background: transparent; }
 
 /* Markdown tables reuse the command-table look. Cells wrap instead of

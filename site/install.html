@@ -24,47 +24,53 @@ permalink: /install/
       <input type="radio" name="install-tabs" id="tab-go">
       <input type="radio" name="install-tabs" id="tab-src">
 
-      <div class="tabs__nav" role="radiogroup" aria-label="Install methods">
-        <label for="tab-curl">macOS / Linux</label>
-        <label for="tab-brew">Homebrew</label>
-        <label for="tab-scoop">Windows (Scoop)</label>
-        <label for="tab-go">go install</label>
-        <label for="tab-src">Build from source</label>
+      <div class="tabs__nav" role="tablist" aria-label="Install methods">
+        <label for="tab-curl" role="tab" id="tab-curl-label" aria-controls="panel-curl" aria-selected="true">macOS / Linux</label>
+        <label for="tab-brew" role="tab" id="tab-brew-label" aria-controls="panel-brew" aria-selected="false">Homebrew</label>
+        <label for="tab-scoop" role="tab" id="tab-scoop-label" aria-controls="panel-scoop" aria-selected="false">Windows (Scoop)</label>
+        <label for="tab-go" role="tab" id="tab-go-label" aria-controls="panel-go" aria-selected="false">go install</label>
+        <label for="tab-src" role="tab" id="tab-src-label" aria-controls="panel-src" aria-selected="false">Build from source</label>
       </div>
 
       <div class="tabs__panels">
-        <div class="tabs__panel" id="panel-curl">
+        <div class="tabs__panel" id="panel-curl" role="tabpanel" aria-labelledby="tab-curl-label">
           <div class="code-block">
-            <pre id="cmd-curl">curl -fsSL https://bethropolis.github.io/sift/install.sh | sh</pre>
+            <pre id="cmd-curl">curl -fsSL <span class="tok-dim">https://bethropolis.github.io/sift/</span><span class="tok-accent">install.sh</span> | sh</pre>
             <button class="copy-btn" data-copy-target="#cmd-curl">copy</button>
           </div>
-          <p class="note">
-            Installs to <code>~/.local/bin</code>. Set <code>SIFT_INSTALL_DIR</code>
-            first to install somewhere else, e.g.
-            <code>SIFT_INSTALL_DIR="$HOME/bin" curl -fsSL https://bethropolis.github.io/sift/install.sh | sh</code>.
-            If <code>~/.local/bin</code> isn't already on your <code>PATH</code>, add
-            <code>export PATH="$HOME/.local/bin:$PATH"</code> to your shell profile.
-          </p>
+          <div class="note">
+            <p>Installs to <code>~/.local/bin</code>.</p>
+            <ul>
+              <li>
+                To install somewhere else, set <code>SIFT_INSTALL_DIR</code> first:
+                <code>SIFT_INSTALL_DIR="$HOME/bin" curl -fsSL https://bethropolis.github.io/sift/install.sh | sh</code>
+              </li>
+              <li>
+                If <code>~/.local/bin</code> isn't already on your <code>PATH</code>,
+                add <code>export PATH="$HOME/.local/bin:$PATH"</code> to your shell profile.
+              </li>
+            </ul>
+          </div>
         </div>
 
-        <div class="tabs__panel" id="panel-brew">
+        <div class="tabs__panel" id="panel-brew" role="tabpanel" aria-labelledby="tab-brew-label">
           <div class="code-block">
-            <pre id="cmd-brew">brew install bethropolis/tap/sift</pre>
+            <pre id="cmd-brew">brew install <span class="tok-dim">bethropolis/tap/</span><span class="tok-accent">sift</span></pre>
             <button class="copy-btn" data-copy-target="#cmd-brew">copy</button>
           </div>
         </div>
 
-        <div class="tabs__panel" id="panel-scoop">
+        <div class="tabs__panel" id="panel-scoop" role="tabpanel" aria-labelledby="tab-scoop-label">
           <div class="code-block">
-            <pre id="cmd-scoop">scoop bucket add bethropolis https://github.com/bethropolis/scoop-bucket
-scoop install sift</pre>
+            <pre id="cmd-scoop">scoop bucket add bethropolis <span class="tok-dim">https://github.com/bethropolis/scoop-bucket</span>
+scoop install <span class="tok-accent">sift</span></pre>
             <button class="copy-btn" data-copy-target="#cmd-scoop">copy</button>
           </div>
         </div>
 
-        <div class="tabs__panel" id="panel-go">
+        <div class="tabs__panel" id="panel-go" role="tabpanel" aria-labelledby="tab-go-label">
           <div class="code-block">
-            <pre id="cmd-go">go install github.com/bethropolis/sift/cmd/sift@latest</pre>
+            <pre id="cmd-go">go install <span class="tok-dim">github.com/bethropolis/sift/cmd/sift</span><span class="tok-accent">@latest</span></pre>
             <button class="copy-btn" data-copy-target="#cmd-go">copy</button>
           </div>
           <p class="note">
@@ -74,11 +80,11 @@ scoop install sift</pre>
           </p>
         </div>
 
-        <div class="tabs__panel" id="panel-src">
+        <div class="tabs__panel" id="panel-src" role="tabpanel" aria-labelledby="tab-src-label">
           <div class="code-block">
-            <pre id="cmd-src">git clone https://github.com/bethropolis/sift.git
+            <pre id="cmd-src">git clone <span class="tok-dim">https://github.com/bethropolis/sift.git</span>
 cd sift
-./scripts/install.sh</pre>
+<span class="tok-dim">./scripts/</span><span class="tok-accent">install.sh</span></pre>
             <button class="copy-btn" data-copy-target="#cmd-src">copy</button>
           </div>
           <p class="note">
@@ -97,15 +103,15 @@ cd sift
     </p>
 
     <div class="verify-block">
-      <div class="section__head" style="margin-bottom:20px;">
+      <div class="section__head mb-lg">
         <h2 class="section__title">Check the install</h2>
       </div>
       <div class="code-block">
         <pre id="cmd-verify">sift version
-sift dump . --output -</pre>
+sift dump . <span class="tok-accent">--output</span> -</pre>
         <button class="copy-btn" data-copy-target="#cmd-verify">copy</button>
       </div>
-      <p class="hero__meta" style="margin-top:14px;">
+      <p class="hero__meta mt-sm">
         <code class="inline-code">sift version</code> prints the installed
         version; <code class="inline-code">sift dump . --output -</code>
         scans the current directory and prints a context document to
@@ -114,20 +120,20 @@ sift dump . --output -</pre>
     </div>
 
     <div class="verify-block">
-      <div class="section__head" style="margin-bottom:20px;">
+      <div class="section__head mb-lg">
         <h2 class="section__title">Staying current</h2>
       </div>
-      <p class="section__lede" style="max-width:70ch;">
+      <p class="section__lede lede-measure">
         Re-run the same install command to upgrade. It overwrites the
         existing binary. State and preferences live under your application
         config directory and survive upgrades. To remove sift entirely:
       </p>
-      <div class="code-block" style="margin-top:16px;">
-        <pre id="cmd-remove">rm -f ~/.local/bin/sift               # curl / local installer
-brew uninstall bethropolis/tap/sift   # Homebrew
-scoop uninstall sift                  # Scoop
+      <div class="code-block mt-md">
+        <pre id="cmd-remove">rm -f ~/.local/bin/sift               <span class="tok-dim"># curl / local installer</span>
+brew uninstall bethropolis/tap/sift   <span class="tok-dim"># Homebrew</span>
+scoop uninstall sift                  <span class="tok-dim"># Scoop</span>
 
-rm -rf ~/.config/sift                 # optional: config, state, preferences</pre>
+rm -rf ~/.config/sift                 <span class="tok-dim"># optional: config, state, preferences</span></pre>
         <button class="copy-btn" data-copy-target="#cmd-remove">copy</button>
       </div>
     </div>
