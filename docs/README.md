@@ -22,6 +22,8 @@ most important context fits in a model's window.
   task directives, and clipboard output
 - [Incremental deltas](delta.md) — feed an LLM only what changed since the
   last dump
+- [Dependency expansion](dependencies.md) — auto-include imports of the
+  selected files as signature-compressed context
 - [MCP server](mcp.md) — expose sift to coding agents over stdio
 
 ## Command cheat-sheet

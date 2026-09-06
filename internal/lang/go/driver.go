@@ -65,6 +65,31 @@ func (goDriver) Imports(path, moduleRoot string, content []byte) []string {
 	return targets
 }
 
+// ResolveImports resolves a Go file's imports to confirmed repo-relative
+// paths. Go imports name packages (directories), so each target is the
+// package dir itself; the caller expands directories to collected files.
+func (goDriver) ResolveImports(path, moduleRoot string, content []byte, exists func(string) bool) []string {
+	var out []string
+	seen := map[string]bool{}
+	forEachImportSpec(content, func(spec string) {
+		dir := stripModulePrefix(spec, moduleRoot)
+		if dir == "" {
+			return
+		}
+		// Drop file suffix if present; a package import resolves to a dir.
+		if ext := filepath.Ext(dir); ext != "" {
+			dir = strings.TrimSuffix(dir, ext)
+		}
+		dir = filepath.ToSlash(dir)
+		if seen[dir] || !exists(dir) {
+			return
+		}
+		seen[dir] = true
+		out = append(out, dir)
+	})
+	return out
+}
+
 // forEachImportSpec calls fn for every quoted import path in a Go file,
 // handling single-line and parenthesized import blocks.
 func forEachImportSpec(content []byte, fn func(spec string)) {

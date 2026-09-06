@@ -85,6 +85,14 @@ func Imports(path, moduleRoot string, content []byte) []string {
 	return registry.Imports(path, moduleRoot, content)
 }
 
+// ResolveImports returns the import targets referenced by a file as
+// confirmed, existing repo-relative file paths. Drivers implementing
+// ImportResolver commit to real files; all other paths fall back to generic
+// prefix expansion. exists reports whether a candidate path was collected.
+func ResolveImports(path, moduleRoot string, content []byte, exists func(string) bool) []string {
+	return registry.ResolveImports(path, moduleRoot, content, exists)
+}
+
 // ShouldSkipSmart reports whether any registered language's smart rules skip
 // the file.
 func ShouldSkipSmart(path, filename string, content []byte) (bool, string) {

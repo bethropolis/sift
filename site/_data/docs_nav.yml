@@ -23,6 +23,9 @@
     - title: Incremental deltas
       url: /docs/delta/
       desc: Feed an LLM only what changed since the last dump.
+    - title: Dependency expansion
+      url: /docs/dependencies/
+      desc: Auto-include imports of selected files as compressed context.
     - title: MCP server
       url: /docs/mcp/
       desc: Expose sift to coding agents over stdio.

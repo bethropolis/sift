@@ -99,3 +99,52 @@ func tsImports(path string, content []byte) []string {
 	}
 	return targets
 }
+
+var (
+	tsResolveExts = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
+	tsIndexFiles  = []string{"index.ts", "index.tsx", "index.js", "index.jsx"}
+)
+
+// ResolveImports resolves a TS/TSX file's local imports to confirmed,
+// existing repo-relative file paths. See jsDriver.ResolveImports.
+func (tsDriver) ResolveImports(path, _ string, content []byte, exists func(string) bool) []string {
+	return tsResolve(path, content, exists)
+}
+
+// ResolveImports resolves a TSX file's local imports. See tsDriver.
+func (tsxDriver) ResolveImports(path, _ string, content []byte, exists func(string) bool) []string {
+	return tsResolve(path, content, exists)
+}
+
+func tsResolve(path string, content []byte, exists func(string) bool) []string {
+	dir := filepath.ToSlash(filepath.Dir(path))
+	var out []string
+	seen := map[string]bool{}
+	add := func(spec string) {
+		var base string
+		switch {
+		case strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../"):
+			base = filepath.ToSlash(filepath.Clean(filepath.Join(dir, spec)))
+		case strings.HasPrefix(spec, "@/") || strings.HasPrefix(spec, "~/"):
+			base = filepath.ToSlash(filepath.Clean(spec[2:]))
+		default:
+			return // bare specifier: external
+		}
+		for _, cand := range types.ResolveCandidates(base, tsResolveExts, tsIndexFiles) {
+			if !seen[cand] && exists(cand) {
+				seen[cand] = true
+				out = append(out, cand)
+			}
+		}
+	}
+	for _, m := range tsImportFrom.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range tsImportType.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range tsImportSide.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	return out
+}

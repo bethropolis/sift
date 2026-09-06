@@ -69,10 +69,10 @@ func runSelect(cmd *cobra.Command, args []string) error {
 	}
 	scores := app.WeightsFromScoring(cfg.Scoring)
 	preferred := map[string]rank.FileScoreResult{}
+	graph := map[string][]string{}
 	if root, rootErr := filepath.Abs(cfg.RootDir); rootErr == nil {
 		ranker := app.NewRankerWithWeights(root, scores)
-		results := ranker.Rank(files)
-		preferred = results
+		preferred, graph = ranker.RankGraph(files)
 	}
 	candidates := make([]selection.Candidate, 0, len(files))
 	for _, file := range files {
@@ -87,10 +87,15 @@ func runSelect(cmd *cobra.Command, args []string) error {
 			},
 		})
 	}
-	result := selection.Select(candidates, selection.Request{
-		Budget: cfg.Budget,
-		Prompt: cfg.Prompt,
-		Tuning: app.TuningFromScoring(cfg.Scoring),
+	result := app.SelectWithDependencies(app.DependencyRequest{
+		Candidates: candidates,
+		Files:      files,
+		Graph:      graph,
+		Preferred:  preferred,
+		Budget:     cfg.Budget,
+		Prompt:     cfg.Prompt,
+		Tuning:     app.TuningFromScoring(cfg.Scoring),
+		MaxDepth:   cfg.MaxDepth,
 	})
 	if printSelection || selectionOnly {
 		writer := os.Stderr

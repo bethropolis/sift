@@ -44,13 +44,22 @@ func (r *Ranker) Available() bool {
 // patch). Duplicate paths collapse to a single result, which is written back
 // to every matching entry. Fan-in centrality uses the collected content.
 func (r *Ranker) Rank(files []format.FileEntry) map[string]rank.FileScoreResult {
-	fanIn := r.computeFanIn(files)
+	results, _ := r.RankGraph(files)
+	return results
+}
+
+// RankGraph ranks like Rank and additionally returns the dependency
+// adjacency retained from the fan-in pass: file path → confirmed dependency
+// paths. Targets are resolved files, except Go package imports which name
+// directories for the caller to expand against the collected set.
+func (r *Ranker) RankGraph(files []format.FileEntry) (map[string]rank.FileScoreResult, map[string][]string) {
+	fanIn, graph := r.computeFanIn(files)
 	results := r.g.CalculateUnifiedScores(r.rootDir, RankParams(files, fanIn), r.weights)
 	ApplyRankScores(files, results)
 	sort.SliceStable(files, func(i, j int) bool {
 		return files[i].RankScore > files[j].RankScore
 	})
-	return results
+	return results, graph
 }
 
 // RankParams maps enriched entries to the ranking boundary. FanInCount is
@@ -79,7 +88,7 @@ func RankParams(files []format.FileEntry, fanIn map[string]int) []rank.ScoringPa
 // package node and a single post-order pass distributes that centrality to
 // every file at or beneath it. This is near-linear in input instead of the
 // previous O(files × imports × files) triple loop.
-func (r *Ranker) computeFanIn(files []format.FileEntry) map[string]int {
+func (r *Ranker) computeFanIn(files []format.FileEntry) (map[string]int, map[string][]string) {
 	moduleRoots := r.moduleRoots(files)
 	root := &fanNode{children: map[string]*fanNode{}}
 	nodeByPath := make(map[string]*fanNode, len(files))
@@ -107,6 +116,21 @@ func (r *Ranker) computeFanIn(files []format.FileEntry) map[string]int {
 		node.isFile = true
 	}
 
+	// exists covers collected files and their ancestor directories (so Go
+	// package imports confirm), keyed lowercase to match the normalized
+	// paths the language drivers resolve against.
+	collected := make(map[string]bool, len(files))
+	for _, f := range files {
+		p := strings.ToLower(filepath.ToSlash(f.Path))
+		collected[p] = true
+		for d := filepath.Dir(p); d != "." && d != "/"; d = filepath.Dir(d) {
+			d = filepath.ToSlash(d)
+			collected[d] = true
+		}
+	}
+	exists := func(p string) bool { return collected[strings.ToLower(filepath.ToSlash(p))] }
+	graph := make(map[string][]string)
+
 	for _, f := range files {
 		filePath := filepath.ToSlash(f.Path)
 		modRoot := resolveModuleForFile(filePath, moduleRoots)
@@ -120,6 +144,13 @@ func (r *Ranker) computeFanIn(files []format.FileEntry) map[string]int {
 			if node, ok := nodeByPath[target]; ok {
 				node.hits++
 			}
+		}
+		// Retain the resolved adjacency in the same pass: confirmed
+		// dependency paths per file for dependency expansion. The exists
+		// predicate covers collected files and their ancestor directories so
+		// Go package (directory) imports confirm.
+		if targets := lang.ResolveImports(filePath, modRoot, f.Content, exists); len(targets) > 0 {
+			graph[filePath] = targets
 		}
 	}
 
@@ -135,7 +166,7 @@ func (r *Ranker) computeFanIn(files []format.FileEntry) map[string]int {
 		}
 	}
 	accumulate(root, 0)
-	return fanIn
+	return fanIn, graph
 }
 
 // fanNode is a single node in the trie built by computeFanIn. The trie is

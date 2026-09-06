@@ -146,7 +146,7 @@ func TestComputeFanIn(t *testing.T) {
 		{Path: "internal/app/sub/extra.go", Content: []byte("package sub\n")},
 		{Path: "other.go", Content: []byte("package main\n")},
 	}
-	fanIn := r.computeFanIn(files)
+	fanIn, graph := r.computeFanIn(files)
 
 	want := map[string]int{
 		"main.go":                   0,
@@ -159,6 +159,21 @@ func TestComputeFanIn(t *testing.T) {
 	for path, wantCount := range want {
 		if got := fanIn[path]; got != wantCount {
 			t.Errorf("fanIn[%q] = %d, want %d", path, got, wantCount)
+		}
+	}
+	// The same pass retains file → resolved-target adjacency: both importers
+	// point at the internal/app package dir; nothing else imports anything.
+	wantGraph := map[string][]string{
+		"main.go":          {"internal/app"},
+		"cmd/tool/main.go": {"internal/app"},
+	}
+	if len(graph) != len(wantGraph) {
+		t.Fatalf("graph has %d entries, want %d: %v", len(graph), len(wantGraph), graph)
+	}
+	for path, wantTargets := range wantGraph {
+		got := graph[path]
+		if len(got) != len(wantTargets) || (len(got) > 0 && got[0] != wantTargets[0]) {
+			t.Errorf("graph[%q] = %v, want %v", path, got, wantTargets)
 		}
 	}
 }

@@ -100,6 +100,7 @@ func (s *service) generateSelection(files []format.FileEntry, skipped []walker.S
 
 func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection, prompt string) error {
 	chosen := applySelection(s.env.App, files, selected)
+	chosen = app.ExpandChosen(files, chosen, s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
 	if len(chosen) == 0 {
 		return fmt.Errorf("nothing selected")
 	}

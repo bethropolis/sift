@@ -3,6 +3,8 @@
 // imports back, which keeps the driver/facade graph cycle-free.
 package types
 
+import "path/filepath"
+
 // ID uniquely identifies a supported language.
 type ID string
 
@@ -74,6 +76,32 @@ type Language interface {
 // so secondary languages resolve to their own grammar and declaration rules.
 type SignatureResolver interface {
 	SignatureLanguage(path string) ID
+}
+
+// ImportResolver is an optional capability of a Language that resolves its
+// own import syntax to confirmed, existing repo-relative file paths, unlike
+// ImportScanner (which returns loose prefixes for fan-in bucketing).
+// exists reports whether a candidate repo-relative path was collected.
+// A returned path may name a directory (Go package imports); the caller
+// expands directories to collected files.
+type ImportResolver interface {
+	ResolveImports(path, moduleRoot string, content []byte, exists func(string) bool) []string
+}
+
+// ResolveCandidates lists the file paths to probe for a resolved import
+// base: the raw path first, then extension fallbacks, then index fallbacks
+// for directory imports. Callers confirm each candidate with exists.
+func ResolveCandidates(base string, exts, indexFiles []string) []string {
+	cands := []string{base}
+	if filepath.Ext(base) == "" {
+		for _, ext := range exts {
+			cands = append(cands, base+ext)
+		}
+		for _, index := range indexFiles {
+			cands = append(cands, base+"/"+index)
+		}
+	}
+	return cands
 }
 
 // ImportScanner is an optional capability of a Language that returns the

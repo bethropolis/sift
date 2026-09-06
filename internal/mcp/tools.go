@@ -103,8 +103,9 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 		return "", err
 	}
 	preferred := map[string]rank.FileScoreResult{}
+	graph := map[string][]string{}
 	ranker := app.NewRankerWithWeights(absRoot, app.WeightsFromScoring(runCfg.Scoring))
-	preferred = ranker.Rank(files)
+	preferred, graph = ranker.RankGraph(files)
 
 	candidates := make([]selection.Candidate, 0, len(files))
 	for _, file := range files {
@@ -120,10 +121,15 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 			},
 		})
 	}
-	result := selection.Select(candidates, selection.Request{
-		Budget: runCfg.Budget,
-		Prompt: runCfg.Prompt,
-		Tuning: app.TuningFromScoring(runCfg.Scoring),
+	result := app.SelectWithDependencies(app.DependencyRequest{
+		Candidates: candidates,
+		Files:      files,
+		Graph:      graph,
+		Preferred:  preferred,
+		Budget:     runCfg.Budget,
+		Prompt:     runCfg.Prompt,
+		Tuning:     app.TuningFromScoring(runCfg.Scoring),
+		MaxDepth:   runCfg.MaxDepth,
 	})
 
 	buf, err := application.RenderFinalToBuffer(result.Selected, runCfg.Prompt)

@@ -214,6 +214,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 	}
 
 	chosen := applySelection(application, snapshotFiles(), selected)
+	chosen = app.ExpandChosen(snapshotFiles(), chosen, s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
 	if err := application.RenderFinal(chosen, snapshotSkipped(), time.Since(start), nil); err != nil {
 		return Result{}, err
 	}

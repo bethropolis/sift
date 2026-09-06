@@ -81,3 +81,44 @@ func (jsDriver) Imports(path, _ string, content []byte) []string {
 	}
 	return targets
 }
+
+var (
+	jsResolveExts = []string{".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}
+	jsIndexFiles  = []string{"index.js", "index.jsx", "index.mjs", "index.cjs"}
+)
+
+// ResolveImports resolves a JS/JSX file's local imports to confirmed,
+// existing repo-relative file paths: raw path first, then extension
+// fallbacks, then index fallbacks for directory imports.
+func (jsDriver) ResolveImports(path, _ string, content []byte, exists func(string) bool) []string {
+	dir := filepath.ToSlash(filepath.Dir(path))
+	var out []string
+	seen := map[string]bool{}
+	add := func(spec string) {
+		var base string
+		switch {
+		case strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../"):
+			base = filepath.ToSlash(filepath.Clean(filepath.Join(dir, spec)))
+		case strings.HasPrefix(spec, "@/") || strings.HasPrefix(spec, "~/"):
+			base = filepath.ToSlash(filepath.Clean(spec[2:]))
+		default:
+			return // bare specifier: external
+		}
+		for _, cand := range types.ResolveCandidates(base, jsResolveExts, jsIndexFiles) {
+			if !seen[cand] && exists(cand) {
+				seen[cand] = true
+				out = append(out, cand)
+			}
+		}
+	}
+	for _, m := range jsImportFrom.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range jsImportSide.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range jsRequire.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	return out
+}

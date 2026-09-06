@@ -78,6 +78,56 @@ func Imports(path, moduleRoot string, content []byte) []string {
 	return nil
 }
 
+// ResolveImports returns the import targets referenced by a file as
+// confirmed, existing repo-relative file paths. The path's language driver
+// owns the import syntax: drivers implementing ImportResolver commit to real
+// files, while all other paths fall back to a generic expander that runs the
+// ImportScanner prefix output through extension/index expansion against
+// exists. Nothing regresses for unsupported languages.
+func ResolveImports(path, moduleRoot string, content []byte, exists func(string) bool) []string {
+	norm := strings.ToLower(filepath.ToSlash(path))
+	if l, ok := ForPath(norm); ok {
+		if r, ok := l.(types.ImportResolver); ok {
+			return r.ResolveImports(norm, moduleRoot, content, exists)
+		}
+		return expandPrefixes(Imports(norm, moduleRoot, content), exists)
+	}
+	return nil
+}
+
+// expandPrefixes turns loose ImportScanner prefixes into confirmed files:
+// try the raw path, then extension fallbacks, then index/directory fallbacks.
+func expandPrefixes(prefixes []string, exists func(string) bool) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		p = strings.TrimSuffix(filepath.ToSlash(p), "/")
+		if p == "" || seen[p] {
+			return
+		}
+		seen[p] = true
+		if exists(p) {
+			out = append(out, p)
+		}
+	}
+	for _, prefix := range prefixes {
+		prefix = strings.TrimSuffix(filepath.ToSlash(prefix), "/")
+		if prefix == "" {
+			continue
+		}
+		add(prefix)
+		if filepath.Ext(prefix) == "" {
+			for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".rs"} {
+				add(prefix + ext)
+			}
+			for _, index := range []string{"index.ts", "index.tsx", "index.js", "mod.go"} {
+				add(prefix + "/" + index)
+			}
+		}
+	}
+	return out
+}
+
 // ShouldSkipSmart reports whether any registered language's smart rules skip
 // the file. Every rule is applied to every path, so cross-language artifacts
 // (e.g. package-lock.json) are still caught regardless of the file's own

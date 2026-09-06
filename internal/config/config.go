@@ -83,6 +83,9 @@ type Config struct {
 	Budget        int
 	TokenizeModel string
 	Mode          string
+	// MaxDepth bounds dependency expansion from the selected set
+	// (0 = disabled, -1 = unlimited).
+	MaxDepth int
 	// Prompt is an optional task/directive section prepended to the output.
 	Prompt string
 
@@ -114,6 +117,7 @@ func New() *Config {
 		Theme:             "auto",
 		HighlightMaxBytes: 256 * 1024,
 		WindowTitle:       "",
+		MaxDepth:          2,
 	}
 }
 
@@ -178,6 +182,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.IntVar(&c.Budget, "budget", c.Budget, "Maximum token budget (0 = no limit)")
 	fs.StringVar(&c.TokenizeModel, "tokenize-model", c.TokenizeModel, "Tokenizer model encoding (default: cl100k_base)")
 	fs.StringVar(&c.Mode, "mode", c.Mode, "Compression mode: full, signatures")
+	fs.IntVar(&c.MaxDepth, "max-depth", c.MaxDepth, "Dependency expansion depth from selected files (0 = disabled, -1 = unlimited)")
 	fs.StringVarP(&c.Prompt, "prompt", "p", c.Prompt, "Task/instruction directives prepended to the output")
 	fs.BoolVar(&c.SecretScan, "secrets", c.SecretScan, "Scan output for secrets and redact them")
 	fs.BoolVar(&c.ForceSecrets, "force-secrets", c.ForceSecrets, "Include secrets in output instead of redacting")
