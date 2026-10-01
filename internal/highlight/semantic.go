@@ -103,6 +103,9 @@ func parseLine(language, line string, state *scanState) []Span {
 	if language == "diff" || language == "patch" {
 		return parseDiffLine(line)
 	}
+	if language == "json" || language == "jsonc" {
+		return parseJSONLine(line, state, language == "jsonc")
+	}
 	switch language {
 	case "dockerfile":
 		return parseDockerfileLine(line)
@@ -149,7 +152,7 @@ func parseLine(language, line string, state *scanState) []Span {
 		return spans
 	}
 	commentPrefixes := []string{"//"}
-	if language == "go" || language == "c" || language == "cpp" || language == "java" || language == "javascript" || language == "typescript" || language == "tsx" {
+	if language == "go" || language == "c" || language == "cpp" || language == "csharp" || language == "java" || language == "javascript" || language == "typescript" || language == "tsx" || language == "dart" || language == "zig" {
 		commentPrefixes = append(commentPrefixes, "/*")
 	}
 	switch language {
@@ -160,9 +163,13 @@ func parseLine(language, line string, state *scanState) []Span {
 	case "html", "xml", "vue", "svelte", "astro":
 		commentPrefixes = append(commentPrefixes, "<!--")
 	}
-	keywords := keywordSetForLanguage(language)
-	builtins := builtinSetForLanguage(language)
-	types := builtinTypeSet(language)
+	if state.wordLanguage != language || state.wordSets == nil {
+		state.wordLanguage = language
+		state.wordSets = wordSetsForLanguage(language)
+	}
+	keywords := state.wordSets.keywords
+	builtins := state.wordSets.builtins
+	types := state.wordSets.types
 
 	for i := 0; i < len(line); {
 		if state.blockEnd != "" {
@@ -322,10 +329,12 @@ func plainLines(content []byte) []Line {
 }
 
 type scanState struct {
-	blockEnd  string
-	stringEnd string
-	inString  bool
-	fence     bool
+	blockEnd     string
+	stringEnd    string
+	inString     bool
+	fence        bool
+	wordLanguage string
+	wordSets     *languageWordSets
 }
 
 func languageForPath(path string) string {
@@ -338,6 +347,10 @@ func languageForPath(path string) string {
 	switch ext {
 	case "markdown":
 		return "markdown"
+	case "arb":
+		return "json"
+	case "jsonc":
+		return "jsonc"
 	case "py", "pyi":
 		return "python"
 	case "rs":
@@ -354,6 +367,16 @@ func languageForPath(path string) string {
 		return "sh"
 	case "htm":
 		return "html"
+	case "dart":
+		return "dart"
+	case "zig":
+		return "zig"
+	case "cs":
+		return "csharp"
+	case "h":
+		return "c"
+	case "hpp", "cc", "cxx":
+		return "cpp"
 	default:
 		return ext
 	}

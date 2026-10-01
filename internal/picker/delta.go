@@ -121,6 +121,11 @@ func (s *service) performDelta(files []format.FileEntry, sel tui.DeltaSelection)
 			if _, err := s.env.App.Output().Write(buf.Bytes()); err != nil {
 				return err
 			}
+			if s.cfg.CopyOnGenerate {
+				if err := clipboard.Copy(buf.Bytes()); err != nil {
+					return fmt.Errorf("copy generated output to clipboard: %w", err)
+				}
+			}
 		}
 		return s.env.RecordDelta(absRootDir, sel.To, len(g.ChangedBetween(sel.From, sel.To)), s.env.CountTokens(buf.Bytes()))
 	}

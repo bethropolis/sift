@@ -155,6 +155,9 @@ func (s *SiftDefaults) applyTo(c *Config) {
 	if s.NoWindowTitle != nil {
 		c.NoWindowTitle = *s.NoWindowTitle
 	}
+	if s.CopyOnGenerate != nil {
+		c.CopyOnGenerate = *s.CopyOnGenerate
+	}
 	if s.Scoring != nil {
 		c.Scoring.Merge(*s.Scoring)
 	}
@@ -489,6 +492,9 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) {
 	}
 	if s.NoWindowTitle != nil && !changed("no-window-title") {
 		c.NoWindowTitle = *s.NoWindowTitle
+	}
+	if s.CopyOnGenerate != nil && !changed("copy-on-generate") {
+		c.CopyOnGenerate = *s.CopyOnGenerate
 	}
 	if s.Scoring != nil {
 		c.Scoring.Merge(*s.Scoring)

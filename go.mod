@@ -17,6 +17,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/tiktoken-go/tokenizer v0.8.1
+	github.com/tree-sitter-grammars/tree-sitter-zig v1.1.2
 	golang.org/x/sys v0.36.0
 )
 

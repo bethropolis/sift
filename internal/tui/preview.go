@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -18,23 +19,21 @@ func (m *model) syncPreview() {
 	}
 }
 
-// previewLines splits preview content into lines, dropping the phantom empty
-// line left by a trailing newline so the scroll range matches visible text.
-func previewLines(content []byte) []string {
-	lines := strings.Split(string(content), "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	return lines
-}
-
 // previewLineCount returns the number of preview lines for the selected node.
 func (m model) previewLineCount() int {
 	n := m.node()
 	if n == nil || n.Kind != KindFile {
 		return 0
 	}
-	return len(previewLines(n.Preview()))
+	content := n.Preview()
+	if len(content) == 0 {
+		return 0
+	}
+	lines := bytes.Count(content, []byte{'\n'}) + 1
+	if content[len(content)-1] == '\n' {
+		lines--
+	}
+	return lines
 }
 
 // previewPageSize returns how many content lines fit in the preview pane.

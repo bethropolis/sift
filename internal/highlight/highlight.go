@@ -207,7 +207,7 @@ func supported(path string) bool {
 		return true
 	}
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".go", ".rs", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".py", ".pyi", ".java", ".kt", ".kts", ".cs", ".c", ".h", ".cc", ".cpp", ".cxx", ".rb", ".php", ".swift", ".json", ".yaml", ".yml", ".toml", ".sh", ".bash", ".zsh", ".sql", ".html", ".css", ".scss", ".vue", ".svelte", ".astro":
+	case ".go", ".rs", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".py", ".pyi", ".java", ".kt", ".kts", ".cs", ".c", ".h", ".cc", ".cpp", ".cxx", ".rb", ".php", ".swift", ".dart", ".zig", ".json", ".jsonc", ".arb", ".yaml", ".yml", ".toml", ".sh", ".bash", ".zsh", ".sql", ".md", ".mdx", ".markdown", ".html", ".htm", ".xml", ".css", ".scss", ".vue", ".svelte", ".astro":
 		return true
 	default:
 		return false

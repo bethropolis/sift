@@ -31,6 +31,8 @@ func commandFor() (name string, args []string, err error) {
 	switch {
 	case runtime.GOOS == "darwin":
 		return "pbcopy", nil, nil
+	case runtime.GOOS == "windows":
+		return "clip", nil, nil
 	case os.Getenv("WAYLAND_DISPLAY") != "":
 		return "wl-copy", nil, nil
 	case hasBinary("xclip"):

@@ -32,6 +32,8 @@ sift
 | `sift dump [path]` | Render every eligible file in the tree |
 | `sift pick [path]` | Select files interactively, then render |
 | `sift select [path]` | Auto-select the most useful files and render them |
+| `sift clone <repository>` | Temporarily shallow-clone a repository and dump it in the current directory |
+| `sift copy [file]` | Copy `codebase.md` (or another document) to the clipboard |
 | `sift diff [ref]` | Render only files changed relative to a Git ref (default `HEAD`) |
 | `sift delta [path]` | Render only changes since the last recorded dump |
 | `sift watch [path]` | Re-render the document whenever files change |
@@ -48,7 +50,13 @@ next to the scanned root. Control the destination with `--output`:
 sift dump . --output -          # stdout (piping-safe)
 sift dump . --output ../ctx.md  # a specific file
 sift dump . --clipboard         # copy to the system clipboard instead
+sift copy                       # copy the existing codebase.md for pasting
+sift clone https://github.com/org/project --branch main --depth 1
+sift clone https://github.com/org/project --here  # keep the checkout here (empty directory required)
 ```
+
+`clone` accepts `--branch NAME` (or `-b NAME`) and `--depth N`; it uses the
+installed Git client and the platform's temporary-directory support.
 
 ## Automatic selection
 

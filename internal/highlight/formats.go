@@ -2,6 +2,102 @@ package highlight
 
 import "strings"
 
+func parseJSONLine(line string, state *scanState, allowComments bool) []Span {
+	var spans []Span
+	add := func(start, end int, kind TokenKind) {
+		if end > start {
+			spans = append(spans, Span{Start: start, End: end, Kind: kind})
+		}
+	}
+	for i := 0; i < len(line); {
+		if state.blockEnd != "" {
+			end := strings.Index(line[i:], state.blockEnd)
+			if end < 0 {
+				add(i, len(line), TokenComment)
+				break
+			}
+			closeAt := i + end + len(state.blockEnd)
+			add(i, closeAt, TokenComment)
+			i = closeAt
+			state.blockEnd = ""
+			continue
+		}
+		if line[i] == ' ' || line[i] == '\t' || line[i] == '\r' {
+			i++
+			continue
+		}
+		if allowComments && strings.HasPrefix(line[i:], "//") {
+			add(i, len(line), TokenComment)
+			break
+		}
+		if allowComments && strings.HasPrefix(line[i:], "/*") {
+			if end := strings.Index(line[i+2:], "*/"); end >= 0 {
+				closeAt := i + 2 + end + 2
+				add(i, closeAt, TokenComment)
+				i = closeAt
+			} else {
+				add(i, len(line), TokenComment)
+				state.blockEnd = "*/"
+				break
+			}
+			continue
+		}
+		if line[i] == '"' {
+			start := i
+			i++
+			for i < len(line) {
+				if line[i] == '\\' {
+					i = min(len(line), i+2)
+					continue
+				}
+				if line[i] == '"' {
+					i++
+					break
+				}
+				i++
+			}
+			j := i
+			for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
+				j++
+			}
+			kind := TokenString
+			if j < len(line) && line[j] == ':' {
+				kind = TokenProperty
+			}
+			add(start, i, kind)
+			continue
+		}
+		if line[i] == '-' || line[i] >= '0' && line[i] <= '9' {
+			start := i
+			i++
+			for i < len(line) && strings.ContainsRune("0123456789.eE+-", rune(line[i])) {
+				i++
+			}
+			add(start, i, TokenNumber)
+			continue
+		}
+		if line[i] == 't' && strings.HasPrefix(line[i:], "true") || line[i] == 'f' && strings.HasPrefix(line[i:], "false") {
+			word := "true"
+			if line[i] == 'f' {
+				word = "false"
+			}
+			add(i, i+len(word), TokenBool)
+			i += len(word)
+			continue
+		}
+		if strings.HasPrefix(line[i:], "null") {
+			add(i, i+4, TokenNull)
+			i += 4
+			continue
+		}
+		if strings.ContainsRune("{}[]:,", rune(line[i])) {
+			add(i, i+1, TokenPunctuation)
+		}
+		i++
+	}
+	return spans
+}
+
 func parseYAMLLine(line string) []Span {
 	trimmed := strings.TrimLeft(line, " \t")
 	indent := len(line) - len(trimmed)

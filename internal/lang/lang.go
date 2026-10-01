@@ -43,6 +43,8 @@ const (
 	Ruby       ID = types.Ruby
 	PHP        ID = types.PHP
 	Swift      ID = types.Swift
+	Dart       ID = types.Dart
+	Zig        ID = types.Zig
 	Other      ID = types.Other
 )
 

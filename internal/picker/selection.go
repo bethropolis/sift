@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bethropolis/sift/internal/app"
+	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/tui"
 	"github.com/bethropolis/sift/internal/walker"
@@ -127,6 +128,11 @@ func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped 
 	}
 	if _, err := out.Write(rendered); err != nil {
 		return err
+	}
+	if s.cfg.CopyOnGenerate {
+		if err := clipboard.Copy(rendered); err != nil {
+			return fmt.Errorf("copy generated output to clipboard: %w", err)
+		}
 	}
 
 	// Update the baseline so a later delta dump knows what was just rendered.

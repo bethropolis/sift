@@ -117,7 +117,7 @@ func expandPrefixes(prefixes []string, exists func(string) bool) []string {
 		}
 		add(prefix)
 		if filepath.Ext(prefix) == "" {
-			for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".rs"} {
+			for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".go", ".py", ".rs", ".dart", ".zig", ".h", ".hpp"} {
 				add(prefix + ext)
 			}
 			for _, index := range []string{"index.ts", "index.tsx", "index.js", "mod.go"} {

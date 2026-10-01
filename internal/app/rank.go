@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -66,23 +67,25 @@ func (r *Ranker) RankGraph(files []format.FileEntry) (map[string]rank.FileScoreR
 // implementation files. Same-directory source files and resolved imports are
 // considered; the result is normalized to the source file's existing rank.
 func RelatedTestAffinity(files []format.FileEntry, graph map[string][]string) map[string]float64 {
-	byPath := make(map[string]format.FileEntry, len(files))
-	byDir := make(map[string][]format.FileEntry)
+	byPath := make(map[string]int, len(files))
+	byDir := make(map[string][]int)
 	roles := make(map[string]lang.Role, len(files))
-	for _, file := range files {
+	for i, file := range files {
 		path := filepath.ToSlash(file.Path)
-		byPath[path] = file
+		byPath[path] = i
 		roles[path] = lang.Classify(path).Role
-		byDir[filepath.ToSlash(filepath.Dir(path))] = append(byDir[filepath.ToSlash(filepath.Dir(path))], file)
+		dir := filepath.ToSlash(filepath.Dir(path))
+		byDir[dir] = append(byDir[dir], i)
 	}
 	out := make(map[string]float64)
-	for _, test := range files {
+	for testIndex, test := range files {
 		testPath := filepath.ToSlash(test.Path)
 		if roles[testPath] != lang.RoleTest {
 			continue
 		}
 		best := 0.0
-		consider := func(file format.FileEntry) {
+		consider := func(index int) {
+			file := files[index]
 			if roles[filepath.ToSlash(file.Path)] == lang.RoleTest {
 				return
 			}
@@ -90,20 +93,20 @@ func RelatedTestAffinity(files []format.FileEntry, graph map[string][]string) ma
 				best = file.RankScore
 			}
 		}
-		for _, source := range byDir[filepath.ToSlash(filepath.Dir(testPath))] {
-			consider(source)
+		for _, sourceIndex := range byDir[filepath.ToSlash(filepath.Dir(testPath))] {
+			consider(sourceIndex)
 		}
 		for _, target := range graph[testPath] {
 			target = strings.TrimSuffix(filepath.ToSlash(target), "/")
-			if file, ok := byPath[target]; ok {
-				consider(file)
+			if index, ok := byPath[target]; ok {
+				consider(index)
 			}
-			for _, file := range byDir[target] {
-				consider(file)
+			for _, index := range byDir[target] {
+				consider(index)
 			}
 		}
 		if best > 0 {
-			out[filepath.ToSlash(test.Path)] = best
+			out[filepath.ToSlash(files[testIndex].Path)] = best
 		}
 	}
 	return out
@@ -247,13 +250,24 @@ func (r *Ranker) moduleRoots(files []format.FileEntry) []moduleRootInfo {
 		roots = append(roots, moduleRootInfo{dir: dir, moduleName: mod})
 	}
 	// 1. Root module
-	add("", parseGoMod(filepath.Join(r.rootDir, "go.mod")))
+	rootModule := parseGoMod(filepath.Join(r.rootDir, "go.mod"))
+	if rootModule == "" {
+		rootModule = parsePubspecName(filepath.Join(r.rootDir, "pubspec.yaml"))
+	}
+	add("", rootModule)
 	// 2. Discover any nested go.mod from collected files
 	for _, f := range files {
 		p := filepath.ToSlash(f.Path)
-		if filepath.Base(p) == "go.mod" && p != "go.mod" {
+		base := filepath.Base(p)
+		if (base == "go.mod" || base == "pubspec.yaml") && filepath.Dir(p) != "." {
 			dir := filepath.Dir(p)
-			add(dir, parseGoMod(filepath.Join(r.rootDir, filepath.FromSlash(p))))
+			module := ""
+			if base == "go.mod" {
+				module = parseGoMod(filepath.Join(r.rootDir, filepath.FromSlash(p)))
+			} else {
+				module = parsePubspecName(filepath.Join(r.rootDir, filepath.FromSlash(p)))
+			}
+			add(dir, module)
 		}
 	}
 	// 3. Workspace members from go.work, in case their go.mod was skipped
@@ -261,6 +275,20 @@ func (r *Ranker) moduleRoots(files []format.FileEntry) []moduleRootInfo {
 		add(dir, parseGoMod(filepath.Join(r.rootDir, filepath.FromSlash(dir), "go.mod")))
 	}
 	return roots
+}
+
+var pubspecName = regexp.MustCompile(`(?m)^\s*name\s*:\s*['"]?([A-Za-z0-9_-]+)['"]?\s*(?:#.*)?$`)
+
+func parsePubspecName(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	match := pubspecName.FindSubmatch(data)
+	if len(match) < 2 {
+		return ""
+	}
+	return string(match[1])
 }
 
 // parseGoWork returns the workspace member directories declared by `use`

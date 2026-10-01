@@ -19,9 +19,10 @@ func languageLabel(path string) string {
 		"go": "Go", "md": "Markdown", "markdown": "Markdown", "rs": "Rust",
 		"ts": "TypeScript", "tsx": "TypeScript", "js": "JavaScript", "jsx": "JavaScript",
 		"py": "Python", "java": "Java", "kt": "Kotlin", "cs": "C#", "c": "C",
-		"cc": "C++", "cpp": "C++", "h": "C", "hpp": "C++", "rb": "Ruby",
+		"cc": "C++", "cpp": "C++", "h": "C", "hpp": "C++", "rb": "Ruby", "dart": "Dart/Flutter", "zig": "Zig",
 		"swift": "Swift", "php": "PHP", "sh": "Shell", "json": "JSON", "toml": "TOML",
-		"yaml": "YAML", "yml": "YAML",
+		"jsonc": "JSONC", "arb": "Flutter ARB", "yaml": "YAML", "yml": "YAML",
+		"html": "HTML", "htm": "HTML", "css": "CSS", "scss": "SCSS", "xml": "XML", "mdx": "MDX",
 	}
 	if label, ok := labels[ext]; ok {
 		return label

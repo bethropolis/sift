@@ -8,6 +8,14 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+type footerAction struct {
+	id    string
+	key   string
+	label string
+}
+
+func (a footerAction) text() string { return a.key + " " + a.label }
+
 // scanSpinner returns one frame of the braille-dot scanning animation.
 var scanSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
@@ -56,6 +64,14 @@ func (m model) budgetMeter(active int) string {
 
 func (m model) contextualActions(width int) string {
 	sep := m.styles.subtle.Render(" · ")
+	if !m.filtering && !m.helpOpen && !m.themeOpen && !m.promptOpen && !m.deltaOpen {
+		actions := m.footerActions(width)
+		parts := make([]string, 0, len(actions))
+		for _, action := range actions {
+			parts = append(parts, m.renderFooterAction(action))
+		}
+		return strings.Join(parts, sep)
+	}
 	var hints []string
 	switch {
 	case m.filtering:
@@ -69,15 +85,12 @@ func (m model) contextualActions(width int) string {
 	case m.deltaOpen:
 		hints = []string{m.keyBadge("Space", "Toggle"), m.keyBadge("m", "Mode"), m.keyBadge("↵", "Dump"), m.keyBadge("Esc", "Cancel")}
 	case m.focus == FocusPreview:
-		hints = []string{m.keyBadge("↑↓", "Scroll"), m.keyBadge("Tab", "Explorer"), m.keyBadge("y", "Copy"), m.keyBadge("?", "Help"), m.keyBadge("q", "Quit")}
+		hints = []string{m.keyBadge("↑↓", "Scroll"), m.keyBadge("m", "Mode"), m.keyBadge("?", "Help"), m.keyBadge("Y", "Gen+Copy")}
 	default:
-		hints = []string{m.keyBadge("Space", "Select"), m.keyBadge("/", "Filter"), m.keyBadge("s", "Smart"), m.keyBadge("g", "Generate"), m.keyBadge("y", "Copy"), m.keyBadge("?", "Help")}
+		hints = []string{m.keyBadge("Space", "Select"), m.keyBadge("/", "Filter"), m.keyBadge("s", "Smart"), m.keyBadge("g", "Generate"), m.keyBadge("?", "Help"), m.keyBadge("Y", "Gen+Copy")}
 	}
 	if width < 60 {
-		if m.filtering || m.helpOpen || m.themeOpen || m.promptOpen || m.deltaOpen {
-			return strings.Join(hints[:min(1, len(hints))], sep)
-		}
-		return lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render("?")
+		return strings.Join(hints[:min(1, len(hints))], sep)
 	}
 	if width < 90 {
 		if len(hints) > 4 {
@@ -85,6 +98,77 @@ func (m model) contextualActions(width int) string {
 		}
 	}
 	return strings.Join(hints, sep)
+}
+
+func (m model) footerActions(width int) []footerAction {
+	var actions []footerAction
+	if m.focus == FocusPreview {
+		actions = []footerAction{
+			{id: "scroll-up", key: "↑↓", label: "Scroll"},
+			{id: "mode", key: "m", label: "Mode"},
+			{id: "help", key: "?", label: "Help"},
+			{id: "generate-copy", key: "Y", label: "Gen+Copy"},
+		}
+	} else {
+		actions = []footerAction{
+			{id: "select", key: "Space", label: "Select"},
+			{id: "filter", key: "/", label: "Filter"},
+			{id: "smart", key: "s", label: "Smart"},
+			{id: "generate", key: "g", label: "Generate"},
+			{id: "help", key: "?", label: "Help"},
+			{id: "generate-copy", key: "Y", label: "Gen+Copy"},
+		}
+	}
+	if width >= 100 {
+		return actions
+	}
+	if m.focus == FocusPreview {
+		if width >= 72 {
+			return []footerAction{actions[0], actions[1], actions[len(actions)-1]}
+		}
+		if width >= 42 {
+			return []footerAction{actions[0], actions[len(actions)-1]}
+		}
+		return []footerAction{actions[len(actions)-1]}
+	}
+	if width >= 72 {
+		return []footerAction{actions[0], actions[1], actions[3], actions[len(actions)-1]}
+	}
+	if width >= 42 {
+		return []footerAction{actions[3], actions[len(actions)-1]}
+	}
+	return []footerAction{actions[len(actions)-1]}
+}
+
+func (m model) renderFooterAction(action footerAction) string {
+	key := lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(action.key)
+	return key + " " + m.styles.muted.Render(action.label)
+}
+
+func (m model) footerActionAt(x int) string {
+	if m.filtering || m.helpOpen || m.themeOpen || m.promptOpen || m.deltaOpen {
+		return ""
+	}
+	rows := strings.Split(ansi.Strip(m.renderFooter(m.width)), "\n")
+	if len(rows) < 2 {
+		return ""
+	}
+	line := rows[len(rows)-1]
+	searchFrom := 0
+	for _, action := range m.footerActions(m.width) {
+		at := strings.Index(line[searchFrom:], action.text())
+		if at < 0 {
+			continue // the right-aligned actions were truncated at this width
+		}
+		start := searchFrom + at
+		end := start + len(action.text())
+		startCell := ansi.StringWidth(line[:start])
+		if x >= startCell && x < startCell+ansi.StringWidth(line[start:end]) {
+			return action.id
+		}
+		searchFrom = end
+	}
+	return ""
 }
 
 func footerLine(left, right string, width int) string {
@@ -95,7 +179,7 @@ func footerLine(left, right string, width int) string {
 	if gap >= 2 {
 		return left + strings.Repeat(" ", gap) + right
 	}
-	rightWidth := max(8, width/3)
+	rightWidth := min(width-2, ansi.StringWidth(right))
 	right = ansi.Truncate(right, rightWidth, "…")
 	leftWidth := max(1, width-ansi.StringWidth(right)-1)
 	left = ansi.Truncate(left, leftWidth, "…")

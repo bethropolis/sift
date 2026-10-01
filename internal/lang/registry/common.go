@@ -28,6 +28,7 @@ func common(path, base, ext string) (types.Classification, bool) {
 	case ext == ".html" || ext == ".css" || ext == ".scss" || ext == ".vue" || ext == ".svelte" || ext == ".astro":
 		return types.Classification{Role: types.RoleImpl, Adjustment: 0.02, Confidence: 0.75, Reason: "web source"}, true
 	case base == "dockerfile" || base == "makefile" || base == "go.mod" || base == "go.work" ||
+		base == "pubspec.yaml" || base == "analysis_options.yaml" || base == "build.zig" || base == "build.zig.zon" ||
 		base == "cargo.toml" || base == "pyproject.toml" || base == "package.json" ||
 		base == "tsconfig.json" || base == "pnpm-workspace.yaml" || base == "turbo.json" ||
 		base == "lerna.json" || base == "nx.json" || base == "build.gradle" || base == "build.gradle.kts" ||

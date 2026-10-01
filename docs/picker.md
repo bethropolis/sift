@@ -60,7 +60,7 @@ cursor.
 | Key | Action |
 | --- | --- |
 | `g` | Generate the output document (stay in the picker) |
-| `y` | Copy the selection to the clipboard |
+| `Y` | Generate the selected context and copy `codebase.md` to the clipboard |
 | `/` | Fuzzy path search (filter the tree) |
 | `PgUp`/`PgDn`, `[`/`]` | Scroll the preview pane |
 | `J` / `K` | Scroll the preview one line at a time |
@@ -139,6 +139,7 @@ stack), and whether to generate a document or copy it. See
 
 - `g` renders the current selection to the configured output destination
   (default `codebase.md`) without leaving the picker, so you can keep tweaking.
-- `y` copies the rendered selection to the clipboard.
+- `Y` generates the current selection and copies `codebase.md` to the clipboard.
 
-Both include the active task prompt and apply secret redaction.
+Generated output includes the active task prompt and applies secret redaction.
+`Y` writes that generated `codebase.md` and copies it to the clipboard.

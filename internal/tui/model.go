@@ -55,21 +55,22 @@ type model struct {
 	showHidden     bool
 	showGitIgnored bool
 
-	budget      int
-	style       string
-	glyphs      Glyphs
-	highlight   highlight.Options
-	syntaxCache *highlight.SyntaxCache
-	windowTitle string
-	projectPath string
-	styles      uiStyles
-	themes      []ThemePreset
-	prompt      string
+	budget          int
+	style           string
+	glyphs          Glyphs
+	highlight       highlight.Options
+	syntaxCache     *highlight.SyntaxCache
+	windowTitle     string
+	projectPath     string
+	styles          uiStyles
+	themes          []ThemePreset
+	prompt          string
 	selectionTuning selection.Tuning
 
-	onCopy       func([]Selection) error
-	onCopyPrompt func([]Selection, string) error
-	notice       string
+	onCopy         func([]Selection) error
+	onCopyPrompt   func([]Selection, string) error
+	onGenerateCopy func([]Selection, string) error
+	notice         string
 	// noticeID stamps each notice so only its own timer clears it.
 	noticeID int
 
@@ -147,6 +148,7 @@ type Options struct {
 	SelectionTuning   selection.Tuning
 	OnCopy            func([]Selection) error
 	OnCopyPrompt      func([]Selection, string) error
+	OnGenerateCopy    func([]Selection, string) error
 
 	// OnGenerate renders the current selection without exiting the picker
 	// (pressing g). It mirrors OnCopy but writes the document instead of the
@@ -209,6 +211,7 @@ func newModel(root *TreeNode, opts Options) model {
 		selectionTuning:  opts.SelectionTuning,
 		onCopy:           opts.OnCopy,
 		onCopyPrompt:     opts.OnCopyPrompt,
+		onGenerateCopy:   opts.OnGenerateCopy,
 		onGenerate:       opts.OnGenerate,
 		onGeneratePrompt: opts.OnGeneratePrompt,
 		delta:            opts.Delta,

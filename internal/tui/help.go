@@ -57,7 +57,7 @@ func helpSections() []helpSection {
 			Header: "Output & Actions",
 			Rows: []helpRow{
 				{"g", "Generate output (stays in TUI)"},
-				{"y", "Copy selection to clipboard"},
+				{"Y", "Generate and copy codebase.md"},
 				{"p", "Prompt / task directive"},
 				{"d", "Incremental delta dump"},
 				{"t", "Color theme picker"},

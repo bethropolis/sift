@@ -158,6 +158,21 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		OnCopyPrompt: func(sel []tui.Selection, prompt string) error {
 			return s.copySelectionWithPrompt(snapshotFiles(), sel, prompt)
 		},
+		OnGenerateCopy: func(sel []tui.Selection, prompt string) error {
+			files := snapshotFiles()
+			if err := s.generateSelectionWithPrompt(files, snapshotSkipped(), start, sel, prompt); err != nil {
+				return err
+			}
+			if s.cfg.CopyOnGenerate {
+				return nil
+			}
+			if s.cfg.OutputFile == "" || s.cfg.OutputFile == "-" {
+				chosen := applySelection(application, files, sel)
+				chosen = app.ExpandChosen(files, chosen, s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
+				return application.RenderToClipboardWithPrompt(chosen, prompt)
+			}
+			return application.CopyOutputToClipboard()
+		},
 		OnGenerate: func(sel []tui.Selection) error {
 			return s.generateSelection(snapshotFiles(), snapshotSkipped(), start, sel)
 		},

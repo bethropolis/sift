@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/logger"
 	"github.com/bethropolis/sift/internal/scan"
@@ -31,6 +32,22 @@ type App struct {
 	// hash across Collect calls, so watch re-renders skip tree-sitter and
 	// BPE work for unchanged files.
 	contentCache *scan.ContentCache
+}
+
+// CopyOutputToClipboard copies the configured output document currently on
+// disk. It is used by the picker after a document has been generated.
+func (a *App) CopyOutputToClipboard() error {
+	if a.outputPath == "" {
+		return fmt.Errorf("output is not a file; set --output to a file before copying it")
+	}
+	data, err := os.ReadFile(a.outputPath)
+	if err != nil {
+		return fmt.Errorf("read output document: %w", err)
+	}
+	if len(data) == 0 {
+		return fmt.Errorf("output document is empty; generate it first")
+	}
+	return clipboard.Copy(data)
 }
 
 // Config returns the resolved application configuration. It is exposed to

@@ -34,6 +34,7 @@ type SiftDefaults struct {
 	HighlightMaxBytes int        `toml:"highlight_max_bytes"`
 	WindowTitle       string     `toml:"window_title"`
 	NoWindowTitle     *bool      `toml:"no_window_title"`
+	CopyOnGenerate    *bool      `toml:"copy_on_generate"`
 	Scoring           *Scoring   `toml:"scoring"`
 }
 

@@ -184,6 +184,15 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 		} else {
 			a.infoLog("Copied %d files (%d tokens) to clipboard.", len(files), tokenTotal)
 		}
+	} else if a.cfg.CopyOnGenerate {
+		var buf bytes.Buffer
+		if renderErr := a.renderDocumentTo(files, prompt, &buf); renderErr != nil {
+			writeErr = fmt.Errorf("render output: %w", renderErr)
+		} else if _, err := a.output.Write(buf.Bytes()); err != nil {
+			writeErr = fmt.Errorf("write output: %w", err)
+		} else if err := clipboard.Copy(buf.Bytes()); err != nil {
+			writeErr = fmt.Errorf("copy generated output to clipboard: %w", err)
+		}
 	} else if renderErr := a.renderDocumentTo(files, prompt, a.output); renderErr != nil {
 		writeErr = fmt.Errorf("render output: %w", renderErr)
 	}

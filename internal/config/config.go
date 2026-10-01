@@ -91,9 +91,10 @@ type Config struct {
 	Prompt string
 
 	// Safety
-	SecretScan   bool
-	ForceSecrets bool
-	Clipboard    bool
+	SecretScan     bool
+	ForceSecrets   bool
+	Clipboard      bool
+	CopyOnGenerate bool
 
 	// Version info
 	ShowVersion bool
@@ -189,4 +190,5 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.BoolVar(&c.SecretScan, "secrets", c.SecretScan, "Scan output for secrets and redact them")
 	fs.BoolVar(&c.ForceSecrets, "force-secrets", c.ForceSecrets, "Include secrets in output instead of redacting")
 	fs.BoolVar(&c.Clipboard, "clipboard", c.Clipboard, "Copy the rendered output to the system clipboard")
+	fs.BoolVar(&c.CopyOnGenerate, "copy-on-generate", c.CopyOnGenerate, "Copy every generated context document to the clipboard")
 }

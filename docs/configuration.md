@@ -19,6 +19,7 @@ smart = true
 extensions = ["go", "md", "ts"]
 ignore = ["vendor/**", "dist/**"]
 prompt = "Review for correctness."
+# copy_on_generate = true  # also copy each generated document to the clipboard
 # prompt_file = "prompts/review.md"   # file path instead of inline prompt
 ```
 
@@ -219,6 +220,7 @@ directory prefixes to custom area names; the longest matching prefix wins.
 | `--style` | `markdown` | `plain`, `markdown`, `json`, or `xml` |
 | `--mode` | `full` | `full` content or `signatures` outline |
 | `--clipboard` | off | Copy the rendered output to the system clipboard |
+| `--copy-on-generate` | off | Also copy generated documents while writing them to the output file |
 | `--target` | — | Target from `.sift.toml` (`--target NAME`) |
 | `--profile` | — | Profile from config (`--profile NAME`) |
 

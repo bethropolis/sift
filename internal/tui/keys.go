@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // updateMouse routes mouse events to the pane under the cursor: the wheel
@@ -37,29 +38,98 @@ func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	leftWidth := m.leftPaneWidth()
-	onPreview := msg.X > leftWidth
-
-	switch msg.Type {
-	case tea.MouseWheelUp:
+	if mouseReleased(msg) && msg.Y == m.height-1 {
+		switch m.footerActionAt(msg.X) {
+		case "select":
+			if n := m.node(); n != nil {
+				n.Toggle()
+			}
+		case "filter":
+			m.filtering, m.filter = true, ""
+		case "smart":
+			return m, m.smartSelect()
+		case "generate":
+			return m, m.generate()
+		case "generate-copy":
+			return m, m.generateAndCopy()
+		case "help":
+			m.helpOpen = true
+		case "mode":
+			if n := m.node(); n != nil {
+				m.cycleMode(n)
+			}
+		case "scroll-up":
+			m.focus = FocusPreview
+			m.scrollPreview(1)
+		default:
+			return m, nil
+		}
+		return m, nil
+	}
+	onPreview := msg.X >= leftWidth
+	if msg.Type == tea.MouseWheelUp || msg.Button == tea.MouseButtonWheelUp {
 		if onPreview {
 			m.scrollPreview(-3)
 		} else {
 			m.move(-1)
 		}
-	case tea.MouseWheelDown:
+		return m, nil
+	}
+	if msg.Type == tea.MouseWheelDown || msg.Button == tea.MouseButtonWheelDown {
 		if onPreview {
 			m.scrollPreview(3)
 		} else {
 			m.move(1)
 		}
-	case tea.MouseRelease:
+		return m, nil
+	}
+	if mouseReleased(msg) {
 		if onPreview {
 			m.focus = FocusPreview
 		} else {
 			m.focus = FocusTree
+			m.clickTree(msg.X, msg.Y)
 		}
 	}
 	return m, nil
+}
+
+func mouseReleased(msg tea.MouseMsg) bool {
+	return msg.Action == tea.MouseActionRelease || msg.Type == tea.MouseRelease
+}
+
+// clickTree maps a mouse cell to the visible explorer row. Clicking the
+// selection marker toggles a node; clicking a directory icon expands it.
+// Other row clicks move the cursor and update the preview, as in a file picker.
+func (m *model) clickTree(x, y int) {
+	firstRowY := 3
+	if m.filtering && m.filter != "" {
+		firstRowY++
+	}
+	row := y - firstRowY + m.offset
+	visibleRows := max(1, m.bodyHeight()-3)
+	if m.filtering && m.filter != "" {
+		visibleRows = max(1, visibleRows-1)
+	}
+	if y < firstRowY || y >= firstRowY+visibleRows || row < 0 || row >= len(m.rows) {
+		return
+	}
+	m.cursor = row
+	m.clampOffset()
+	m.syncPreview()
+	n := m.rows[row]
+	contentX := x - 1 // the explorer card's left border occupies one cell
+	checkboxX := 2 + ansi.StringWidth(n.TreePrefix(m.glyphs)) + 1
+	checkboxWidth := max(1, ansi.StringWidth(m.glyphs.CheckNone))
+	if contentX >= checkboxX && contentX < checkboxX+checkboxWidth {
+		n.Toggle()
+		return
+	}
+	iconX := checkboxX + checkboxWidth + 1
+	if n.Kind == KindDir && contentX >= iconX && contentX < iconX+max(1, ansi.StringWidth(m.glyphs.FolderClosed)) {
+		n.Expanded = !n.Expanded
+		m.recomputeRows()
+	}
 }
 
 func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -267,8 +337,8 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "/":
 			m.filtering = true
 			m.filter = ""
-		case "y":
-			return m, m.copy()
+		case "Y":
+			return m, m.generateAndCopy()
 		case "d":
 			m.openDelta()
 		case "?":
@@ -370,10 +440,6 @@ func (m model) updatePromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.commitPrompt()
 			m.promptOpen = false
 			return m, m.generate()
-		case "y":
-			m.commitPrompt()
-			m.promptOpen = false
-			return m, m.copy()
 		case "q", "p":
 			if m.promptCustom {
 				m.promptInput += r
@@ -463,6 +529,20 @@ func (m *model) copy() tea.Cmd {
 		return m.setNotice("Copy failed: " + err.Error())
 	}
 	return m.setNotice(fmt.Sprintf("Copied %d %s · %s tokens", len(sel), pluralFiles(len(sel)), formatTokenCount(m.root.TotalActiveTokens())))
+}
+
+func (m *model) generateAndCopy() tea.Cmd {
+	if m.onGenerateCopy == nil {
+		return m.setNotice("Generate and copy unavailable")
+	}
+	sel := m.root.Selections()
+	if len(sel) == 0 {
+		return m.setNotice("Nothing selected to generate")
+	}
+	if err := m.onGenerateCopy(sel, m.prompt); err != nil {
+		return m.setNotice("Generate and copy failed: " + err.Error())
+	}
+	return m.setNotice("Generated and copied codebase.md")
 }
 
 // generate renders the current selection to the output document without

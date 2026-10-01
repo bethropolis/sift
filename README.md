@@ -28,11 +28,12 @@ LLM. Along the way it:
 * Compresses files to signatures only (`--mode signatures`) via tree-sitter,
   keeping declarations and comments while dropping function bodies. Go,
   Rust, JavaScript/TypeScript (incl. TSX), Python, PHP, Java, Kotlin, C#,
-  C/C++, Ruby, and Swift are supported.
+  C/C++, Ruby, Swift, Dart/Flutter, and Zig are supported.
 * Copies straight to the clipboard with `--clipboard`, or writes to a file,
-  or streams to stdout.
+  or streams to stdout. `sift copy` copies an existing `codebase.md` document
+  for pasting into another app.
 
-`dump`, `pick`, `select`, `diff`, `delta`, and `watch` cover the different
+`dump`, `pick`, `select`, `clone`, `copy`, `diff`, `delta`, and `watch` cover the different
 ways you'd want to generate that document: a full one-shot scan, an
 interactive selection, an automatic budget-aware selection, just what
 changed relative to a git ref, just what changed since your last dump, or a
@@ -48,7 +49,8 @@ in the footer.
 Each file can be `FULL`, `SIGS` (signature-only), or `SKIP`, cycled with `m`.
 Press `s` to smart-select by git relevance and budget, `/` to fuzzy-filter
 the tree, `p` to attach a task prompt (with presets for review, refactor,
-bug investigation, and so on), and `y` to copy the result to the clipboard.
+bug investigation, and so on), and `Y` to generate the selected context and
+copy `codebase.md`.
 `d` opens the delta modal for picking a commit range interactively. Nerd
 Font glyphs are on by default; pass `--no-nerd-fonts` for plain ASCII.
 

@@ -22,6 +22,8 @@ const (
 	Ruby       ID = "ruby"
 	PHP        ID = "php"
 	Swift      ID = "swift"
+	Dart       ID = "dart"
+	Zig        ID = "zig"
 	Other      ID = "other"
 )
 

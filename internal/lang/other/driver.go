@@ -16,7 +16,7 @@ func init() { registry.Register(otherDriver{}) }
 func (otherDriver) ID() types.ID { return types.Other }
 func (otherDriver) Name() string { return "Other" }
 func (otherDriver) Extensions() []string {
-	return []string{".java", ".kt", ".kts", ".rb", ".php", ".cs", ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".swift"}
+	return []string{".java", ".kt", ".kts", ".rb", ".php", ".cs", ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".swift", ".dart", ".zig"}
 }
 func (otherDriver) ShouldSkipSmart(path, filename string, content []byte) (bool, string) {
 	const reason = "Matched smart language filter"
@@ -27,6 +27,10 @@ func (otherDriver) ShouldSkipSmart(path, filename string, content []byte) (bool,
 		return true, reason
 	}
 	if filename == "composer.lock" || filename == "gemfile.lock" {
+		return true, reason
+	}
+	if filename == "pubspec.lock" || strings.Contains(path, "/.dart_tool/") || strings.HasPrefix(path, ".dart_tool/") ||
+		strings.Contains(path, "/.zig-cache/") || strings.HasPrefix(path, ".zig-cache/") || strings.Contains(path, "/zig-out/") || strings.HasPrefix(path, "zig-out/") {
 		return true, reason
 	}
 	return false, ""
@@ -59,6 +63,28 @@ func (d otherDriver) Classify(path, filename string) types.Classification {
 		return conventionByName(filename, "C++ source")
 	case ".swift":
 		return conventionByName(filename, "Swift source")
+	case ".dart":
+		if strings.HasSuffix(filename, "_test.dart") || strings.HasSuffix(filename, "_spec.dart") {
+			return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.90, Reason: "Dart test file"}
+		}
+		if filename == "main.dart" {
+			return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.90, Reason: "Dart/Flutter entrypoint"}
+		}
+		if strings.HasSuffix(filename, ".g.dart") || strings.HasSuffix(filename, ".freezed.dart") || strings.HasSuffix(filename, ".mocks.dart") {
+			return types.Classification{Role: types.RoleGenerated, Adjustment: -0.35, Confidence: 0.95, Reason: "generated Dart source"}
+		}
+		return conventionByName(filename, "Dart/Flutter source")
+	case ".zig":
+		if strings.HasSuffix(filename, "_test.zig") {
+			return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.90, Reason: "Zig test file"}
+		}
+		if filename == "main.zig" {
+			return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.90, Reason: "Zig entrypoint"}
+		}
+		if filename == "root.zig" {
+			return types.Classification{Role: types.RoleAPI, Adjustment: 0.10, Confidence: 0.80, Reason: "Zig package root"}
+		}
+		return conventionByName(filename, "Zig source")
 	}
 	return types.Classification{Role: types.RoleUnknown}
 }
@@ -69,11 +95,13 @@ var (
 	phpRequireRegex  = regexp.MustCompile(`(?m)\b(?:require|require_once|include|include_once)\s*\(?\s*['"]([^'"]+)['"]`)
 	javaPackageRegex = regexp.MustCompile(`(?m)^\s*package\s+([A-Za-z0-9_.]+)`)
 	javaImportRegex  = regexp.MustCompile(`(?m)^\s*import\s+(static\s+)?([A-Za-z0-9_.]+(?:\.\*)?)\s*;?`)
+	dartURIRegex     = regexp.MustCompile(`(?m)^\s*(?:import|export|part)\s+(?:[^;]*?\s+from\s+)?['"]([^'"]+)['"]`)
+	zigImportRegex   = regexp.MustCompile(`@import\s*\(\s*["']([^"']+)["']\s*\)`)
 )
 
 // Imports returns local import targets for files handled by the otherDriver
 // (C/C++ local headers, Ruby require_relative, PHP relative includes).
-func (otherDriver) Imports(path, _ string, content []byte) []string {
+func (otherDriver) Imports(path, moduleRoot string, content []byte) []string {
 	dir := filepath.ToSlash(filepath.Dir(path))
 	ext := strings.ToLower(filepath.Ext(path))
 	var targets []string
@@ -106,6 +134,27 @@ func (otherDriver) Imports(path, _ string, content []byte) []string {
 		}
 	case ".java", ".kt", ".kts":
 		targets = append(targets, javaTargets(dir, content)...)
+	case ".dart":
+		for _, match := range dartURIRegex.FindAllSubmatch(content, -1) {
+			uri := string(match[1])
+			switch {
+			case strings.HasPrefix(uri, "./"), strings.HasPrefix(uri, "../"):
+				targets = append(targets, filepath.ToSlash(filepath.Clean(filepath.Join(dir, uri))))
+			case strings.HasPrefix(uri, "package:") && moduleRoot != "":
+				pkgPath := strings.TrimPrefix(uri, "package:")
+				pkgName, rest, ok := strings.Cut(pkgPath, "/")
+				if ok && pkgName == moduleRoot {
+					targets = append(targets, filepath.ToSlash(filepath.Join("lib", rest)))
+				}
+			}
+		}
+	case ".zig":
+		for _, match := range zigImportRegex.FindAllSubmatch(content, -1) {
+			name := string(match[1])
+			if strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../") || strings.HasSuffix(name, ".zig") {
+				targets = append(targets, filepath.ToSlash(filepath.Clean(filepath.Join(dir, name))))
+			}
+		}
 	}
 	return targets
 }
@@ -182,6 +231,10 @@ func (d otherDriver) SignatureLanguage(path string) types.ID {
 		return types.Ruby
 	case ".swift":
 		return types.Swift
+	case ".dart":
+		return types.Dart
+	case ".zig":
+		return types.Zig
 	}
 	return types.Other
 }
