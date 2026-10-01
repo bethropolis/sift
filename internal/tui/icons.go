@@ -11,6 +11,10 @@ type Glyphs struct {
 	CheckFull    string
 	CheckPartial string
 	CheckNone    string
+	Cursor       string
+	Relevant     string
+	Success      string
+	Refresh      string
 	ModeFull     string
 	ModeSigns    string
 	ModeSkip     string
@@ -33,9 +37,13 @@ func NewNerdFontGlyphs() Glyphs {
 		FolderOpen:   "\uf07c ",
 		File:         "\U000f0219 ",
 		Warning:      "\uf071 ",
-		CheckFull:    "[x]",
-		CheckPartial: "[-]",
-		CheckNone:    "[ ]",
+		CheckFull:    "●",
+		CheckPartial: "◐",
+		CheckNone:    "○",
+		Cursor:       "▸ ",
+		Relevant:     "◆",
+		Success:      "✓",
+		Refresh:      "↻",
 		ModeFull:     "[FULL]",
 		ModeSigns:    "[SIGS]",
 		ModeSkip:     "[SKIP]",
@@ -62,6 +70,10 @@ func NewASCIIGlyphs() Glyphs {
 		CheckFull:    "[x]",
 		CheckPartial: "[-]",
 		CheckNone:    "[ ]",
+		Cursor:       "> ",
+		Relevant:     "*",
+		Success:      "+",
+		Refresh:      "~",
 		ModeFull:     "[FULL]",
 		ModeSigns:    "[SIGS]",
 		ModeSkip:     "[SKIP]",

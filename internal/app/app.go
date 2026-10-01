@@ -33,6 +33,11 @@ type App struct {
 	contentCache *scan.ContentCache
 }
 
+// Config returns the resolved application configuration. It is exposed to
+// picker orchestration so streaming rank updates use the same scoring policy
+// as non-interactive selection.
+func (a *App) Config() *config.Config { return a.cfg }
+
 // EnablePickerVisibility lets the interactive picker receive hidden and
 // gitignored metadata so the TUI can reveal it without rescanning.
 func (a *App) EnablePickerVisibility() { a.pickerVisibility = true }

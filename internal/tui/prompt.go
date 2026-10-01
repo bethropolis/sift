@@ -70,8 +70,7 @@ func (m *model) renderPromptModal(view string, width, height int) string {
 	modalHeight := min(max(10, height-2), bodyRows+8)
 	var b strings.Builder
 
-	title := fmt.Sprintf(" %sTask Directive ", m.glyphs.Prompt)
-	b.WriteString(m.styles.title.Render(ansi.Truncate(title, modalWidth-4, "…")))
+	b.WriteString(m.modalTitle(m.glyphs.Prompt, "Task Directive", modalWidth))
 	b.WriteString("\n")
 	b.WriteString(m.styles.dim.Render("Pick a preset or press c to write a custom directive."))
 	b.WriteString("\n")
@@ -102,16 +101,20 @@ func (m *model) renderPromptModal(view string, width, height int) string {
 	b.WriteString(ansi.Truncate(customLine, modalWidth-4, "…"))
 	b.WriteString("\n")
 
-	// Active prompt preview
-	activeText := m.prompt
-	if activeText == "" {
-		activeText = "(none)"
+	previewText := m.prompt
+	if m.promptCustom {
+		previewText = m.promptInput
+	} else if m.promptCursor >= 0 && m.promptCursor < len(promptPresets) {
+		previewText = promptPresets[m.promptCursor].Text
 	}
-	preview := ansi.Truncate("Active: "+activeText, modalWidth-4, "…")
-	b.WriteString(m.styles.dim.Render(preview))
+	if strings.TrimSpace(previewText) == "" {
+		previewText = "(none)"
+	}
+	b.WriteString(m.styles.subtle.Render("Preview"))
 	b.WriteString("\n")
-
-	b.WriteString(m.styles.hint.Render("Enter apply · c custom · g generate · y copy · Esc close"))
-	modal := m.boxStyle(modalWidth).Height(max(1, modalHeight-2)).Render(b.String())
+	b.WriteString(m.styles.muted.Render(ansi.Truncate(previewText, modalWidth-6, "…")))
+	b.WriteString("\n")
+	b.WriteString(m.styles.hint.Render(m.keyBadge("↵", "Apply") + "  " + m.keyBadge("c", "Custom") + "  " + m.keyBadge("Esc", "Close")))
+	modal := m.modalStyle(modalWidth).Height(max(1, modalHeight-2)).Render(b.String())
 	return m.overlay(view, modal, width, height)
 }

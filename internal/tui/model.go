@@ -1,13 +1,16 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/bethropolis/sift/internal/highlight"
+	"github.com/bethropolis/sift/internal/selection"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 // clearNoticeMsg is dispatched after a timer to restore the standard footer
@@ -22,6 +25,8 @@ type PaneFocus int
 const (
 	FocusTree PaneFocus = iota
 	FocusPreview
+
+	headerRows = 1
 )
 
 // model is the BubbleTea state for the dual-pane picker: a foldable tree on
@@ -54,9 +59,13 @@ type model struct {
 	style       string
 	glyphs      Glyphs
 	highlight   highlight.Options
+	syntaxCache *highlight.SyntaxCache
 	windowTitle string
+	projectPath string
 	styles      uiStyles
+	themes      []ThemePreset
 	prompt      string
+	selectionTuning selection.Tuning
 
 	onCopy       func([]Selection) error
 	onCopyPrompt func([]Selection, string) error
@@ -129,10 +138,13 @@ type Options struct {
 	Highlight         bool
 	Theme             string
 	UITheme           string
+	UserThemes        []ThemePreset
 	HighlightMaxBytes int
 	WindowTitle       string
+	ProjectPath       string
 	OnThemeChange     func(string) error
 	Prompt            string
+	SelectionTuning   selection.Tuning
 	OnCopy            func([]Selection) error
 	OnCopyPrompt      func([]Selection, string) error
 
@@ -155,7 +167,22 @@ type Options struct {
 	OnRescan func() (Stream, error)
 }
 
+func containsThemeID(themes []ThemePreset, id string) bool {
+	for _, theme := range themes {
+		if theme.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 func newModel(root *TreeNode, opts Options) model {
+	themes := append([]ThemePreset(nil), ThemePresets...)
+	for _, userTheme := range opts.UserThemes {
+		if !containsThemeID(themes, userTheme.ID) {
+			themes = append(themes, userTheme)
+		}
+	}
 	glyphs := NewASCIIGlyphs()
 	if opts.UseNerd {
 		glyphs = NewNerdFontGlyphs()
@@ -169,13 +196,17 @@ func newModel(root *TreeNode, opts Options) model {
 		budget:           opts.Budget,
 		style:            opts.Style,
 		glyphs:           glyphs,
-		highlight:        highlight.Options{Enabled: opts.Highlight, Theme: highlight.Theme(opts.Theme), MaxBytes: opts.HighlightMaxBytes},
+		highlight:        highlight.Options{Enabled: opts.Highlight, Theme: highlight.Theme(opts.Theme), MaxBytes: opts.HighlightMaxBytes, Profile: currentColorProfile()},
+		syntaxCache:      highlight.NewSyntaxCache(),
 		windowTitle:      sanitizeWindowTitle(opts.WindowTitle),
+		projectPath:      opts.ProjectPath,
 		styles:           defaultStyles(),
-		themeIndex:       themeIndex(opts.UITheme),
-		themeCursor:      themeIndex(opts.UITheme),
+		themes:           themes,
+		themeIndex:       themeIndexIn(themes, opts.UITheme),
+		themeCursor:      themeIndexIn(themes, opts.UITheme),
 		onThemeChange:    opts.OnThemeChange,
 		prompt:           opts.Prompt,
+		selectionTuning:  opts.SelectionTuning,
 		onCopy:           opts.OnCopy,
 		onCopyPrompt:     opts.OnCopyPrompt,
 		onGenerate:       opts.OnGenerate,
@@ -185,7 +216,7 @@ func newModel(root *TreeNode, opts Options) model {
 		onRescan:         opts.OnRescan,
 		nodeIndex:        nodeIndex,
 	}
-	m.applyTheme(ThemePresets[m.themeIndex])
+	m.applyTheme(m.themes[m.themeIndex])
 	m.recomputeRows()
 	return m
 }
@@ -214,6 +245,19 @@ func (m model) Init() tea.Cmd {
 		return m.listenStream()
 	}
 	return tea.Batch(m.listenStream(), tea.SetWindowTitle(m.windowTitle))
+}
+
+func currentColorProfile() highlight.ColorProfile {
+	switch lipgloss.ColorProfile() {
+	case termenv.TrueColor:
+		return highlight.ProfileTrueColor
+	case termenv.ANSI256:
+		return highlight.ProfileANSI256
+	case termenv.ANSI:
+		return highlight.ProfileANSI16
+	default:
+		return highlight.ProfileNone
+	}
 }
 
 func sanitizeWindowTitle(title string) string {
@@ -331,9 +375,14 @@ func (m model) leftPaneWidth() int {
 	return leftWidth
 }
 
+func (m model) headerHeight() int { return headerRows }
+
+func (m model) bodyHeight() int {
+	return max(5, max(10, m.height)-m.headerHeight()-m.footerHeight())
+}
+
 func (m model) treeViewportRows() int {
-	bodyHeight := max(5, m.height-m.footerHeight())
-	return max(1, bodyHeight-3)
+	return max(1, m.bodyHeight()-3)
 }
 
 func (m *model) clampTreeOffset() {
@@ -357,24 +406,57 @@ func (m *model) clampTreeOffset() {
 	}
 }
 
+func (m model) renderHeader(width int) string {
+	if width <= 0 {
+		return ""
+	}
+	selected := m.root.SelectedCount()
+	files := m.root.FileCount()
+	active := m.root.TotalActiveTokens()
+
+	compactTokens := formatTokenCount(active)
+	tokenSummary := compactTokens
+	if m.budget > 0 {
+		tokenSummary += "/" + formatTokenCount(m.budget)
+	} else {
+		tokenSummary += " tok"
+	}
+	rightText := fmt.Sprintf("%d/%d · %s", selected, files, tokenSummary)
+	// Selection and budget are the header's essential state. Keep them at narrow
+	// widths and yield space to the project path first.
+	rightText = ansi.Truncate(rightText, max(1, width-5), "…")
+
+	left := m.styles.appTitle.Render("sift")
+	project := displayProjectPath(m.projectPath)
+	if project != "" {
+		leftRoom := width - ansi.StringWidth(rightText) - ansi.StringWidth(left) - 2
+		if leftRoom >= 4 {
+			path := truncateTail(project, leftRoom-2)
+			left += m.styles.muted.Render("  " + path)
+		}
+	}
+	gap := width - ansi.StringWidth(left) - ansi.StringWidth(rightText)
+	if gap < 1 {
+		return ansi.Truncate(left, width, "")
+	}
+	return left + strings.Repeat(" ", gap) + m.styles.hint.Render(rightText)
+}
+
 func (m model) View() string {
 	width := max(20, m.width)
 	height := max(10, m.height)
 
 	leftWidth := m.leftPaneWidth()
 	rightWidth := width - leftWidth
-
-	bodyHeight := max(5, height-m.footerHeight())
+	bodyHeight := m.bodyHeight()
 
 	leftBox := m.renderTreeBox(leftWidth, bodyHeight)
 	rightBox := m.renderPreviewBox(rightWidth, bodyHeight)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
+	header := m.renderHeader(width)
 	footer := m.renderFooter(width)
-	// Lipgloss may leave a terminal newline when a fixed-height box is
-	// rendered. Normalize it before adding the single body/footer separator so
-	// the footer stays on the final terminal row.
-	view := strings.TrimRight(body, "\n") + "\n" + footer
+	view := strings.TrimRight(header+"\n"+body, "\n") + "\n" + footer
 
 	if m.deltaOpen {
 		view = m.renderDeltaModal(view, width, height)

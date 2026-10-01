@@ -39,8 +39,7 @@ func (m model) previewLineCount() int {
 
 // previewPageSize returns how many content lines fit in the preview pane.
 func (m model) previewPageSize() int {
-	bodyHeight := max(5, m.height-m.footerHeight())
-	return max(1, bodyHeight-3)
+	return max(1, m.bodyHeight()-previewFileHeaderRows)
 }
 
 // previewHalfPage returns the number of lines for a half-page scroll step.
@@ -83,61 +82,65 @@ func (m model) renderPreviewBox(width, height int) string {
 	var b strings.Builder
 	n := m.node()
 
-	title := " Preview "
+	titleStyle := m.styles.hint
+	if m.focus == FocusPreview {
+		titleStyle = m.styles.title
+	}
+	title := " Inspector "
 	if n != nil && n.Kind == KindFile {
 		title = fmt.Sprintf(" %sPreview: %s ", m.glyphs.File, n.Path)
 	} else if n != nil && n.Kind == KindDir {
-		title = fmt.Sprintf(" %sFolder: %s/ ", m.glyphs.FolderOpen, n.Path)
+		title = fmt.Sprintf(" %sInspector: %s/ ", m.glyphs.FolderOpen, n.Path)
 	}
 	title = ansi.Truncate(title, max(1, width-4), "…")
-	b.WriteString(m.styles.title.Render(title))
+	b.WriteString(titleStyle.Render(title))
 
 	if n == nil {
-		b.WriteString("\n")
-		b.WriteString(m.styles.hint.Render("No file selected"))
+		innerWidth := max(10, width-4)
+		for i, line := range m.previewEmptyLines(innerWidth, max(0, height-4)) {
+			if i > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(line)
+		}
 		return boxStyle.Render(b.String())
 	}
 
 	innerWidth := max(10, width-4)
 
 	if n.Kind == KindDir {
-		innerRows := max(1, height-3)
-		fc := n.FileCount()
-		tok := n.TotalActiveTokens()
-		fileWord := "file"
-		if fc != 1 {
-			fileWord = "files"
-		}
-		lines := []string{
-			m.styles.muted.Render(fmt.Sprintf("%d %s · %d tokens", fc, fileWord, tok)),
-			"",
-			m.styles.hint.Render("Space  toggle selection"),
-			m.styles.hint.Render("Enter / l  expand · h  collapse"),
-		}
-		for i := 0; i < len(lines) && i < innerRows; i++ {
+		lines := m.directoryInspector(n)
+		for i, line := range lines {
+			if i >= max(1, height-3) {
+				break
+			}
 			b.WriteString("\n")
-			b.WriteString(ansi.Truncate(lines[i], innerWidth, "…"))
+			b.WriteString(ansi.Truncate(line, innerWidth, "…"))
 		}
 	} else {
 		content := n.Preview()
+		m.writeFileHeader(&b, n, innerWidth)
 		if len(content) == 0 {
 			// Structure-only node whose content has not streamed in yet.
 			b.WriteString("\n")
 			if m.stream.active() && !m.scanDone {
 				b.WriteString(m.styles.hint.Render(m.spinnerChar() + " Scanning… content not loaded yet"))
 			} else {
-				b.WriteString(m.styles.hint.Render("No content available"))
+				b.WriteString(m.styles.hint.Render("Content unavailable"))
 			}
 			return boxStyle.Render(b.String())
 		}
 
-		lines := previewLines(content)
+		var doc *highlight.Document
+		if m.syntaxCache != nil {
+			doc = m.syntaxCache.Get(n.Path, content, m.highlight)
+		} else {
+			doc = highlight.Parse(n.Path, content, m.highlight)
+		}
+		lines := doc.Lines
 		total := len(lines)
 
-		innerRows := max(1, height-3)
-		if n.SecretCount > 0 {
-			innerRows--
-		}
+		innerRows := max(1, height-3-previewFileHeaderRows)
 
 		// Clamp the scroll position in case the pane was resized since the
 		// last scroll.
@@ -157,7 +160,7 @@ func (m model) renderPreviewBox(width, height int) string {
 		end := min(total, m.previewOffset+innerRows)
 		for i := m.previewOffset; i < end; i++ {
 			lineNo := i + 1
-			lineText := lines[i]
+			lineText := lines[i].Text
 
 			prefix := fmt.Sprintf(gutterFmt, lineNo)
 			prefixWidth := lipgloss.Width(prefix)
@@ -169,29 +172,20 @@ func (m model) renderPreviewBox(width, height int) string {
 				bar = barCols[i-m.previewOffset]
 			}
 
-			maxLen := max(1, innerWidth-prefixWidth-barWidth)
-
-			lineText = strings.ReplaceAll(lineText, "\t", "    ")
-			lineText = highlight.RenderLine(n.Path, lineText, m.highlight)
+			// Preserve the exact source text while normalizing tabs for display.
+			// Do this after semantic rendering so ANSI span boundaries remain valid.
+			lineText = strings.ReplaceAll(highlight.RenderDocumentLine(doc, i, m.highlight), "\t", "    ")
+			contentWidth := max(1, innerWidth-prefixWidth-barWidth)
+			lineText = ansi.Truncate(lineText, contentWidth, "…")
 			renderedWidth := ansi.StringWidth(lineText)
-			if renderedWidth > maxLen {
-				lineText = ansi.Truncate(lineText, maxLen, "…")
-				renderedWidth = ansi.StringWidth(lineText)
-			}
 
 			b.WriteString("\n")
 			b.WriteString(m.styles.dim.Render(prefix))
 			b.WriteString(lineText)
+			b.WriteString(strings.Repeat(" ", max(0, contentWidth-renderedWidth)))
 			if barWidth > 0 {
-				b.WriteString(strings.Repeat(" ", max(0, maxLen-renderedWidth)))
 				b.WriteString(m.styles.scrollbar.Render(bar))
 			}
-		}
-
-		if n.SecretCount > 0 {
-			b.WriteString("\n")
-			b.WriteString(m.styles.warning.Render(fmt.Sprintf("%sWarning: %d secret(s) detected in this file",
-				m.glyphs.Warning, n.SecretCount)))
 		}
 
 	}

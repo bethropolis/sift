@@ -16,6 +16,7 @@ import (
 	"github.com/bethropolis/sift/internal/summary"
 	"github.com/bethropolis/sift/internal/tokenize"
 	"github.com/bethropolis/sift/internal/walker"
+	"github.com/muesli/termenv"
 )
 
 // Render applies the token budget to files and writes the rendered document.
@@ -77,6 +78,7 @@ func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Wri
 		Highlight: highlight.Options{
 			Enabled: a.cfg.Highlight && !a.cfg.NoHighlight && a.cfg.UseColors,
 			Theme:   highlight.Theme(a.cfg.Theme), MaxBytes: a.cfg.HighlightMaxBytes,
+			Profile: terminalHighlightProfile(a.cfg.UseColors),
 		},
 	})
 	if err != nil {
@@ -108,6 +110,22 @@ func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Wri
 		Instructions:  prompt,
 	}
 	return renderer.Render(doc, w)
+}
+
+func terminalHighlightProfile(enabled bool) highlight.ColorProfile {
+	if !enabled {
+		return highlight.ProfileNone
+	}
+	switch termenv.EnvColorProfile() {
+	case termenv.TrueColor:
+		return highlight.ProfileTrueColor
+	case termenv.ANSI256:
+		return highlight.ProfileANSI256
+	case termenv.ANSI:
+		return highlight.ProfileANSI16
+	default:
+		return highlight.ProfileNone
+	}
 }
 
 // recountRedactedTokens refreshes the token count of files whose content changed

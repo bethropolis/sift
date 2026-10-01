@@ -30,6 +30,7 @@ type SiftDefaults struct {
 	Highlight         *bool      `toml:"highlight"`
 	NoHighlight       *bool      `toml:"no_highlight"`
 	Theme             string     `toml:"theme"`
+	UIThemeFile       string     `toml:"ui_theme_file"`
 	HighlightMaxBytes int        `toml:"highlight_max_bytes"`
 	WindowTitle       string     `toml:"window_title"`
 	NoWindowTitle     *bool      `toml:"no_window_title"`
@@ -55,32 +56,32 @@ func (p PromptRef) ResolvedPrompt() (string, error) {
 
 // Target is one named dump artifact declared via [[targets]].
 type Target struct {
-	Name         string     `toml:"name"`
-	Profile      string     `toml:"profile"`
-	Output       string     `toml:"output"`
-	Style        string     `toml:"style"`
-	TokenizeModel string    `toml:"tokenize_model"`
-	Budget       int        `toml:"budget"`
-	Mode         string     `toml:"compress_mode"`
-	Prompt       string     `toml:"prompt"`
-	PromptFile   string     `toml:"prompt_file"`
-	SecretScan   *bool      `toml:"secret_scan"`
-	ForceSecrets *bool      `toml:"force_secrets"`
-	IgnoreHidden *bool      `toml:"ignore_hidden"`
-	IgnoreGit    *bool      `toml:"ignore_git"`
-	Extensions   StringList `toml:"extensions"`
-	Ignore       StringList `toml:"ignore"`
-	SmartFilter  *bool      `toml:"smart_filter"`
-	SmartMaxTokens int      `toml:"smart_max_tokens"`
-	Scoring      *Scoring   `toml:"scoring"`
+	Name           string     `toml:"name"`
+	Profile        string     `toml:"profile"`
+	Output         string     `toml:"output"`
+	Style          string     `toml:"style"`
+	TokenizeModel  string     `toml:"tokenize_model"`
+	Budget         int        `toml:"budget"`
+	Mode           string     `toml:"compress_mode"`
+	Prompt         string     `toml:"prompt"`
+	PromptFile     string     `toml:"prompt_file"`
+	SecretScan     *bool      `toml:"secret_scan"`
+	ForceSecrets   *bool      `toml:"force_secrets"`
+	IgnoreHidden   *bool      `toml:"ignore_hidden"`
+	IgnoreGit      *bool      `toml:"ignore_git"`
+	Extensions     StringList `toml:"extensions"`
+	Ignore         StringList `toml:"ignore"`
+	SmartFilter    *bool      `toml:"smart_filter"`
+	SmartMaxTokens int        `toml:"smart_max_tokens"`
+	Scoring        *Scoring   `toml:"scoring"`
 }
 
 // Automation holds optional declarative automation hints.
 type Automation struct {
-	Watch        *bool  `toml:"watch"`
-	WatchInterval string `toml:"watch_interval"`
-	GitHook      string `toml:"git_hook"`
-	HookTargets  []string `toml:"hook_targets"`
+	Watch         *bool    `toml:"watch"`
+	WatchInterval string   `toml:"watch_interval"`
+	GitHook       string   `toml:"git_hook"`
+	HookTargets   []string `toml:"hook_targets"`
 }
 
 // configFile is the full v2 TOML file shape.

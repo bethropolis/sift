@@ -123,7 +123,7 @@ func TestGenerateNotice(t *testing.T) {
 	if m.quit {
 		t.Fatal("g should not quit the picker")
 	}
-	if !strings.Contains(m.notice, "Generated output (1 files") {
+	if !strings.Contains(m.notice, "Generated output · 1 file · 10 tokens") {
 		t.Errorf("notice = %q", m.notice)
 	}
 }

@@ -112,14 +112,21 @@ instructions. The chosen prompt is prepended to generated or copied output.
 
 ## Color themes
 
-Press `t` to open the theme selector. Presets include Catppuccin Mocha, Tokyo
-Night, Dracula, Gruvbox Dark, Nord, Rose Pine, and the default/classic theme.
-Your selection applies immediately and is saved for future sessions. The theme
-also recolors preview syntax highlighting to match, so keywords, strings, and
-comments follow the same palette as the rest of the picker.
+Press `t` to open the theme selector. The built-in catalog includes Catppuccin
+Mocha, Tokyo Night, Dracula, Gruvbox Dark and Light, Nord, Rosé Pine, Kanagawa
+Wave/Dragon/Lotus, Everforest Dark and Light, One Dark, Solarized Dark and
+Light, Monokai, GitHub Dark and Light, Night Owl, Poimandres, Classic/default,
+and Terminal (Emulator). Terminal (Emulator) uses the configured ANSI palette
+(including the terminal's foreground/background colors) instead of fixed RGB
+colors. Your selection applies immediately and is saved for future sessions. The
+theme also recolors preview syntax highlighting to match,
+so keywords, strings, comments, diffs, and markup follow the same palette as
+the rest of the picker.
 
-If your terminal does not show the default Nerd Font glyphs, run with
-`--no-nerd-fonts` to use plain ASCII icons.
+Use `--ui-theme-file` to load custom TOML themes. See
+[Configuration and profiles](configuration.md#custom-picker-themes) for the file
+format and inheritance rules. If your terminal does not show the default Nerd
+Font glyphs, run with `--no-nerd-fonts` to use plain ASCII icons.
 
 ## Incremental deltas from the picker
 

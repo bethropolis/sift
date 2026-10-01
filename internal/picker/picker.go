@@ -79,6 +79,14 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		preferredModes = rank.New(absRoot).AnalyzeCommitHistory(5)
 	}
 
+	var userThemes []tui.ThemePreset
+	if s.cfg.UIThemeFile != "" {
+		userThemes, err = tui.LoadUserThemes(s.cfg.UIThemeFile)
+		if err != nil {
+			return Result{}, err
+		}
+	}
+
 	skeletonItems, deltaFiles := buildSkeleton(metas, preferredModes)
 
 	// Nothing survived the ignore, binary, size, and smart metadata filters:
@@ -129,13 +137,16 @@ func (s *service) run(ctx context.Context) (Result, error) {
 
 	result, err := tui.RunStreaming(skeletonItems, tui.Options{
 		Budget:            s.cfg.Budget,
+		SelectionTuning:   app.TuningFromScoring(s.cfg.Scoring),
 		Style:             s.cfg.EffectiveStyle(),
 		UseNerd:           !s.cfg.NoNerdFonts,
 		Highlight:         s.cfg.Highlight && !s.cfg.NoHighlight && !s.cfg.NoColor,
 		Theme:             s.cfg.Theme,
 		UITheme:           s.cfg.UITheme,
+		UserThemes:        userThemes,
 		HighlightMaxBytes: s.cfg.HighlightMaxBytes,
 		WindowTitle:       pickerWindowTitle(s.cfg),
+		ProjectPath:       s.cfg.RootDir,
 		Prompt:            s.cfg.Prompt,
 		OnThemeChange: func(name string) error {
 			s.cfg.UITheme = name

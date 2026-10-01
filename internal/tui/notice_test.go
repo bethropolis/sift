@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestCopyNotice(t *testing.T) {
@@ -15,7 +16,7 @@ func TestCopyNotice(t *testing.T) {
 	if m.notice == "" {
 		t.Fatal("notice empty after y")
 	}
-	if !strings.Contains(m.notice, "Copied 1 files") {
+	if !strings.Contains(m.notice, "Copied 1 file") {
 		t.Errorf("notice = %q", m.notice)
 	}
 }
@@ -29,6 +30,28 @@ func TestFooterHeightFixedWithNotice(t *testing.T) {
 	m.notice = "Generated output (1 files)"
 	if got := m.footerHeight(); got != 2 {
 		t.Errorf("footerHeight() with notice = %d, want fixed 2", got)
+	}
+}
+
+func TestNoticeVisualSemantics(t *testing.T) {
+	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{UseNerd: true})
+	m.width = 120
+	tests := []struct {
+		notice string
+		glyph  string
+	}{
+		{"Copied 1 file", "✓"},
+		{"Generate failed", m.glyphs.Warning},
+		{"Rescan complete", "↻"},
+		{"Nothing selected", m.glyphs.Warning},
+	}
+	for _, tt := range tests {
+		m.notice = tt.notice
+		line := ansi.Strip(strings.Split(ansi.Strip(m.renderFooter(m.width)), "\n")[1])
+		want := strings.TrimSpace(tt.glyph) + " " + tt.notice
+		if !strings.Contains(line, want) {
+			t.Errorf("notice %q rendered as %q, want %q", tt.notice, line, want)
+		}
 	}
 }
 
@@ -76,12 +99,15 @@ func TestStaleNoticeTimerIgnored(t *testing.T) {
 	}
 }
 
-func TestSmartSelectNoNotice(t *testing.T) {
+func TestSmartSelectNotice(t *testing.T) {
 	root := BuildTree([]Item{{Path: "a.go", TokensFull: 10}})
 	m := newModel(root, Options{})
 	m = updateKey(m, tea.KeyRunes, 's')
-	if m.notice != "" {
-		t.Errorf("smart select set a notice: %q", m.notice)
+	if !strings.Contains(m.notice, "Smart selection") {
+		t.Errorf("smart select notice = %q", m.notice)
+	}
+	if !strings.Contains(m.notice, "1 file") {
+		t.Errorf("smart select notice = %q", m.notice)
 	}
 	if m.root.SelectedCount() == 0 {
 		t.Error("smart select selected nothing")

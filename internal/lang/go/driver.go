@@ -31,16 +31,16 @@ func (goDriver) ShouldSkipSmart(path, filename string, content []byte) (bool, st
 }
 func (goDriver) Classify(path, filename string) types.Classification {
 	switch {
-	case filename == "main.go" || strings.HasPrefix(path, "cmd/"):
-		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.18, Confidence: 0.90, Reason: "Go entrypoint/command"}
 	case strings.HasSuffix(filename, "_test.go"):
 		return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.98, Reason: "Go test file"}
 	case strings.HasSuffix(filename, "_mock.go") || strings.HasPrefix(filename, "mock_"):
 		return types.Classification{Role: types.RoleMock, Adjustment: -0.18, Confidence: 0.95, Reason: "Go mock"}
-	case strings.HasPrefix(path, "internal/"):
-		return types.Classification{Role: types.RoleImpl, Adjustment: 0.04, Confidence: 0.75, Reason: "Go internal implementation"}
 	case strings.HasSuffix(filename, ".gen.go") || strings.HasSuffix(filename, "_gen.go") || strings.HasSuffix(filename, ".pb.go"):
 		return types.Classification{Role: types.RoleGenerated, Adjustment: -0.35, Confidence: 0.95, Reason: "generated Go source"}
+	case filename == "main.go" || strings.HasPrefix(path, "cmd/"):
+		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.18, Confidence: 0.90, Reason: "Go entrypoint/command"}
+	case strings.HasPrefix(path, "internal/"):
+		return types.Classification{Role: types.RoleImpl, Adjustment: 0.04, Confidence: 0.75, Reason: "Go internal implementation"}
 	}
 	return types.Classification{Role: types.RoleImpl, Confidence: 0.50, Reason: "Go source"}
 }

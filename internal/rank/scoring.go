@@ -131,6 +131,9 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams, w W
 		case !p.DidCompress || ratio > ratioFullCap:
 			mode = "full"
 			reason = "Low compression yield (forced Full)"
+		case recencyScore >= ScoreModified:
+			mode = "full"
+			reason = "Uncommitted change; full implementation context"
 		case compositeScore >= w.FullBand:
 			mode = "full"
 			reason = "High relevance / active work (Full)"

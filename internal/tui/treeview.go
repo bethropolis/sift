@@ -37,20 +37,19 @@ func (m model) renderTreeBox(width, height int) string {
 
 	var b strings.Builder
 
+	titleStyle := m.styles.hint
+	if m.focus == FocusTree {
+		titleStyle = m.styles.title
+	}
 	fileCount := m.root.FileCount()
 	selCount := m.root.SelectedCount()
-
 	titleText := fmt.Sprintf(" Explorer  %d files", fileCount)
-	if m.glyphs.FolderOpen != "" {
-		titleText = fmt.Sprintf(" %sExplorer  %d files", m.glyphs.FolderOpen, fileCount)
-	}
 	if selCount > 0 {
 		titleText += fmt.Sprintf("  %d selected", selCount)
 	}
 	titleText += " "
-
 	titleText = ansi.Truncate(titleText, max(1, width-4), "…")
-	b.WriteString(m.styles.title.Render(titleText))
+	b.WriteString(titleStyle.Render(titleText))
 
 	if m.filtering && m.filter != "" {
 		filterLine := ansi.Truncate(fmt.Sprintf(" / %s", m.filter), max(1, width-4), "…")
@@ -86,8 +85,14 @@ func (m model) treeRow(n *TreeNode, width int) string {
 		mark = m.glyphs.CheckNone
 	}
 
+	cursorMark := "  "
+	if n == m.node() {
+		cursorMark = m.glyphs.Cursor
+	}
+
 	icon := m.glyphs.File
 	name := n.Name
+	relevant := ""
 	tokens := n.TokensSig
 	if n.Kind == KindDir {
 		icon = m.glyphs.FolderClosed
@@ -99,10 +104,13 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	} else if n.Mode == ModeFull {
 		tokens = n.TokensFull
 	}
+	if n.Kind == KindFile && n.RankScore >= 0.55 {
+		relevant = " " + lipgloss.NewStyle().Foreground(m.styles.accentSoft).Render(m.glyphs.Relevant)
+	}
 
 	secret := ""
 	if n.SecretCount > 0 {
-		secret = " " + m.styles.warning.Render(m.glyphs.Warning)
+		secret = " " + m.styles.warning.Render(fmt.Sprintf("%s%d", strings.TrimSpace(m.glyphs.Warning), n.SecretCount))
 	}
 
 	modeStr := ""
@@ -118,30 +126,32 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	}
 
 	treeGuide := m.styles.treeGuide.Render(prefix)
-	left := fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
+	left := fmt.Sprintf("%s%s %s %s%s%s%s%s", cursorMark, treeGuide, mark, icon, name, relevant, modeStr, secret)
 
 	// Style the token count based on budget usage and zero-state.
 	var right string
 	if n.Kind == KindFile && n.TokensFull == 0 && n.ApproxTokens > 0 {
-		// Byte-based estimate shown until the exact count streams in.
-		right = m.styles.muted.Render(fmt.Sprintf("~%5d tok", n.ApproxTokens))
+		right = m.styles.muted.Render(fmt.Sprintf("%6s", "~"+formatTokenCount(n.ApproxTokens)))
 	} else if tokens == 0 {
-		right = m.styles.dim.Render(fmt.Sprintf("%6d tok", tokens))
+		right = m.styles.dim.Render(fmt.Sprintf("%6s", formatTokenCount(0)))
 	} else {
-		tokColor := m.tokenColor(tokens)
-		right = lipgloss.NewStyle().Foreground(tokColor).Render(fmt.Sprintf("%6d tok", tokens))
+		right = lipgloss.NewStyle().Foreground(m.tokenColor(tokens)).Render(fmt.Sprintf("%6s", formatTokenCount(tokens)))
 	}
 
 	leftWidth := ansi.StringWidth(left)
 	rightWidth := ansi.StringWidth(right)
+	compose := func(name string) string {
+		return fmt.Sprintf("%s%s %s %s%s%s%s%s", cursorMark, treeGuide, mark, icon, name, relevant, modeStr, secret)
+	}
 
 	if leftWidth+rightWidth > width {
-		fixed := ansi.StringWidth(treeGuide) + ansi.StringWidth(mark) + ansi.StringWidth(icon) +
-			ansi.StringWidth(modeStr) + ansi.StringWidth(secret) + 2
+		fixed := ansi.StringWidth(cursorMark) + ansi.StringWidth(treeGuide) + ansi.StringWidth(mark) +
+			ansi.StringWidth(icon) + ansi.StringWidth(relevant) + ansi.StringWidth(modeStr) +
+			ansi.StringWidth(secret) + 2
 		nameSpace := width - rightWidth - fixed
-		if nameSpace >= 2 && len(name) > nameSpace {
+		if nameSpace >= 2 && ansi.StringWidth(name) > nameSpace {
 			name = ansi.Truncate(name, nameSpace, "…")
-			left = fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
+			left = compose(name)
 			leftWidth = ansi.StringWidth(left)
 		}
 	}
@@ -152,7 +162,8 @@ func (m model) treeRow(n *TreeNode, width int) string {
 		row = ansi.Truncate(row, width, "…")
 	}
 
-	// Hover and selection outrank the muted styling so focus stays obvious.
+	// Cursor and selection intentionally use different grammar: the cursor owns
+	// a narrow marker plus surface, while selection owns the state glyph/color.
 	if n == m.node() {
 		return m.styles.cursor.Render(row)
 	}
@@ -160,19 +171,14 @@ func (m model) treeRow(n *TreeNode, width int) string {
 		return m.styles.selected.Render(row)
 	}
 
-	// Hidden and Git-ignored rows are dimmed so they recede from tracked
-	// files. The muted color is applied to the readable text (the name and the
-	// token count) rather than wrapping the whole row, because the tree
-	// guide's own ANSI reset would otherwise wipe the dimming from the text
-	// that follows it.
+	// Hidden and Git-ignored rows recede without losing their state glyphs.
 	if n.Hidden || n.GitIgnored {
 		name = m.styles.muted.Render(name)
-		right = m.styles.muted.Render(fmt.Sprintf("%6d tok", tokens))
-		left = fmt.Sprintf("%s %s %s%s%s%s", treeGuide, mark, icon, name, modeStr, secret)
-		row = left + strings.Repeat(" ", pad) + right
-		if ansi.StringWidth(row) > width {
-			row = ansi.Truncate(row, width, "…")
-		}
+		right = m.styles.muted.Render(fmt.Sprintf("%6s", formatTokenCount(tokens)))
+		left = compose(name)
+		leftWidth = ansi.StringWidth(left)
+		pad = max(0, width-leftWidth-ansi.StringWidth(right))
+		row = ansi.Truncate(left+strings.Repeat(" ", pad)+right, width, "…")
 	}
 	return row
 }

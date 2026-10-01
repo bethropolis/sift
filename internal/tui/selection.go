@@ -216,7 +216,11 @@ func (n *TreeNode) SelectedCount() int {
 // signature, and skipped variants together. The prompt conditions
 // path-relevance scoring so smart selection respects the active task
 // directive. Returns the selected file count.
-func (n *TreeNode) SelectByRank(budget int, prompt string) int {
+func (n *TreeNode) SelectByRank(budget int, prompt string, tunings ...selection.Tuning) int {
+	tuning := selection.Tuning{}
+	if len(tunings) > 0 {
+		tuning = tunings[0]
+	}
 	var files []*TreeNode
 	n.collectFiles(&files)
 	candidates := make([]selection.Candidate, 0, len(files))
@@ -232,16 +236,19 @@ func (n *TreeNode) SelectByRank(budget int, prompt string) int {
 				RankScore:  f.RankScore,
 			},
 			PreferredMode: string(f.PreferredMode),
+			Signals:       selection.Signals{TestAffinity: f.TestAffinity},
 		})
 		byPath[filepath.ToSlash(f.Path)] = f
 	}
-	result := selection.Select(candidates, selection.Request{Budget: budget, Prompt: prompt})
+	result := selection.Select(candidates, selection.Request{Budget: budget, Prompt: prompt, Tuning: tuning})
 	n.ClearSelection()
 	for _, decision := range result.Decisions {
 		f := byPath[decision.Path]
 		if f == nil {
 			continue
 		}
+		f.PreferredMode = CompressMode(decision.Mode)
+		f.ModeReason = decision.Reason
 		switch decision.Mode {
 		case selection.ModeSignatures:
 			f.Mode = ModeSignatures

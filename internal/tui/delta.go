@@ -3,8 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-
-	"github.com/charmbracelet/x/ansi"
 )
 
 // DeltaInfo carries the git delta state the picker shows in its delta modal.
@@ -152,13 +150,12 @@ func (m model) renderDeltaModal(view string, width, height int) string {
 	}
 
 	var b strings.Builder
-	title := fmt.Sprintf(" %sIncremental Delta ", m.glyphs.Delta)
-	b.WriteString(m.styles.title.Render(ansi.Truncate(title, modalWidth-4, "…")))
+	b.WriteString(m.modalTitle(m.glyphs.Delta, "Incremental Delta", modalWidth))
 	b.WriteString("\n")
 
 	if m.delta == nil {
 		b.WriteString(m.styles.hint.Render("Not available outside a git repository."))
-		return m.overlay(view, m.boxStyle(modalWidth).Render(b.String()), width, height)
+		return m.overlay(view, m.modalStyle(modalWidth).Render(b.String()), width, height)
 	}
 
 	b.WriteString(m.styles.muted.Render(fmt.Sprintf("Project: %s", m.delta.RootDir)))
@@ -213,6 +210,6 @@ func (m model) renderDeltaModal(view string, width, height int) string {
 	b.WriteString("\n\n")
 	b.WriteString(m.styles.hint.Render("Space toggle · m mode · Enter dump · c copy · Esc cancel"))
 
-	modal := m.boxStyle(modalWidth).Render(b.String())
+	modal := m.modalStyle(modalWidth).Render(b.String())
 	return m.overlay(view, modal, width, height)
 }

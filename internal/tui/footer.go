@@ -30,105 +30,121 @@ func (m model) keyBadge(key, label string) string {
 	return k + " " + l
 }
 
+func (m model) budgetMeter(active int) string {
+	if m.budget <= 0 || m.width < 100 {
+		return ""
+	}
+	pct := 100
+	if active < m.budget {
+		pct = active * 100 / m.budget
+	}
+	barLen := 10
+	filled := barLen * pct / 100
+	if filled > barLen {
+		filled = barLen
+	}
+	bar := strings.Repeat("━", filled) + strings.Repeat("─", barLen-filled)
+	style := m.styles.success
+	switch {
+	case active > m.budget:
+		style = m.styles.danger
+	case pct >= 80:
+		style = m.styles.modeSig
+	}
+	return fmt.Sprintf("  %s %s %d%%", style.Render(bar), m.styles.muted.Render(fmt.Sprintf("%s/%s", formatTokenCount(active), formatTokenCount(m.budget))), pct)
+}
+
+func (m model) contextualActions(width int) string {
+	sep := m.styles.subtle.Render(" · ")
+	var hints []string
+	switch {
+	case m.filtering:
+		hints = []string{m.keyBadge("↵", "Apply"), m.keyBadge("Esc", "Cancel")}
+	case m.helpOpen:
+		hints = []string{m.keyBadge("↑↓", "Scroll"), m.keyBadge("Esc", "Close")}
+	case m.themeOpen:
+		hints = []string{m.keyBadge("↵", "Apply"), m.keyBadge("Esc", "Close")}
+	case m.promptOpen:
+		hints = []string{m.keyBadge("↵", "Apply"), m.keyBadge("c", "Custom"), m.keyBadge("Esc", "Close")}
+	case m.deltaOpen:
+		hints = []string{m.keyBadge("Space", "Toggle"), m.keyBadge("m", "Mode"), m.keyBadge("↵", "Dump"), m.keyBadge("Esc", "Cancel")}
+	case m.focus == FocusPreview:
+		hints = []string{m.keyBadge("↑↓", "Scroll"), m.keyBadge("Tab", "Explorer"), m.keyBadge("y", "Copy"), m.keyBadge("?", "Help"), m.keyBadge("q", "Quit")}
+	default:
+		hints = []string{m.keyBadge("Space", "Select"), m.keyBadge("/", "Filter"), m.keyBadge("s", "Smart"), m.keyBadge("g", "Generate"), m.keyBadge("y", "Copy"), m.keyBadge("?", "Help")}
+	}
+	if width < 60 {
+		if m.filtering || m.helpOpen || m.themeOpen || m.promptOpen || m.deltaOpen {
+			return strings.Join(hints[:min(1, len(hints))], sep)
+		}
+		return lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render("?")
+	}
+	if width < 90 {
+		if len(hints) > 4 {
+			hints = hints[:4]
+		}
+	}
+	return strings.Join(hints, sep)
+}
+
+func footerLine(left, right string, width int) string {
+	if right == "" {
+		return ansi.Truncate(left, width, "…")
+	}
+	gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
+	if gap >= 2 {
+		return left + strings.Repeat(" ", gap) + right
+	}
+	rightWidth := max(8, width/3)
+	right = ansi.Truncate(right, rightWidth, "…")
+	leftWidth := max(1, width-ansi.StringWidth(right)-1)
+	left = ansi.Truncate(left, leftWidth, "…")
+	return left + " " + right
+}
+
 func (m model) renderFooter(width int) string {
 	selected := m.root.SelectedCount()
 	active := m.root.TotalActiveTokens()
+	sep := m.styles.subtle.Render(" · ")
 
-	budget := ""
-	if m.budget > 0 {
-		pct := 0
-		if active >= m.budget {
-			pct = 100
-		} else if active > 0 {
-			pct = active * 100 / m.budget
-		}
-		barLen := 16
-		filled := barLen * pct / 100
-		bar := strings.Repeat("█", filled) + strings.Repeat("░", max(0, barLen-filled))
-
-		var barStyle lipgloss.Style
-		switch {
-		case active > m.budget:
-			barStyle = m.styles.modeSkip
-		case pct >= 80:
-			barStyle = m.styles.modeSig
-		default:
-			barStyle = m.styles.modeFull
-		}
-		styledBar := barStyle.Render(bar)
-		budgetLabel := m.styles.muted.Render(fmt.Sprintf("%d/%d", active, m.budget))
-		budget = budgetLabel + " " + styledBar + "  "
-	}
-
-	sep := m.styles.dim.Render(" · ")
-
-	var statusLine string
-	visibility := ""
-	if m.showHidden {
-		visibility += " +dot"
-	}
-	if m.showGitIgnored {
-		visibility += " +git"
-	}
-
+	var left string
 	switch {
 	case m.notice != "":
-		statusLine = budget + m.styles.notice.Render("  "+m.notice)
+		notice := m.notice
+		lower := strings.ToLower(notice)
+		style := m.styles.hint
+		icon := m.glyphs.Warning
+		switch {
+		case strings.Contains(lower, "failed"), strings.Contains(lower, "error"), strings.Contains(lower, "exceeded"):
+			style = m.styles.warning
+		case strings.Contains(lower, "copied"), strings.Contains(lower, "generated"):
+			style = m.styles.notice
+			icon = m.glyphs.Success
+		case strings.Contains(lower, "rescan"):
+			icon = m.glyphs.Refresh
+		}
+		left = style.Render(strings.TrimSpace(icon) + " " + notice)
 	case m.filtering:
-		matchStr := m.styles.hint.Render(fmt.Sprintf("%d match", len(m.rows)))
-		if len(m.rows) != 1 {
-			matchStr = m.styles.hint.Render(fmt.Sprintf("%d matches", len(m.rows)))
+		match := fmt.Sprintf("%d matches", len(m.rows))
+		if len(m.rows) == 1 {
+			match = "1 match"
 		}
-		statusLine = m.styles.title.Render("/") + " " +
-			m.styles.hint.Render(m.filter) +
-			m.styles.title.Render("▌") + "  " +
-			matchStr
+		left = m.styles.title.Render("/") + " " + m.styles.hint.Render(m.filter) + m.styles.title.Render("▌") + sep + m.styles.subtle.Render(match)
 	case m.stream.active() && !m.scanDone:
-		spinner := lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(m.spinnerChar())
-		scanInfo := m.styles.muted.Render(fmt.Sprintf("%d files · %d dirs", m.scanFiles, m.scanDirs))
-		hints := strings.Join([]string{
-			m.keyBadge("p", "Prompt"),
-			m.keyBadge("m", "Mode"),
-			m.keyBadge("s", "Smart"),
-			m.keyBadge("g", "Gen"),
-			m.keyBadge("y", "Copy"),
-			m.keyBadge("q", "Quit"),
-			m.keyBadge("?", "Help"),
-		}, sep)
-		statusLine = budget + spinner + " " + scanInfo + "  " + hints
+		left = lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(m.spinnerChar()) +
+			" " + m.styles.hint.Render(fmt.Sprintf("Scanning · %d files · %d dirs", m.scanFiles, m.scanDirs))
 	default:
-		selStr := m.styles.hint.Render(fmt.Sprintf("%d sel", selected))
-		tokStr := m.styles.hint.Render(fmt.Sprintf("%d tok", active))
-		styleStr := m.styles.muted.Render("Style: " + m.style + visibility)
-
-		var hintList []string
-		if width < 80 {
-			hintList = []string{
-				m.keyBadge("m", "Mode"),
-				m.keyBadge("s", "Smart"),
-				m.keyBadge("y", "Copy"),
-				m.keyBadge("?", "Help"),
-				m.keyBadge("q", "Quit"),
-			}
-		} else {
-			hintList = []string{
-				m.keyBadge("p", "Prompt"),
-				m.keyBadge("m", "Mode"),
-				m.keyBadge("s", "Smart"),
-				m.keyBadge("g", "Gen"),
-				m.keyBadge("y", "Copy"),
-				m.keyBadge("?", "Help"),
-				m.keyBadge("q", "Quit"),
-			}
+		visibility := ""
+		if m.showHidden {
+			visibility += " +dot"
 		}
-		hints := strings.Join(hintList, sep)
-		statusLine = budget + selStr + sep + tokStr + sep + styleStr + "  " + hints
+		if m.showGitIgnored {
+			visibility += " +git"
+		}
+		left = m.styles.hint.Render(fmt.Sprintf("%d selected · %s tokens", selected, formatTokenCount(active))) +
+			sep + m.styles.subtle.Render("Style: "+m.style+visibility) + m.budgetMeter(active)
 	}
 
-	var b strings.Builder
-	b.WriteString(m.styles.dim.Render(strings.Repeat("─", width)))
-	b.WriteString("\n")
-	statusLine = ansi.Truncate(statusLine, max(1, width), "…")
-	b.WriteString(statusLine)
-	return b.String()
+	separator := m.styles.subtle.Render(strings.Repeat("─", width))
+	return separator + "\n" + footerLine(left, m.contextualActions(width), width)
 }

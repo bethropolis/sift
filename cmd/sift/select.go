@@ -44,6 +44,12 @@ func runSelect(cmd *cobra.Command, args []string) error {
 	if err := applyProfile(cmd); err != nil {
 		return err
 	}
+	// `select` is the agent-context workflow, so give it a useful bounded
+	// default. Preserve the documented unlimited behavior when the user passes
+	// --budget 0 explicitly; profile and config budgets continue to take effect.
+	if cfg.Budget == 0 && !cmd.Flags().Changed("budget") {
+		cfg.Budget = 50000
+	}
 
 	// Match the TUI: automatic selection uses enriched entries, signatures,
 	// and the smart filter regardless of whether the user set --smart.
@@ -74,6 +80,7 @@ func runSelect(cmd *cobra.Command, args []string) error {
 		ranker := app.NewRankerWithWeights(root, scores)
 		preferred, graph = ranker.RankGraph(files)
 	}
+	testAffinity := app.RelatedTestAffinity(files, graph)
 	candidates := make([]selection.Candidate, 0, len(files))
 	for _, file := range files {
 		candidates = append(candidates, selection.Candidate{
@@ -84,6 +91,7 @@ func runSelect(cmd *cobra.Command, args []string) error {
 				Churn:      preferred[file.Path].Signals.Churn,
 				Centrality: preferred[file.Path].Signals.Centrality,
 				Role:       preferred[file.Path].Signals.Role,
+				TestAffinity: testAffinity[filepath.ToSlash(file.Path)],
 			},
 		})
 	}

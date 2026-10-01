@@ -14,6 +14,8 @@ func common(path, base, ext string) (types.Classification, bool) {
 		return types.Classification{Role: types.RoleVendor, Adjustment: -0.20, Confidence: 0.95, Reason: "vendored dependency"}, true
 	case strings.Contains(path, "/testdata/") || strings.HasPrefix(path, "testdata/") || strings.Contains(path, "/fixtures/"):
 		return types.Classification{Role: types.RoleFixture, Adjustment: -0.10, Confidence: 0.90, Reason: "fixture/test data"}, true
+	case underAny(path, "test", "tests", "__test__", "__tests__"):
+		return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.92, Reason: "test directory"}, true
 	case strings.Contains(path, "/examples/") || strings.HasPrefix(path, "examples/"):
 		return types.Classification{Role: types.RoleExample, Adjustment: 0.04, Confidence: 0.85, Reason: "example"}, true
 	case strings.Contains(path, "/migrations/") || strings.HasPrefix(path, "migrations/"):
@@ -38,4 +40,13 @@ func common(path, base, ext string) (types.Classification, bool) {
 		return types.Classification{Role: types.RoleGenerated, Adjustment: -0.35, Confidence: 0.90, Reason: "generated naming convention"}, true
 	}
 	return types.Classification{}, false
+}
+
+func underAny(path string, dirs ...string) bool {
+	for _, dir := range dirs {
+		if strings.HasPrefix(path, dir+"/") || strings.Contains(path, "/"+dir+"/") {
+			return true
+		}
+	}
+	return false
 }

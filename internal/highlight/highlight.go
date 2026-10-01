@@ -20,15 +20,29 @@ const (
 	ThemeLight Theme = "light"
 )
 
+// ColorProfile controls semantic ANSI color degradation.
+type ColorProfile uint8
+
+const (
+	ProfileTrueColor ColorProfile = iota
+	ProfileANSI256
+	ProfileANSI16
+	ProfileNone
+)
+
 // Options controls terminal highlighting.
 type Options struct {
 	Enabled  bool
 	Theme    Theme
 	MaxBytes int
+	Profile  ColorProfile
 	// Palette overrides the built-in Theme palette when non-nil. The TUI
 	// sets it from the active color preset so preview highlighting follows
 	// the picker's theme; Theme is kept as the fallback.
 	Palette *Palette
+	// Syntax is the semantic palette used by the cached document renderer.
+	// Palette remains supported for compatibility with existing callers.
+	Syntax *SyntaxPalette
 }
 
 const defaultMaxBytes = 256 * 1024
@@ -56,13 +70,14 @@ func Render(path string, content []byte, options Options) string {
 // RenderLine highlights one line. Keeping this operation line-local makes it
 // suitable for the TUI, which can render only the visible preview rows.
 func RenderLine(path, line string, options Options) string {
-	if !options.Enabled || options.Theme == ThemeNone || line == "" || !supported(path) {
+	if !options.Enabled || options.Theme == ThemeNone || options.Profile == ProfileNone || line == "" || !supported(path) {
 		return line
 	}
 	styles := palette(options.Theme)
 	if options.Palette != nil {
 		styles = *options.Palette
 	}
+	styles = profilePalette(styles, options.Profile)
 	keywordSet := keywords(path)
 	var b strings.Builder
 	for i := 0; i < len(line); {
@@ -137,6 +152,13 @@ func RenderLine(path, line string, options Options) string {
 
 const reset = "\033[0m"
 
+func profilePalette(palette Palette, profile ColorProfile) Palette {
+	if profile != ProfileNone {
+		return palette
+	}
+	return Palette{}
+}
+
 // Palette holds the SGR sequences for each token class. The TUI builds one
 // per color preset so preview highlighting matches the picker's theme.
 type Palette struct {
@@ -179,6 +201,11 @@ func ANSI(hex string, mods ...string) string {
 }
 
 func supported(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	switch base {
+	case "dockerfile", "makefile", "justfile", ".gitignore", ".env", "license":
+		return true
+	}
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".go", ".rs", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".py", ".pyi", ".java", ".kt", ".kts", ".cs", ".c", ".h", ".cc", ".cpp", ".cxx", ".rb", ".php", ".swift", ".json", ".yaml", ".yml", ".toml", ".sh", ".bash", ".zsh", ".sql", ".html", ".css", ".scss", ".vue", ".svelte", ".astro":
 		return true

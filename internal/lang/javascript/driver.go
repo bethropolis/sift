@@ -29,9 +29,13 @@ func (jsDriver) ShouldSkipSmart(path, filename string, content []byte) (bool, st
 }
 func (jsDriver) Classify(path, filename string) types.Classification {
 	stem := strings.TrimSuffix(filename, filepath.Ext(filename))
+	lower := strings.ToLower(filename)
 	switch {
 	case strings.Contains(path, "/__tests__/") || strings.HasPrefix(path, "__tests__/") ||
-		strings.HasSuffix(filename, ".test.js") || strings.HasSuffix(filename, ".spec.js"):
+		strings.HasSuffix(lower, ".test.js") || strings.HasSuffix(lower, ".spec.js") ||
+		strings.HasSuffix(lower, ".test.jsx") || strings.HasSuffix(lower, ".spec.jsx") ||
+		strings.HasSuffix(lower, ".test.mjs") || strings.HasSuffix(lower, ".spec.mjs") ||
+		strings.HasSuffix(lower, ".test.cjs") || strings.HasSuffix(lower, ".spec.cjs"):
 		return types.Classification{Role: types.RoleTest, Adjustment: -0.12, Confidence: 0.95, Reason: "JavaScript test file"}
 	case stem == "index" || stem == "main" || strings.HasPrefix(path, "bin/"):
 		return types.Classification{Role: types.RoleEntrypoint, Adjustment: 0.16, Confidence: 0.85, Reason: "JavaScript entrypoint"}

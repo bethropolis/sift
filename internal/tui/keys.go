@@ -108,9 +108,9 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter, tea.KeySpace:
 			m.themeOpen = false
 			m.themeIndex = m.themeCursor
-			m.applyTheme(ThemePresets[m.themeCursor])
+			m.applyTheme(m.themes[m.themeCursor])
 			if m.onThemeChange != nil {
-				if err := m.onThemeChange(ThemePresets[m.themeCursor].Name); err != nil {
+				if err := m.onThemeChange(themeIDIn(m.themes, m.themeIndex)); err != nil {
 					m.setNotice(fmt.Sprintf("theme not saved: %v", err))
 				}
 			}
@@ -263,7 +263,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "a":
 			m.selectAll()
 		case "s":
-			m.smartSelect()
+			return m, m.smartSelect()
 		case "/":
 			m.filtering = true
 			m.filter = ""
@@ -432,10 +432,17 @@ func (m *model) selectAll() {
 	}
 }
 
-func (m *model) smartSelect() {
-	// Checkboxes and the token tally react instantly; a notice here would only
-	// linger redundantly.
-	m.root.SelectByRank(m.budget, m.prompt)
+func pluralFiles(count int) string {
+	if count == 1 {
+		return "file"
+	}
+	return "files"
+}
+
+func (m *model) smartSelect() tea.Cmd {
+	count := m.root.SelectByRank(m.budget, m.prompt, m.selectionTuning)
+	return m.setNotice(fmt.Sprintf("Smart selection · %d %s · %s tokens",
+		count, pluralFiles(count), formatTokenCount(m.root.TotalActiveTokens())))
 }
 
 func (m *model) copy() tea.Cmd {
@@ -455,7 +462,7 @@ func (m *model) copy() tea.Cmd {
 	if err != nil {
 		return m.setNotice("Copy failed: " + err.Error())
 	}
-	return m.setNotice(fmt.Sprintf("Copied %d files (%d tokens) to clipboard", len(sel), m.root.TotalActiveTokens()))
+	return m.setNotice(fmt.Sprintf("Copied %d %s · %s tokens", len(sel), pluralFiles(len(sel)), formatTokenCount(m.root.TotalActiveTokens())))
 }
 
 // generate renders the current selection to the output document without
@@ -477,7 +484,7 @@ func (m *model) generate() tea.Cmd {
 	if err != nil {
 		return m.setNotice("Generate failed: " + err.Error())
 	}
-	return m.setNotice(fmt.Sprintf("Generated output (%d files, %d tokens)", len(sel), m.root.TotalActiveTokens()))
+	return m.setNotice(fmt.Sprintf("Generated output · %d %s · %s tokens", len(sel), pluralFiles(len(sel)), formatTokenCount(m.root.TotalActiveTokens())))
 }
 
 // updateDeltaKey handles keys while the delta modal is open.
@@ -540,7 +547,7 @@ func (m *model) themeMove(delta int) {
 	if m.themeCursor < 0 {
 		m.themeCursor = 0
 	}
-	if m.themeCursor >= len(ThemePresets) {
-		m.themeCursor = len(ThemePresets) - 1
+	if m.themeCursor >= len(m.themes) {
+		m.themeCursor = len(m.themes) - 1
 	}
 }

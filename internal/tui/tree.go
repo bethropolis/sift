@@ -66,6 +66,8 @@ type TreeNode struct {
 	SelectedCountVal int // Cached selected file count for O(1) lookup
 	SecretCount      int
 	RankScore        float64
+	ModeReason       string
+	TestAffinity     float64
 	// ApproxTokens is a byte-based token estimate shown with a "~" until the
 	// exact count arrives via the scan stream. Zero once TokensFull is known.
 	ApproxTokens int
@@ -105,6 +107,9 @@ type Item struct {
 	GitIgnored  bool
 	// RankScore is the git relevance score.
 	RankScore float64
+	// ModeReason explains the automatic mode recommendation when available.
+	ModeReason string
+	TestAffinity float64
 	// PreferredMode is the git-history-backed mode preference for this file.
 	// Empty means no preference; BuildTree falls back to the default full.
 	PreferredMode CompressMode
@@ -159,6 +164,8 @@ func BuildTree(items []Item) *TreeNode {
 				child.Hidden = it.Hidden || child.Hidden
 				child.GitIgnored = it.GitIgnored
 				child.RankScore = it.RankScore
+				child.ModeReason = it.ModeReason
+				child.TestAffinity = it.TestAffinity
 				child.ApproxTokens = it.ApproxTokens
 				if child.Hidden || child.GitIgnored {
 					// Hidden and Git-ignored entries are opt-in only: they
@@ -308,6 +315,14 @@ func (m *model) patchNode(n *TreeNode, it *Item) bool {
 	}
 	if it.RankScore != 0 {
 		n.RankScore = it.RankScore
+		changed = true
+	}
+	if it.ModeReason != "" {
+		n.ModeReason = it.ModeReason
+		changed = true
+	}
+	if it.TestAffinity != 0 {
+		n.TestAffinity = it.TestAffinity
 		changed = true
 	}
 	if it.PreferredMode != "" {

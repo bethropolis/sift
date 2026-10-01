@@ -2,6 +2,7 @@ package picker
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -177,12 +178,13 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 	// Patch unified relevance ranks now that every path is known. Non-git
 	// repos keep the skeleton's zero scores; the picker still works path-ordered.
 	if absRoot != "" {
-		if r := app.NewRanker(absRoot); r.Available() {
+		if r := app.NewRankerWithWeights(absRoot, app.WeightsFromScoring(application.Config().Scoring)); r.Available() {
 			stateMu.Lock()
 			snapshot := append([]format.FileEntry(nil), *collected...)
 			stateMu.Unlock()
 
-			scores := r.Rank(snapshot)
+			scores, graph := r.RankGraph(snapshot)
+			testAffinity := app.RelatedTestAffinity(snapshot, graph)
 			stateMu.Lock()
 			*collected = snapshot
 			stateMu.Unlock()
@@ -194,6 +196,8 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 					Path:          f.Path,
 					RankScore:     f.RankScore,
 					PreferredMode: tui.CompressMode(res.PreferredMode),
+					ModeReason:    res.Reason,
+					TestAffinity:  testAffinity[filepath.ToSlash(f.Path)],
 				})
 			}
 			if len(rankBatch) > 0 {

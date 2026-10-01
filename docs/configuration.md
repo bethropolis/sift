@@ -182,10 +182,32 @@ signature_bonus  = 0.05
 skip_multiplier  = 0.35
 sig_quality_min  = 0.35
 sig_quality_max  = 0.85
+test_task_boost  = 0.20
+area_diminishing = 0.65
+area_budget_share = 0.35
+area_roots       = { "internal/ui" = "frontend", "pkg/api" = "public-api" }
+skip_roles       = ["test", "fixture", "mock", "generated", "vendor"]
 retention        = { entrypoint = 0.30, docs = 0.22, config = 0.18, api = 0.12 }
 ```
 
-Top-level `[scoring]` is also honored.
+Top-level `[scoring]` is also honored. The default `skip_roles` are tests,
+fixtures, mocks, generated files, and vendored code. With the default policy,
+test files become eligible and receive `test_task_boost` when the task prompt
+mentions tests, bugs, regressions, coverage, or fixing an issue. An explicit
+`skip_roles` list replaces the defaults and always takes precedence.
+Automatic selection first reserves strong prompt matches and an affordable
+representative from each architectural area, then enforces a soft per-area
+budget ceiling and applies diminishing utility to later files in the same
+area. Role-based retention is limited to two reserved files per area, while
+recent implementation files get at most one reservation per area.
+
+Areas default to the first two path components (`internal/app`, `cmd/sift`);
+root files and files directly under a top-level directory share their
+respective areas. `area_diminishing` controls the multiplier for the second
+file and repeated later files (default `0.65`, with a floor of `0.20`).
+`area_budget_share` sets the per-area budget ceiling (default `0.35`; the
+effective share is raised when there are few areas). `area_roots` maps
+directory prefixes to custom area names; the longest matching prefix wins.
 
 ## Settings reference
 
@@ -234,6 +256,7 @@ Top-level `[scoring]` is also honored.
 | --- | --- | --- |
 | `--highlight` | `true` | Terminal syntax highlighting |
 | `--theme` | `auto` | Highlight palette: `auto`, `none`, `dark`, `light` |
+| `--ui-theme-file` | — | TOML file containing custom interactive picker themes |
 | `--no-color` | off | Disable color output |
 | `--window-title` | — | Set the picker's terminal title |
 | `--no-window-title` | off | Disable terminal title updates |
@@ -263,12 +286,39 @@ Top-level `[scoring]` is also honored.
 Two related but separate settings:
 
 - `--theme` controls **terminal syntax highlighting** of rendered output
-  (`auto`, `none`, `dark`, `light`).
+  (`auto`, `none`, `dark`, `light`). Color output automatically degrades for
+  truecolor, ANSI256, ANSI16, and no-color terminals.
 - The picker's **interactive color palette** (chosen with `t` in the TUI) is
   stored separately under the user's application configuration directory and
   reloaded on the next picker session. Inside the picker, the active palette
   also drives preview syntax highlighting; `--theme` still governs
-  non-interactive output.
+  non-interactive output. The built-in `Terminal (Emulator)` palette uses the
+  terminal's configured ANSI colors rather than fixed RGB values.
+
+### Custom picker themes
+
+Pass a TOML file with `--ui-theme-file` (or set `ui_theme_file` in `.sift.toml`):
+
+```toml
+[[theme]]
+id = "midnight"
+name = "Midnight"
+extends = "catppuccin-mocha"
+border = "#112233"
+title = "#abcdef"
+
+[[theme]]
+id = "midnight-soft"
+name = "Midnight Soft"
+extends = "midnight"
+selected = "#89b4fa"
+```
+
+Each theme requires a stable `id` and display `name`. Themes may inherit from a
+built-in theme or an earlier definition in the same file. The file is loaded only
+by the interactive picker; it does not change the `--theme` setting used by
+non-interactive output. Theme IDs are persisted across sessions, while older
+saved display names remain supported.
 
 ## Where state lives
 

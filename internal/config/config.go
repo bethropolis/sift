@@ -38,6 +38,7 @@ type Config struct {
 	// UITheme is the persisted interactive picker palette. It is separate
 	// from Theme, which controls syntax highlighting.
 	UITheme           string
+	UIThemeFile       string
 	HighlightMaxBytes int
 	WindowTitle       string
 	NoWindowTitle     bool
@@ -163,6 +164,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.BoolVar(&c.Highlight, "highlight", c.Highlight, "Enable syntax highlighting for terminal output")
 	fs.BoolVar(&c.NoHighlight, "no-highlight", c.NoHighlight, "Disable syntax highlighting")
 	fs.StringVar(&c.Theme, "theme", c.Theme, "Terminal color theme: auto, none, dark, light")
+	fs.StringVar(&c.UIThemeFile, "ui-theme-file", c.UIThemeFile, "TOML file containing custom picker themes")
 	fs.IntVar(&c.HighlightMaxBytes, "highlight-max-bytes", c.HighlightMaxBytes, "Maximum file bytes to syntax-highlight")
 	fs.StringVar(&c.WindowTitle, "window-title", c.WindowTitle, "Terminal title for the interactive picker")
 	fs.BoolVar(&c.NoWindowTitle, "no-window-title", c.NoWindowTitle, "Disable interactive terminal title updates")

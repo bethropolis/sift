@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
 	"github.com/bethropolis/sift/internal/highlight"
@@ -85,6 +86,23 @@ func TestThemeSelectAppliesPreset(t *testing.T) {
 	}
 }
 
+func TestThemeSwitchReusesCachedDocument(t *testing.T) {
+	content := []byte("func greet() { return true }")
+	m := newModel(BuildTree([]Item{{Path: "main.go", Content: content}}), Options{Highlight: true, UITheme: "classic"})
+	first := m.syntaxCache.Get("main.go", content, m.highlight)
+	m.applyTheme(ThemePresets[1])
+	second := m.syntaxCache.Get("main.go", content, m.highlight)
+	if first != second {
+		t.Fatal("theme switch reparsed cached document")
+	}
+	oldLine := highlight.RenderDocumentLine(first, 0, m.highlight)
+	m.applyTheme(ThemePresets[2])
+	newLine := highlight.RenderDocumentLine(second, 0, m.highlight)
+	if oldLine == newLine {
+		t.Fatal("theme switch did not change semantic rendering")
+	}
+}
+
 func TestPersistedThemeInitializesModel(t *testing.T) {
 	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{UITheme: ThemePresets[1].Name})
 	if m.themeIndex != 1 || m.themeCursor != 1 {
@@ -104,12 +122,12 @@ func TestThemeSelectionNotifiesPersistenceCallback(t *testing.T) {
 		},
 	})
 	m = updateKey(m, tea.KeyRunes, 't')
-	for i := 1; i < len(ThemePresets)-1; i++ {
-		m = updateKey(m, tea.KeyUp)
-	}
+	initial := m.themeCursor
+	m = updateKey(m, tea.KeyUp)
 	m = updateKey(m, tea.KeyEnter)
-	if got != ThemePresets[1].Name {
-		t.Fatalf("persisted theme = %q, want %q", got, ThemePresets[1].Name)
+	want := m.themes[initial-1].ID
+	if got != want {
+		t.Fatalf("persisted theme = %q, want %q", got, want)
 	}
 }
 
@@ -123,6 +141,54 @@ func TestThemeApplyIsInstanceLocal(t *testing.T) {
 	m1.applyTheme(ThemePresets[1])
 	if after := m2.styles.title.Render("x"); after != before {
 		t.Error("theme change on one model leaked into another model's title style")
+	}
+}
+
+func TestThemeNormalizationCompletesSemanticRoles(t *testing.T) {
+	for _, preset := range ThemePresets {
+		normalized := normalizeTheme(preset)
+		roles := []lipgloss.Color{
+			normalized.UI.Text, normalized.UI.TextMuted, normalized.UI.TextSubtle,
+			normalized.UI.Accent, normalized.UI.AccentSoft, normalized.UI.Border,
+			normalized.UI.BorderActive, normalized.UI.CursorBg, normalized.UI.CursorFg,
+			normalized.UI.SelectionBg, normalized.UI.SelectionFg, normalized.UI.TreeGuide,
+			normalized.UI.Scrollbar, normalized.UI.ModeFull, normalized.UI.ModeSig, normalized.UI.ModeSkip,
+			normalized.Status.Info, normalized.Status.Success, normalized.Status.Warning, normalized.Status.Error,
+		}
+		for i, role := range roles {
+			if role == "" {
+				t.Errorf("theme %q role %d normalized empty", preset.ID, i)
+			}
+		}
+	}
+}
+
+func TestThemeIdentityAndLegacyResolution(t *testing.T) {
+	seen := map[string]bool{}
+	for i, preset := range ThemePresets {
+		if preset.ID == "" || seen[preset.ID] {
+			t.Fatalf("theme %d has missing or duplicate ID %q", i, preset.ID)
+		}
+		seen[preset.ID] = true
+		if themeIndex(preset.ID) != i {
+			t.Errorf("theme ID %q did not resolve to index %d", preset.ID, i)
+		}
+	}
+	for _, legacy := range []string{"Catppuccin Mocha", "Tokyo Night", "Rose Pine", "Classic (Default)"} {
+		if got := themeIndex(legacy); got == defaultThemeIndex() && legacy != "Classic (Default)" {
+			t.Errorf("legacy theme %q fell back to Classic", legacy)
+		}
+	}
+}
+
+func TestThemeSelectionPersistsStableID(t *testing.T) {
+	var got string
+	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{OnThemeChange: func(id string) error { got = id; return nil }})
+	m = updateKey(m, tea.KeyRunes, 't')
+	m = updateKey(m, tea.KeyUp)
+	m = updateKey(m, tea.KeyEnter)
+	if got != themeID(5) {
+		t.Fatalf("persisted theme = %q, want %q", got, themeID(5))
 	}
 }
 
@@ -153,6 +219,47 @@ func TestDefaultThemeIsClassic(t *testing.T) {
 	}
 	if p := ThemePresets[defaultThemeIndex()]; p.Name != "Classic (Default)" {
 		t.Errorf("default theme = %q, want Classic (Default)", p.Name)
+	}
+}
+
+func TestThemeModalShowsCandidatePreview(t *testing.T) {
+	m := newModel(BuildTree([]Item{{Path: "main.go", Content: []byte("func main() {}")}}), Options{Highlight: true})
+	m.width, m.height = 100, 28
+	m = updateKey(m, tea.KeyRunes, 't')
+	view := ansi.Strip(m.View())
+	for _, want := range []string{"Theme Preview", "Catppuccin", "app.go", "func", "Ready", "Warning"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("theme preview missing %q: %q", want, view)
+		}
+	}
+	if m.themeOpen != true {
+		t.Fatal("theme modal closed while previewing")
+	}
+}
+
+func TestThemePreviewDoesNotMutateActiveTheme(t *testing.T) {
+	m := newModel(BuildTree([]Item{{Path: "main.go"}}), Options{})
+	active := m.themeIndex
+	m = updateKey(m, tea.KeyRunes, 't')
+	m = updateKey(m, tea.KeyDown)
+	if m.themeIndex != active {
+		t.Fatalf("moving preview changed active theme index to %d", m.themeIndex)
+	}
+	if m.styles.accent != ThemePresets[active].Title {
+		t.Fatal("moving preview mutated active styles")
+	}
+}
+
+func TestThemeModalFallsBackAtNarrowSize(t *testing.T) {
+	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{})
+	m.width, m.height = 40, 12
+	m.themeOpen = true
+	view := ansi.Strip(m.View())
+	if strings.Contains(view, "Theme Preview") {
+		t.Errorf("narrow theme modal unexpectedly showed preview: %q", view)
+	}
+	if lines := strings.Count(view, "\n") + 1; lines > m.height {
+		t.Errorf("narrow theme modal exceeds height: %d", lines)
 	}
 }
 
@@ -217,5 +324,46 @@ func TestThemeApplyIsInstanceLocalForHighlight(t *testing.T) {
 	got := highlight.RenderLine("b.go", "func x() {}", m2.highlight)
 	if !strings.Contains(got, "\033[1;34mfunc\033[0m") {
 		t.Errorf("theme change leaked into another model: %q", got)
+	}
+}
+
+func TestTerminalThemeFollowsANSIColors(t *testing.T) {
+	idx := themeIndex("terminal")
+	if idx < 0 {
+		t.Fatal("terminal theme was not registered")
+	}
+	p := ThemePresets[idx]
+	if !p.FollowTerminal || p.ID != "terminal" {
+		t.Fatalf("terminal theme = %+v", p)
+	}
+	for name, color := range map[string]lipgloss.Color{
+		"border": p.Border, "title": p.Title, "muted": p.Muted,
+		"cursor background": p.CursorBg, "cursor foreground": p.CursorFg,
+		"selected": p.Selected, "notice": p.Notice,
+	} {
+		if strings.HasPrefix(string(color), "#") {
+			t.Errorf("terminal theme %s uses fixed RGB %q", name, color)
+		}
+	}
+	if p.Syntax[highlight.TokenKeyword].Foreground != "ansi:33" {
+		t.Fatalf("terminal syntax keyword = %q, want extended ANSI index", p.Syntax[highlight.TokenKeyword].Foreground)
+	}
+	content := []byte("func main() { return true }")
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(previous)
+	m := newModel(BuildTree([]Item{{Path: "main.go", Content: content}}), Options{Highlight: true, UITheme: "terminal"})
+	m.highlight.Profile = highlight.ProfileTrueColor
+	if m.styles.border != lipgloss.Color("8") || m.styles.accent != lipgloss.Color("15") {
+		t.Fatalf("terminal styles = border %q accent %q", m.styles.border, m.styles.accent)
+	}
+	line := m.styles.title.Render("x")
+	if strings.Contains(line, "38;2;") || !strings.Contains(line, "\x1b[") {
+		t.Errorf("terminal title render is not ANSI-palette based: %q", line)
+	}
+	doc := m.syntaxCache.Get("main.go", content, m.highlight)
+	rendered := highlight.RenderDocumentLine(doc, 0, m.highlight)
+	if strings.Contains(rendered, "38;2;") || !strings.Contains(rendered, "38;5;33") {
+		t.Errorf("terminal syntax render is not extended ANSI-palette based: %q", rendered)
 	}
 }

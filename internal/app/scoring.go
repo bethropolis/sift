@@ -64,11 +64,29 @@ func TuningFromScoring(s config.Scoring) selection.Tuning {
 	if s.SigQualityMax != 0 {
 		t.SigQualityMax = s.SigQualityMax
 	}
+	if s.TestTaskBoost != 0 {
+		t.TestTaskBoost = s.TestTaskBoost
+	}
+	if s.AreaDiminishing != 0 {
+		t.AreaDiminishing = s.AreaDiminishing
+	}
+	if s.AreaBudgetShare != 0 {
+		t.AreaBudgetShare = s.AreaBudgetShare
+	}
+	if s.AreaRoots != nil {
+		t.AreaRoots = make(map[string]string, len(s.AreaRoots))
+		for prefix, area := range s.AreaRoots {
+			t.AreaRoots[prefix] = area
+		}
+	}
 	if s.Retention != nil {
 		t.Retention = make(map[string]float64, len(s.Retention))
 		for k, v := range s.Retention {
 			t.Retention[k] = v
 		}
+	}
+	if s.SkipRoles != nil {
+		t.SkipRoles = append([]string(nil), s.SkipRoles...)
 	}
 	return t
 }

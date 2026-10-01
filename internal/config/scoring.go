@@ -23,11 +23,19 @@ type Scoring struct {
 	SkipMultiplier  float64 `toml:"skip_multiplier"`
 	SigQualityMin   float64 `toml:"sig_quality_min"`
 	SigQualityMax   float64 `toml:"sig_quality_max"`
+	TestTaskBoost   float64 `toml:"test_task_boost"`
+	// AreaDiminishing controls marginal utility for additional files in one area.
+	AreaDiminishing float64 `toml:"area_diminishing"`
+	AreaBudgetShare float64 `toml:"area_budget_share"`
+	AreaRoots       map[string]string `toml:"area_roots"`
 
 	// Retention overrides per lang role name (e.g. "entrypoint", "docs").
 	// An empty map leaves the lang-default retention in place; a present key
 	// overrides it. Config takes priority over the default.
 	Retention map[string]float64 `toml:"retention"`
+	// SkipRoles excludes these classified file roles from automatic selection.
+	// An omitted value uses the built-in test/fixture/mock/generated/vendor list.
+	SkipRoles []string `toml:"skip_roles"`
 }
 
 // Merge overlays the non-zero fields of o onto s. Pointer/zero semantics mean
@@ -75,6 +83,23 @@ func (s *Scoring) Merge(o Scoring) {
 	if o.SigQualityMax != 0 {
 		s.SigQualityMax = o.SigQualityMax
 	}
+	if o.TestTaskBoost != 0 {
+		s.TestTaskBoost = o.TestTaskBoost
+	}
+	if o.AreaDiminishing != 0 {
+		s.AreaDiminishing = o.AreaDiminishing
+	}
+	if o.AreaBudgetShare != 0 {
+		s.AreaBudgetShare = o.AreaBudgetShare
+	}
+	if len(o.AreaRoots) > 0 {
+		if s.AreaRoots == nil {
+			s.AreaRoots = map[string]string{}
+		}
+		for prefix, area := range o.AreaRoots {
+			s.AreaRoots[prefix] = area
+		}
+	}
 	if len(o.Retention) > 0 {
 		if s.Retention == nil {
 			s.Retention = map[string]float64{}
@@ -82,5 +107,8 @@ func (s *Scoring) Merge(o Scoring) {
 		for k, v := range o.Retention {
 			s.Retention[k] = v
 		}
+	}
+	if o.SkipRoles != nil {
+		s.SkipRoles = append([]string(nil), o.SkipRoles...)
 	}
 }

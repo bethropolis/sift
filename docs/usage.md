@@ -53,11 +53,14 @@ sift dump . --clipboard         # copy to the system clipboard instead
 ## Automatic selection
 
 The `select` command combines Git-relevance ranking, language-aware rules, and
-token cost to choose a useful context without a manual picker session:
+token cost to choose a useful context without a manual picker session. It uses
+a 50,000-token budget by default. Test files, fixtures, mocks, generated code,
+and vendored code are skipped by default; customize that policy in `[scoring]`:
 
 ```sh
 sift select .                    # render the auto-selected files
 sift select . --budget 50000     # fit the selection to a token budget
+sift select . --budget 0         # explicitly disable the select budget
 ```
 
 Inspect the decisions without writing a document:
@@ -69,6 +72,22 @@ sift select . --selection-only --selection-format json   # also: ndjson
 
 `--include-skipped` adds the filtered files and their skip reasons to the
 report.
+
+Selection policy can be configured in the repository's `.sift.toml`, the
+global `~/.config/sift/config.toml`, or a named profile. For example:
+
+```toml
+[scoring]
+skip_roles = ["test", "fixture", "mock", "generated", "vendor", "example"]
+retention = { entrypoint = 0.4, api = 0.2, implementation = 0.08 }
+test_task_boost = 0.2
+```
+
+Omit `skip_roles` to use the built-in defaults. Set it to a list to replace
+them. An empty list restores the built-in defaults.
+With the default role policy, a prompt about tests, bugs, regressions, or
+coverage admits test files and boosts their priority. `test_task_boost` tunes
+that boost; explicitly listing `test` in `skip_roles` keeps tests excluded.
 
 ## Token budgets
 

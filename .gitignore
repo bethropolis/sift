@@ -31,7 +31,7 @@ vendor/
 /dist/
 
 # sift files
-/codebase*
+codebase.*
 
 # local eval harness (not part of product)
 /eval/

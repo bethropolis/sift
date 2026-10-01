@@ -143,6 +143,9 @@ func (s *SiftDefaults) applyTo(c *Config) {
 	if s.Theme != "" {
 		c.Theme = s.Theme
 	}
+	if s.UIThemeFile != "" {
+		c.UIThemeFile = s.UIThemeFile
+	}
 	if s.HighlightMaxBytes != 0 {
 		c.HighlightMaxBytes = s.HighlightMaxBytes
 	}

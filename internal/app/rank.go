@@ -62,6 +62,53 @@ func (r *Ranker) RankGraph(files []format.FileEntry) (map[string]rank.FileScoreR
 	return results, graph
 }
 
+// RelatedTestAffinity scores each test file by the relevance of its related
+// implementation files. Same-directory source files and resolved imports are
+// considered; the result is normalized to the source file's existing rank.
+func RelatedTestAffinity(files []format.FileEntry, graph map[string][]string) map[string]float64 {
+	byPath := make(map[string]format.FileEntry, len(files))
+	byDir := make(map[string][]format.FileEntry)
+	roles := make(map[string]lang.Role, len(files))
+	for _, file := range files {
+		path := filepath.ToSlash(file.Path)
+		byPath[path] = file
+		roles[path] = lang.Classify(path).Role
+		byDir[filepath.ToSlash(filepath.Dir(path))] = append(byDir[filepath.ToSlash(filepath.Dir(path))], file)
+	}
+	out := make(map[string]float64)
+	for _, test := range files {
+		testPath := filepath.ToSlash(test.Path)
+		if roles[testPath] != lang.RoleTest {
+			continue
+		}
+		best := 0.0
+		consider := func(file format.FileEntry) {
+			if roles[filepath.ToSlash(file.Path)] == lang.RoleTest {
+				return
+			}
+			if file.RankScore > best {
+				best = file.RankScore
+			}
+		}
+		for _, source := range byDir[filepath.ToSlash(filepath.Dir(testPath))] {
+			consider(source)
+		}
+		for _, target := range graph[testPath] {
+			target = strings.TrimSuffix(filepath.ToSlash(target), "/")
+			if file, ok := byPath[target]; ok {
+				consider(file)
+			}
+			for _, file := range byDir[target] {
+				consider(file)
+			}
+		}
+		if best > 0 {
+			out[filepath.ToSlash(test.Path)] = best
+		}
+	}
+	return out
+}
+
 // RankParams maps enriched entries to the ranking boundary. FanInCount is
 // fed from the reverse import fan-in index.
 func RankParams(files []format.FileEntry, fanIn map[string]int) []rank.ScoringParams {

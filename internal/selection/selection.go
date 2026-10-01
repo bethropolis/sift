@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"path"
 
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/lang"
@@ -42,13 +43,26 @@ type Tuning struct {
 	SkipMultiplier  float64
 	SigQualityMin   float64
 	SigQualityMax   float64
+	// TestTaskBoost raises test-file utility when the prompt is test-focused.
+	TestTaskBoost float64
 	// RetentionFloor is the minimum retention value at or above which a file
 	// is guaranteed a slot under budget (its best affordable variant is
 	// reserved first). Files below the floor compete through the DP.
 	RetentionFloor float64
+	// AreaDiminishing reduces utility for later files in the same area.
+	AreaDiminishing float64
+	// AreaBudgetShare is the default maximum fraction of the total budget one
+	// area may consume when several distinct areas are present.
+	AreaBudgetShare float64
+	// AreaRoots maps directory prefixes to explicit area names. Longest
+	// matching prefix wins; this lets repositories override inferred areas.
+	AreaRoots map[string]string
 	// Retention overrides the lang role defaults per role name (e.g.
 	// "entrypoint"). Config takes priority over the lang default.
 	Retention map[string]float64
+	// SkipRoles are role names that automatic selection excludes before
+	// optimization. An empty list uses the conservative built-in defaults.
+	SkipRoles []string
 }
 
 // DefaultTuning returns the stock optimizer tuning.
@@ -62,7 +76,10 @@ func DefaultTuning() Tuning {
 		SkipMultiplier:  0.35,
 		SigQualityMin:   0.35,
 		SigQualityMax:   0.85,
+		TestTaskBoost:   0.20,
 		RetentionFloor:  0.15,
+		AreaDiminishing: 0.65,
+		AreaBudgetShare: 0.35,
 	}
 }
 
@@ -93,8 +110,17 @@ func (t *Tuning) applyDefaults() {
 	if t.SigQualityMax == 0 {
 		t.SigQualityMax = def.SigQualityMax
 	}
+	if t.TestTaskBoost == 0 {
+		t.TestTaskBoost = def.TestTaskBoost
+	}
 	if t.RetentionFloor == 0 {
 		t.RetentionFloor = def.RetentionFloor
+	}
+	if t.AreaDiminishing == 0 {
+		t.AreaDiminishing = def.AreaDiminishing
+	}
+	if t.AreaBudgetShare == 0 {
+		t.AreaBudgetShare = def.AreaBudgetShare
 	}
 }
 
@@ -106,7 +132,32 @@ func (t Tuning) retentionFor(candidate Candidate) float64 {
 	if v, ok := t.Retention[role]; ok {
 		return v
 	}
+	// Protect recently changed implementation files from losing their slot
+	// to stable background context under a tight budget.
+	if classification.Role == lang.RoleImpl && candidate.File.RankScore >= 0.40 {
+		return 0.16
+	}
 	return classification.Retention
+}
+
+func (t Tuning) skipRole(role lang.Role, prompt string) bool {
+	if len(t.SkipRoles) == 0 {
+		if role == lang.RoleTest && testFocusedPrompt(prompt) {
+			return false
+		}
+		switch role {
+		case lang.RoleTest, lang.RoleFixture, lang.RoleMock, lang.RoleGenerated, lang.RoleVendor:
+			return true
+		default:
+			return false
+		}
+	}
+	for _, name := range t.SkipRoles {
+		if strings.EqualFold(strings.TrimSpace(name), string(role)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Signals are optional ranking inputs retained for explainable reports.
@@ -115,6 +166,7 @@ type Signals struct {
 	Churn      float64 `json:"churn,omitempty"`
 	Centrality float64 `json:"centrality,omitempty"`
 	Role       float64 `json:"role,omitempty"`
+	TestAffinity float64 `json:"test_affinity,omitempty"`
 }
 
 // Candidate is a collected file plus the mode preference supplied by history
@@ -123,11 +175,14 @@ type Candidate struct {
 	File          format.FileEntry
 	PreferredMode string
 	Signals       Signals
+	AreaWeight    float64
+	Area          string
 }
 
 // Decision explains the automatic decision for one candidate.
 type Decision struct {
 	Path            string  `json:"path"`
+	Area            string  `json:"area,omitempty"`
 	Mode            Mode    `json:"mode"`
 	Selected        bool    `json:"selected"`
 	Score           float64 `json:"score"`
@@ -136,6 +191,7 @@ type Decision struct {
 	FullTokens      int     `json:"full_tokens"`
 	SignatureTokens int     `json:"signature_tokens"`
 	Role            string  `json:"role,omitempty"`
+	RoleConfidence  float64 `json:"role_confidence,omitempty"`
 	TaskRelevance   float64 `json:"task_relevance,omitempty"`
 	Signals         Signals `json:"signals,omitempty"`
 	Reason          string  `json:"reason"`
@@ -180,6 +236,45 @@ type dpState struct {
 
 const defaultMaxStates = 50000
 
+// areaOf maps paths to stable architectural areas. The first two components
+// identify a package or subsystem; root-level files share the root area.
+func areaOf(filePath string) string {
+	parts := strings.Split(strings.Trim(filePath, "/"), "/")
+	if len(parts) < 2 || parts[0] == "" {
+		return "."
+	}
+	// A file directly under a top-level directory belongs to that directory,
+	// not to a one-file area named after its own basename.
+	if len(parts) == 2 && path.Ext(parts[1]) != "" {
+		return parts[0]
+	}
+	return parts[0] + "/" + parts[1]
+}
+
+func candidateArea(candidate Candidate) string {
+	if candidate.Area != "" {
+		return candidate.Area
+	}
+	return areaOf(candidate.File.Path)
+}
+
+func areaMultiplier(position int, laterWeight float64) float64 {
+	if position <= 1 {
+		return 1
+	}
+	if laterWeight <= 0 || laterWeight >= 1 {
+		laterWeight = DefaultTuning().AreaDiminishing
+	}
+	weight := laterWeight
+	for i := 2; i < position && weight > 0.20; i++ {
+		weight *= laterWeight
+	}
+	if weight < 0.20 {
+		return 0.20
+	}
+	return weight
+}
+
 // Select chooses a mode for every file. With no budget it preserves the
 // established score/filter modes. With a budget it reserves guaranteed slots
 // for high-retention files (entrypoints, docs, config) and uses sparse dynamic
@@ -196,14 +291,31 @@ func Select(candidates []Candidate, request Request) Result {
 		}
 		return ordered[i].File.Path < ordered[j].File.Path
 	})
+	areaCounts := make(map[string]int)
+	for i := range ordered {
+		ordered[i].Area = areaOf(ordered[i].File.Path)
+		bestPrefix := ""
+		for prefix, area := range tuning.AreaRoots {
+			prefix = strings.Trim(strings.ReplaceAll(prefix, "\\", "/"), "/")
+			path := strings.Trim(ordered[i].File.Path, "/")
+			if (path == prefix || strings.HasPrefix(path, prefix+"/")) && len(prefix) > len(bestPrefix) {
+				bestPrefix = prefix
+				ordered[i].Area = area
+			}
+		}
+		area := candidateArea(ordered[i])
+	areaCounts[area]++
+	ordered[i].AreaWeight = areaMultiplier(areaCounts[area], tuning.AreaDiminishing)
+	}
 
 	result := Result{Budget: request.Budget, Decisions: make([]Decision, 0, len(ordered))}
 	if request.Budget <= 0 {
-		return selectUnlimited(ordered, result, request.Prompt)
+		return selectUnlimited(ordered, result, request.Prompt, tuning)
 	}
 
-	// Reserve guaranteed slots for high-retention files before the DP so an
-	// important entrypoint or README is never traded away for cheap filler.
+	// Reserve high-retention files before the DP, with at most two such
+	// reservations per area (and one recent implementation file per area), so
+	// repeated docs or changed files cannot crowd out other useful areas.
 	// The exact reserved variant is stored and reused in the final pass so the
 	// reserved token count (which sizes the DP budget below) is honored and the
 	// selection can never exceed request.Budget. Re-picking bestAffordable
@@ -211,9 +323,25 @@ func Select(candidates []Candidate, request Request) Result {
 	// upgrade to a more expensive variant than reserved, silently overrunning
 	// the budget relative to the DP files already accounted for.
 	reserved := make([]Variant, len(ordered))
+	areaReserved := make([]bool, len(ordered))
+	promptReserved := make([]bool, len(ordered))
+	protected := make([]bool, len(ordered))
+	protectedImplAreas := make(map[string]bool)
+	protectedRoleAreas := make(map[string]int)
 	remaining := request.Budget
 	for index, candidate := range ordered {
 		if candidate.File.Hidden || candidate.File.GitIgnored {
+			continue
+		}
+		if tuning.skipRole(lang.Classify(candidate.File.Path).Role, request.Prompt) {
+			continue
+		}
+		classification := lang.Classify(candidate.File.Path)
+		area := candidateArea(candidate)
+		if protectedRoleAreas[area] >= 2 {
+			continue
+		}
+		if classification.Role == lang.RoleImpl && protectedImplAreas[area] {
 			continue
 		}
 		if tuning.retentionFor(candidate) >= tuning.RetentionFloor {
@@ -228,9 +356,86 @@ func Select(candidates []Candidate, request Request) Result {
 					}
 				}
 				reserved[index] = variant
+				protected[index] = true
+				if classification.Role == lang.RoleImpl {
+					protectedImplAreas[area] = true
+				}
+				protectedRoleAreas[area]++
 				remaining -= variant.Tokens
 			}
 		}
+	}
+
+	// Strong path matches are explicit task context. Reserve them before
+	// generic area coverage so the default breadth policy cannot crowd out a
+	// user-focused request.
+	promptOrder := make([]int, 0, len(ordered))
+	for index, candidate := range ordered {
+		if reserved[index].Tokens == 0 && !candidate.File.Hidden && !candidate.File.GitIgnored &&
+			!tuning.skipRole(lang.Classify(candidate.File.Path).Role, request.Prompt) &&
+			taskRelevance(candidate.File.Path, request.Prompt) >= 0.20 {
+			promptOrder = append(promptOrder, index)
+		}
+	}
+	sort.SliceStable(promptOrder, func(i, j int) bool {
+		left, right := ordered[promptOrder[i]], ordered[promptOrder[j]]
+		lr, rr := taskRelevance(left.File.Path, request.Prompt), taskRelevance(right.File.Path, request.Prompt)
+		if lr != rr {
+			return lr > rr
+		}
+		return left.File.RankScore > right.File.RankScore
+	})
+	for _, index := range promptOrder {
+		candidate := ordered[index]
+		variant := bestAffordable(candidate, remaining, tuning, request.Prompt)
+		if variant.Tokens == 0 {
+			continue
+		}
+		if variant.Mode == ModeFull && variant.Tokens > remaining/2 {
+			if sig := findVariant(candidate, ModeSignatures, request.Prompt, tuning); sig.Mode == ModeSignatures && sig.Tokens > 0 && sig.Tokens <= remaining {
+				variant = sig
+			}
+		}
+		reserved[index] = variant
+		promptReserved[index] = true
+		protected[index] = true
+		remaining -= variant.Tokens
+	}
+
+	// Reserve one affordable representative per area before the general
+	// optimizer spends the remaining budget on depth. Role-based retention
+	// reservations above keep their higher priority.
+	coveredAreas := make(map[string]bool)
+	for index, variant := range reserved {
+		if variant.Tokens > 0 {
+			coveredAreas[candidateArea(ordered[index])] = true
+		}
+	}
+	for index, candidate := range ordered {
+		if reserved[index].Tokens > 0 || candidate.File.Hidden || candidate.File.GitIgnored {
+			continue
+		}
+		if tuning.skipRole(lang.Classify(candidate.File.Path).Role, request.Prompt) {
+			continue
+		}
+		area := candidateArea(candidate)
+		if coveredAreas[area] {
+			continue
+		}
+		variant := bestAffordable(candidate, remaining, tuning, request.Prompt)
+		if variant.Tokens == 0 {
+			continue
+		}
+		if variant.Mode == ModeFull && variant.Tokens > remaining/2 {
+			if sig := findVariant(candidate, ModeSignatures, request.Prompt, tuning); sig.Mode == ModeSignatures && sig.Tokens > 0 && sig.Tokens <= remaining {
+				variant = sig
+			}
+		}
+		reserved[index] = variant
+		areaReserved[index] = true
+		protected[index] = true
+		remaining -= variant.Tokens
+		coveredAreas[area] = true
 	}
 
 	limit := request.MaxStates
@@ -239,6 +444,9 @@ func Select(candidates []Candidate, request Request) Result {
 	}
 	states := map[int]dpState{0: {}}
 	for index, candidate := range ordered {
+		if tuning.skipRole(lang.Classify(candidate.File.Path).Role, request.Prompt) {
+			continue
+		}
 		if reserved[index].Tokens > 0 {
 			continue
 		}
@@ -267,6 +475,10 @@ func Select(candidates []Candidate, request Request) Result {
 		chosen[node.Index] = node.Mode
 	}
 	for index, candidate := range ordered {
+		if tuning.skipRole(lang.Classify(candidate.File.Path).Role, request.Prompt) {
+			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "role excluded by automatic selection policy", request.Prompt))
+			continue
+		}
 		if candidate.File.Hidden || candidate.File.GitIgnored {
 			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "hidden or git-ignored; opt-in required", request.Prompt))
 			continue
@@ -276,7 +488,13 @@ func Select(candidates []Candidate, request Request) Result {
 			// reduced the DP budget (remaining), so committing the same amount
 			// here keeps the total at or under request.Budget.
 			variant := reserved[index]
-			decision := makeDecision(candidate, variant.Mode, variant.Utility, variant.Reason, request.Prompt)
+			reason := variant.Reason
+			if areaReserved[index] {
+				reason = "area coverage; " + reason
+			} else if promptReserved[index] {
+				reason = "prompt-relevant path; " + reason
+			}
+			decision := makeDecision(candidate, variant.Mode, variant.Utility, reason, request.Prompt)
 			decision.Selected = true
 			decision.Tokens = variant.Tokens
 			result.Decisions = append(result.Decisions, decision)
@@ -298,6 +516,7 @@ func Select(candidates []Candidate, request Request) Result {
 		result.UsedTokens += variant.Tokens
 	}
 	opportunisticUpgrade(&result, ordered, request.Prompt, tuning)
+	balanceAreaBudget(&result, ordered, request.Prompt, tuning, protected)
 	return result
 }
 
@@ -376,6 +595,139 @@ func opportunisticUpgrade(result *Result, ordered []Candidate, prompt string, tu
 // bestAffordable returns the highest-utility variant that fits within budget,
 // or a zero-token skip variant when nothing fits. It prefers the most useful
 // representation of a file that the remaining budget can still pay for.
+func balanceAreaBudget(result *Result, ordered []Candidate, prompt string, tuning Tuning, protected []bool) {
+	if result.Budget <= 0 || len(ordered) == 0 {
+		return
+	}
+	byPath := make(map[string]int, len(ordered))
+	areas := make(map[string]bool)
+	areaRelevance := make(map[string]float64)
+	protectedTokens := make(map[string]int)
+	for i, candidate := range ordered {
+		byPath[candidate.File.Path] = i
+		area := candidateArea(candidate)
+		if !candidate.File.Hidden && !candidate.File.GitIgnored && !tuning.skipRole(lang.Classify(candidate.File.Path).Role, prompt) {
+			areas[area] = true
+			if relevance := taskRelevance(candidate.File.Path, prompt); relevance > areaRelevance[area] {
+				areaRelevance[area] = relevance
+			}
+		}
+		if i < len(protected) && protected[i] {
+			variant := findVariant(candidate, ModeSignatures, prompt, tuning)
+			protectedTokens[area] += variant.Tokens
+		}
+	}
+	if len(areas) < 2 {
+		return
+	}
+	share := tuning.AreaBudgetShare
+	if fair := 2.0 / float64(len(areas)); fair > share {
+		share = fair
+	}
+	if share > 1 {
+		share = 1
+	}
+	capTokens := int(float64(result.Budget) * share)
+	areaLimit := func(area string) int {
+		limit := capTokens
+		// A prompt match can relax an area's ceiling in proportion to its
+		// relevance, up to the full budget for an exact area-focused task.
+		relevance := areaRelevance[area]
+		if relevance > 0 {
+			limit += int(float64(result.Budget-capTokens) * relevance)
+		}
+		return max(limit, protectedTokens[area])
+	}
+	decisionByPath := make(map[string]int, len(result.Decisions))
+	for i := range result.Decisions {
+		decisionByPath[result.Decisions[i].Path] = i
+	}
+	selected := make(map[string]format.FileEntry, len(result.Selected))
+	areaTokens := make(map[string]int)
+	for _, file := range result.Selected {
+		selected[file.Path] = file
+		areaTokens[candidateArea(ordered[byPath[file.Path]])] += file.Tokens
+	}
+
+	for area, used := range areaTokens {
+		limit := areaLimit(area)
+		for used > limit {
+			cutPath := ""
+			cutDensity := 1e9
+			for path := range selected {
+				index := byPath[path]
+				if candidateArea(ordered[index]) != area || (index < len(protected) && protected[index]) {
+					continue
+				}
+				d := result.Decisions[decisionByPath[path]]
+				density := d.Utility / float64(max(1, d.Tokens))
+				if density < cutDensity {
+					cutPath, cutDensity = path, density
+				}
+			}
+			if cutPath == "" {
+				break
+			}
+			index := byPath[cutPath]
+			file := selected[cutPath]
+			d := &result.Decisions[decisionByPath[cutPath]]
+			sig := findVariant(ordered[index], ModeSignatures, prompt, tuning)
+			if d.Mode == ModeFull && sig.Mode == ModeSignatures && used-file.Tokens+sig.Tokens <= limit {
+				used += sig.Tokens - file.Tokens
+				result.UsedTokens += sig.Tokens - file.Tokens
+				selected[cutPath] = finalize(ordered[index].File, ModeSignatures, sig.Tokens)
+				d.Mode, d.Tokens, d.Utility = ModeSignatures, sig.Tokens, sig.Utility
+				d.Reason = "signature retained to balance area budget; " + sig.Reason
+			} else {
+				used -= file.Tokens
+				result.UsedTokens -= file.Tokens
+				delete(selected, cutPath)
+				d.Selected, d.Mode, d.Tokens, d.Utility = false, ModeSkip, 0, 0
+				d.Reason = "area budget reached; lower marginal value than other areas"
+			}
+		}
+		areaTokens[area] = used
+	}
+
+	// Greedily refill the released budget with the best affordable variants
+	// from areas that still have room.
+	for result.UsedTokens < result.Budget {
+		bestIndex, bestVariant, bestDensity := -1, Variant{}, 0.0
+		for i, candidate := range ordered {
+			if _, ok := selected[candidate.File.Path]; ok || candidate.File.Hidden || candidate.File.GitIgnored || tuning.skipRole(lang.Classify(candidate.File.Path).Role, prompt) {
+				continue
+			}
+			area := candidateArea(candidate)
+			room := min(result.Budget-result.UsedTokens, areaLimit(area)-areaTokens[area])
+			for _, variant := range variants(candidate, prompt, tuning) {
+				if variant.Tokens <= 0 || variant.Tokens > room {
+					continue
+				}
+				density := variant.Utility / float64(variant.Tokens)
+				if density > bestDensity {
+					bestIndex, bestVariant, bestDensity = i, variant, density
+				}
+			}
+		}
+		if bestIndex < 0 {
+			break
+		}
+		candidate := ordered[bestIndex]
+		d := &result.Decisions[decisionByPath[candidate.File.Path]]
+		d.Selected, d.Mode, d.Tokens, d.Utility = true, bestVariant.Mode, bestVariant.Tokens, bestVariant.Utility
+		d.Reason = "selected to fill available area budget; " + bestVariant.Reason
+		selected[candidate.File.Path] = finalize(candidate.File, bestVariant.Mode, bestVariant.Tokens)
+		result.UsedTokens += bestVariant.Tokens
+		areaTokens[candidateArea(candidate)] += bestVariant.Tokens
+	}
+	result.Selected = result.Selected[:0]
+	for _, candidate := range ordered {
+		if file, ok := selected[candidate.File.Path]; ok {
+			result.Selected = append(result.Selected, file)
+		}
+	}
+}
+
 func bestAffordable(candidate Candidate, budget int, tuning Tuning, prompt string) Variant {
 	var best Variant
 	for _, v := range variants(candidate, prompt, tuning) {
@@ -392,8 +744,12 @@ func bestAffordable(candidate Candidate, budget int, tuning Tuning, prompt strin
 	return best
 }
 
-func selectUnlimited(candidates []Candidate, result Result, prompt string) Result {
+func selectUnlimited(candidates []Candidate, result Result, prompt string, tuning Tuning) Result {
 	for _, candidate := range candidates {
+		if tuning.skipRole(lang.Classify(candidate.File.Path).Role, prompt) {
+			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "role excluded by automatic selection policy", prompt))
+			continue
+		}
 		if candidate.File.Hidden || candidate.File.GitIgnored {
 			result.Decisions = append(result.Decisions, makeDecision(candidate, ModeSkip, 0, "hidden or git-ignored; opt-in required", prompt))
 			continue
@@ -405,6 +761,13 @@ func selectUnlimited(candidates []Candidate, result Result, prompt string) Resul
 			// mocks, generated files, and vendored code remain legitimately
 			// skippable even when there is no budget limit.
 			classification := lang.Classify(candidate.File.Path)
+			if classification.Role == lang.RoleTest && testFocusedPrompt(prompt) {
+				mode = ModeSignatures
+				if candidate.File.TokensSig <= 0 || candidate.File.TokensSig >= candidate.File.TokensFull {
+					mode = ModeFull
+				}
+				reason = "test-focused task; test context included"
+			}
 			if retainWithoutBudget(classification.Role) && candidate.File.TokensSig > 0 && candidate.File.TokensSig < candidate.File.TokensFull {
 				mode = ModeSignatures
 				reason = "background file retained; signature representation"
@@ -414,7 +777,7 @@ func selectUnlimited(candidates []Candidate, result Result, prompt string) Resul
 				continue
 			}
 		}
-		variant := findVariant(candidate, mode, prompt, DefaultTuning())
+		variant := findVariant(candidate, mode, prompt, tuning)
 		decision := makeDecision(candidate, mode, variant.Utility, reason, prompt)
 		decision.Selected = true
 		decision.Tokens = variant.Tokens
@@ -440,12 +803,14 @@ func makeDecision(candidate Candidate, mode Mode, utility float64, reason, promp
 	relevance := taskRelevance(candidate.File.Path, prompt)
 	return Decision{
 		Path:            candidate.File.Path,
+		Area:            candidateArea(candidate),
 		Mode:            mode,
 		Score:           candidate.File.RankScore,
 		Utility:         utility,
 		FullTokens:      candidate.File.TokensFull,
 		SignatureTokens: candidate.File.TokensSig,
 		Role:            string(classification.Role),
+		RoleConfidence:  classification.Confidence,
 		TaskRelevance:   relevance,
 		Signals:         candidate.Signals,
 		Reason:          reason,
@@ -462,7 +827,11 @@ func variants(candidate Candidate, prompt string, tuning Tuning) []Variant {
 	}
 	classification := lang.Classify(file.Path)
 	relevance := taskRelevance(file.Path, prompt)
-	base := clamp(file.RankScore+classification.Adjustment+tuning.RelevanceWeight*relevance, tuning.BaseMin, tuning.BaseMax)
+	testBoost := 0.0
+	if classification.Role == lang.RoleTest && testFocusedPrompt(prompt) {
+		testBoost = tuning.TestTaskBoost * (0.5 + clamp(candidate.Signals.TestAffinity, 0, 1))
+	}
+	base := clamp(file.RankScore+classification.Adjustment+tuning.RelevanceWeight*relevance+testBoost, tuning.BaseMin, tuning.BaseMax)
 	preferenceBonus := 0.0
 	switch Mode(candidate.PreferredMode) {
 	case ModeFull, ModeSignatures:
@@ -470,15 +839,21 @@ func variants(candidate Candidate, prompt string, tuning Tuning) []Variant {
 	case ModeSkip:
 		// A skip hint is soft. The file can still be selected if its other
 		// signals make it useful, but it starts with lower utility.
-		base *= tuning.SkipMultiplier
+		if !(classification.Role == lang.RoleTest && testFocusedPrompt(prompt)) && relevance < 0.5 {
+			base *= tuning.SkipMultiplier
+		}
 	}
 
-	fullUtility := base * (1.0 + preferenceBonus)
+	areaWeight := candidate.AreaWeight
+	if areaWeight <= 0 {
+		areaWeight = 1
+	}
+	fullUtility := base * (1.0 + preferenceBonus) * areaWeight
 	result := []Variant{{Mode: ModeFull, Tokens: file.TokensFull, Utility: fullUtility, Reason: "full content; " + classification.Reason}}
 	if file.TokensSig > 0 && file.TokensSig < file.TokensFull {
 		ratio := float64(file.TokensSig) / float64(file.TokensFull)
 		quality := clamp(tuning.SigQualityMin+(tuning.SigQualityMax-tuning.SigQualityMin)*(1.0-ratio), tuning.SigQualityMin, tuning.SigQualityMax)
-		sigUtility := base * quality
+		sigUtility := base * quality * areaWeight
 		if Mode(candidate.PreferredMode) == ModeSignatures {
 			sigUtility *= (1.0 + tuning.SignatureBonus)
 		}
@@ -533,6 +908,16 @@ func words(value string) []string {
 		}
 	}
 	return filtered
+}
+
+func testFocusedPrompt(prompt string) bool {
+	for _, term := range words(prompt) {
+		switch term {
+		case "test", "tests", "testing", "bug", "bugfix", "regression", "coverage", "failing", "failure", "validate", "validation", "fix", "broken", "issue", "defect":
+			return true
+		}
+	}
+	return false
 }
 
 func plannedMode(candidate Candidate) (Mode, string) {

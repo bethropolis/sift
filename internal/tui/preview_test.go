@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestPreviewScroll(t *testing.T) {
@@ -178,5 +179,19 @@ func TestPreviewRendersFromOffset(t *testing.T) {
 	first := m.previewOffset + 1
 	if !strings.Contains(view, fmt.Sprintf("%3d │", first)) {
 		t.Errorf("preview view missing line %d after scrolling", first)
+	}
+}
+
+func TestPreviewScrollbarStaysOnContentRow(t *testing.T) {
+	content := []byte("short\n" + strings.Repeat("x", 180) + "\n\twide\t世界\n" + strings.Repeat("line\n", 40))
+	for _, width := range []int{32, 40, 56, 80} {
+		m := newModel(BuildTree([]Item{{Path: "wide.txt", Content: content}}), Options{})
+		m.width, m.height = width, 16
+		view := m.renderPreviewBox(width, m.bodyHeight())
+		for lineNo, line := range strings.Split(ansi.Strip(view), "\n") {
+			if got := ansi.StringWidth(line); got > width {
+				t.Fatalf("width %d row %d is %d cells: %q", width, lineNo, got, line)
+			}
+		}
 	}
 }
