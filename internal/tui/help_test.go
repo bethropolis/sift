@@ -118,11 +118,16 @@ func TestGenerateNotice(t *testing.T) {
 	root := BuildTree([]Item{{Path: "a.go", TokensFull: 10}})
 	m := newModel(root, Options{OnGenerate: func(sel []Selection) error { return nil }})
 	m = updateKey(m, tea.KeyRunes, 'a')
-	m = updateKey(m, tea.KeyRunes, 'g')
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m = updated.(model)
 
 	if m.quit {
 		t.Fatal("g should not quit the picker")
 	}
+	if !strings.Contains(m.notice, "Generating 1 file") {
+		t.Errorf("in-flight notice = %q, want it to name the running job", m.notice)
+	}
+	m, _ = runGenJob(t, m, cmd)
 	if !strings.Contains(m.notice, "Generated output · 1 file · 10 tokens") {
 		t.Errorf("notice = %q", m.notice)
 	}

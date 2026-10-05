@@ -5,6 +5,7 @@
 package scan
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 
@@ -41,6 +42,11 @@ type Options struct {
 	TokenizeModel  string
 	SmartFilter    bool
 	SmartMaxTokens int
+	// Evaluator, when non-nil, is the smart filter to share with the
+	// caller's other passes (skeleton, walker pre-read). It carries the
+	// path-decision memo across them; when nil and SmartFilter is set, New
+	// builds a private evaluator.
+	Evaluator *smart.Evaluator
 	// Compress enables signature compression. It is off for ordinary
 	// full-content scans, which never touch the compressor, so the tree-sitter
 	// grammars and parser pools are not loaded unnecessarily.
@@ -87,7 +93,10 @@ func New(opts Options) (*Processor, error) {
 	if opts.Compress {
 		p.compressor = compress.New()
 	}
-	if opts.SmartFilter {
+	switch {
+	case opts.Evaluator != nil:
+		p.evaluator = opts.Evaluator
+	case opts.SmartFilter:
 		p.evaluator = smart.New(opts.SmartMaxTokens)
 	}
 	return p, nil
@@ -100,33 +109,47 @@ func New(opts Options) (*Processor, error) {
 func (p *Processor) Process(path string, content []byte, mode Mode) (format.FileEntry, error) {
 	smartTokens := -1
 	if p.evaluator != nil {
-		// Name and language rules run before any tokenizing so lockfiles and
-		// generated bundles never cost BPE work.
+		// Name and language rules run before any hashing or tokenizing so
+		// lockfiles and generated bundles never cost sha256 or BPE work.
 		if skip, reason := p.evaluator.ShouldSkipPath(path); skip {
 			return format.FileEntry{}, fmt.Errorf("%w: %s", ErrFileSkipped, reason)
+		}
+		// Generated headers are a 1KB sniff, far cheaper than a BPE count or
+		// a content hash, so check them before either.
+		if smart.IsGeneratedHeader(content) {
+			return format.FileEntry{}, fmt.Errorf("%w: %s", ErrFileSkipped, "Auto-generated file header detected")
 		}
 	}
 
 	// Fast path: identical content under identical options replays the
-	// enriched entry verbatim. Skip decisions are static per process and
-	// name rules already ran above, so a hit cannot resurrect a file the
-	// filter would reject for unchanged bytes.
-	if cached, hit := p.cache.Get(content, mode, p.model); hit {
-		return format.FileEntry{
-			Path:         path,
-			Content:      cached.Content,
-			Tokens:       cached.Tokens,
-			TokensFull:   cached.TokensFull,
-			SigContent:   cached.SigContent,
-			TokensSig:    cached.TokensSig,
-			IsCompressed: cached.IsCompressed,
-			Language:     cached.Language,
-		}, nil
+	// enriched entry verbatim. The lookup deliberately runs before the token
+	// guardrail so a watch re-render of unchanged files never pays BPE work.
+	// Entries are only cached after every check below accepted them, so a
+	// hit cannot resurrect a file the filter would reject.
+	var cacheHash [32]byte
+	cacheMiss := false
+	if p.cache != nil {
+		cacheHash = sha256.Sum256(content)
+		if cached, hit := p.cache.GetHashed(cacheHash, mode, p.model); hit {
+			return format.FileEntry{
+				Path:         path,
+				Content:      cached.Content,
+				Tokens:       cached.Tokens,
+				TokensFull:   cached.TokensFull,
+				SigContent:   cached.SigContent,
+				TokensSig:    cached.TokensSig,
+				IsCompressed: cached.IsCompressed,
+				Language:     cached.Language,
+			}, nil
+		}
+		cacheMiss = true
 	}
 
 	if p.evaluator != nil {
+		// Token guardrail after the cache lookup: only cache misses pay the
+		// count, which is then reused as TokensFull below.
 		smartTokens = p.countTokens(content, path)
-		if skip, reason := p.evaluator.ShouldSkip(path, content, smartTokens); skip {
+		if skip, reason := p.evaluator.ExceedsTokenLimit(smartTokens); skip {
 			return format.FileEntry{}, fmt.Errorf("%w: %s", ErrFileSkipped, reason)
 		}
 	}
@@ -170,25 +193,39 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 				}
 			}
 		}
-		entry.Tokens = p.countTokens(content, path)
+		// Reuse the guardrail's count when the content stayed verbatim;
+		// compressed output is new text and must be counted on its own.
+		if entry.IsCompressed || smartTokens < 0 {
+			entry.Tokens = p.countTokens(content, path)
+		} else {
+			entry.Tokens = smartTokens
+		}
 		entry.TokensFull = entry.Tokens
 		entry.TokensSig = entry.Tokens
 
 	case ModeFull:
-		entry.Tokens = p.countTokens(content, path)
+		// Reuse the guardrail's count instead of recounting the same bytes:
+		// the old second count doubled BPE work on every smart-filtered pass.
+		if smartTokens >= 0 {
+			entry.Tokens = smartTokens
+		} else {
+			entry.Tokens = p.countTokens(content, path)
+		}
 		entry.TokensFull = entry.Tokens
 		entry.TokensSig = entry.Tokens
 	}
 
-	p.cache.Put(content, mode, p.model, CachedResult{
-		Content:      entry.Content,
-		Tokens:       entry.Tokens,
-		TokensFull:   entry.TokensFull,
-		SigContent:   entry.SigContent,
-		TokensSig:    entry.TokensSig,
-		IsCompressed: entry.IsCompressed,
-		Language:     entry.Language,
-	})
+	if cacheMiss {
+		p.cache.PutHashed(cacheHash, mode, p.model, CachedResult{
+			Content:      entry.Content,
+			Tokens:       entry.Tokens,
+			TokensFull:   entry.TokensFull,
+			SigContent:   entry.SigContent,
+			TokensSig:    entry.TokensSig,
+			IsCompressed: entry.IsCompressed,
+			Language:     entry.Language,
+		})
+	}
 
 	return entry, nil
 }

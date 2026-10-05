@@ -48,8 +48,17 @@ func (c *ContentCache) Get(content []byte, mode Mode, model string) (CachedResul
 	if c == nil {
 		return CachedResult{}, false
 	}
+	return c.GetHashed(sha256.Sum256(content), mode, model)
+}
+
+// GetHashed looks up a precomputed content hash, letting callers hash once
+// and reuse the key for Get+Put instead of paying sha256 twice per file.
+func (c *ContentCache) GetHashed(hash [32]byte, mode Mode, model string) (CachedResult, bool) {
+	if c == nil {
+		return CachedResult{}, false
+	}
 	key := cacheKey{
-		hash:  sha256.Sum256(content),
+		hash:  hash,
 		mode:  mode,
 		model: model,
 	}
@@ -63,8 +72,16 @@ func (c *ContentCache) Put(content []byte, mode Mode, model string, result Cache
 	if c == nil {
 		return
 	}
+	c.PutHashed(sha256.Sum256(content), mode, model, result)
+}
+
+// PutHashed stores under a precomputed hash; see GetHashed.
+func (c *ContentCache) PutHashed(hash [32]byte, mode Mode, model string, result CachedResult) {
+	if c == nil {
+		return
+	}
 	key := cacheKey{
-		hash:  sha256.Sum256(content),
+		hash:  hash,
 		mode:  mode,
 		model: model,
 	}

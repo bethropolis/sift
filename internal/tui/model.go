@@ -13,10 +13,36 @@ import (
 	"github.com/muesli/termenv"
 )
 
+// genJobMsg carries the outcome of a background generate/copy job back to
+// the Update loop, which must apply it on the main goroutine: model mutation
+// outside Update races the Bubble Tea renderer.
+type genJobMsg struct {
+	text string
+}
+
+// genTickInterval is the footer refresh cadence while a generate/copy job
+// runs, keeping the UI visibly alive during long renders.
+const genTickInterval = 250 * time.Millisecond
+
+// genExitWait bounds how long quitting waits for an in-flight generate/copy
+// job, so a hung clipboard tool cannot wedge process exit (the output write
+// itself normally completes in well under this).
+const genExitWait = 30 * time.Second
+
 // clearNoticeMsg is dispatched after a timer to restore the standard footer
 // status line. The id guards against a stale timer clearing a newer notice.
 type clearNoticeMsg struct {
 	id int
+}
+
+// busyTickMsg advances the elapsed-time line of a running generate/copy job.
+// It re-arms itself while the job is still running under the same notice id,
+// so the footer shows live progress at a 250ms cadence instead of appearing
+// wedged for the whole render.
+type busyTickMsg struct {
+	id      int
+	label   string
+	started time.Time
 }
 
 // PaneFocus identifies which pane currently owns keyboard input.
@@ -66,6 +92,14 @@ type model struct {
 	themes          []ThemePreset
 	prompt          string
 	selectionTuning selection.Tuning
+
+	// genBusy guards the background generate/copy path: exactly one job may
+	// be in flight. A second Y/g/y press while busy is acknowledged with a
+	// notice instead of stacking another unbounded render on the same
+	// selection. genDone is closed by the in-flight job when it finishes so
+	// runProgram can wait for a pending write before the process exits.
+	genBusy bool
+	genDone chan struct{}
 
 	onCopy         func([]Selection) error
 	onCopyPrompt   func([]Selection, string) error
@@ -280,6 +314,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = ""
 		}
 		return m, nil
+	case genJobMsg:
+		// Exactly one job can be in flight (genBusy), so this always
+		// belongs to the running job: release it and show the outcome.
+		m.genBusy = false
+		m.genDone = nil
+		m.notice = msg.text
+		m.noticeID++
+		id := m.noticeID
+		return m, tea.Tick(2500*time.Millisecond, func(time.Time) tea.Msg {
+			return clearNoticeMsg{id: id}
+		})
+	case busyTickMsg:
+		if !m.genBusy {
+			return m, nil
+		}
+		// Only refresh when no newer notice displaced the job's line;
+		// keep re-arming either way so the ticker dies with the job.
+		if msg.id == m.noticeID {
+			elapsed := time.Since(msg.started).Round(100 * time.Millisecond)
+			m.notice = fmt.Sprintf("%s · %s", msg.label, elapsed)
+		}
+		return m, tea.Tick(genTickInterval, func(time.Time) tea.Msg {
+			return busyTickMsg{id: msg.id, label: msg.label, started: msg.started}
+		})
 	case tea.WindowSizeMsg:
 		m.height, m.width = msg.Height, msg.Width
 		m.clampOffset()

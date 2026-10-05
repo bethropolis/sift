@@ -15,17 +15,31 @@ var (
 	mu    sync.RWMutex
 	byID  = map[types.ID]types.Language{}
 	byExt = map[string]types.Language{}
+
+	// classifyCache memoizes Classify by input path: the decision depends
+	// only on the path and the registered drivers, both stable after init,
+	// so rank scoring and test-affinity passes stop repeating the
+	// normalization and driver dispatch for every file. Register clears it.
+	classifyCache sync.Map // string -> types.Classification
 )
 
 // Register adds a language to the registry. Registering the same ID replaces
 // the previous entry.
 func Register(l types.Language) {
 	mu.Lock()
-	defer mu.Unlock()
 	byID[l.ID()] = l
 	for _, ext := range l.Extensions() {
 		byExt[ext] = l
 	}
+	mu.Unlock()
+
+	// Driver rules changed; drop memoized classifications so repeated paths
+	// are re-evaluated against the new registry (init-order safe, and tests
+	// that register stubs never observe stale entries).
+	classifyCache.Range(func(k, _ any) bool {
+		classifyCache.Delete(k)
+		return true
+	})
 }
 
 // ByID returns the language registered under id.
@@ -46,7 +60,11 @@ func ForPath(path string) (types.Language, bool) {
 }
 
 // Classify applies shared conventions and then the language driver rules.
+// Results are memoized per input path; see classifyCache.
 func Classify(path string) types.Classification {
+	if v, ok := classifyCache.Load(path); ok {
+		return v.(types.Classification)
+	}
 	norm := strings.ToLower(filepath.ToSlash(path))
 	base := strings.ToLower(filepath.Base(norm))
 	ext := strings.ToLower(filepath.Ext(base))
@@ -62,6 +80,7 @@ func Classify(path string) types.Classification {
 	if c.Retention == 0 {
 		c.Retention = types.DefaultRetention(c.Role)
 	}
+	classifyCache.Store(path, c)
 	return c
 }
 

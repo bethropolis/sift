@@ -25,8 +25,8 @@ type Scoring struct {
 	SigQualityMax   float64 `toml:"sig_quality_max"`
 	TestTaskBoost   float64 `toml:"test_task_boost"`
 	// AreaDiminishing controls marginal utility for additional files in one area.
-	AreaDiminishing float64 `toml:"area_diminishing"`
-	AreaBudgetShare float64 `toml:"area_budget_share"`
+	AreaDiminishing float64           `toml:"area_diminishing"`
+	AreaBudgetShare float64           `toml:"area_budget_share"`
 	AreaRoots       map[string]string `toml:"area_roots"`
 
 	// Retention overrides per lang role name (e.g. "entrypoint", "docs").

@@ -3,6 +3,7 @@ package rank
 import (
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/bethropolis/sift/internal/lang"
 )
@@ -77,8 +78,20 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams, w W
 	var changes *Changes
 	churnMap := make(map[string]int)
 	if g.Available() {
-		changes = g.ChangesFor("HEAD")
-		churnMap = g.GetChurnFrequency(30)
+		// ChangesFor (status + diff + log) and the churn history (log -n 30)
+		// are independent git subprocess batches; running them concurrently
+		// makes the rank pass cost one batch of latency instead of two.
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			changes = g.ChangesFor("HEAD")
+		}()
+		go func() {
+			defer wg.Done()
+			churnMap = g.GetChurnFrequency(30)
+		}()
+		wg.Wait()
 	}
 
 	for _, p := range params {

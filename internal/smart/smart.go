@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/bethropolis/sift/internal/lang"
 )
@@ -20,6 +21,19 @@ const DefaultMaxTokens = 15000
 // delegating language-specific rules to the central lang registry.
 type Evaluator struct {
 	maxTokens int
+
+	// pathDecisions memoizes ShouldSkipPath by exact path: the underlying
+	// rules are a pure function of the path (name/language only), and the
+	// skeleton pass, the walker pre-read filter, and the content processor
+	// all consult the same paths within one scan. sync.Map keeps the
+	// concurrent walker workers lock-free on the hot path.
+	pathDecisions sync.Map // string -> pathDecision
+}
+
+// pathDecision is a memoized ShouldSkipPath result.
+type pathDecision struct {
+	skip   bool
+	reason string
 }
 
 // New returns an Evaluator using the given per-file token ceiling. A
@@ -34,10 +48,18 @@ func New(maxTokens int) *Evaluator {
 // ShouldSkipPath reports whether a file should be excluded based on its name
 // alone, without reading or tokenizing its content. It lets callers drop
 // lockfiles, generated artifacts, and bundles before any I/O or CPU work.
+// Results are memoized per path: every pass that sees the same file (walker
+// pre-read filter, content processor, skeleton) shares the first answer.
 func (e *Evaluator) ShouldSkipPath(path string) (bool, string) {
+	if v, ok := e.pathDecisions.Load(path); ok {
+		d := v.(pathDecision)
+		return d.skip, d.reason
+	}
 	filename := strings.ToLower(filepath.Base(path))
 	normPath := strings.ToLower(filepath.ToSlash(path))
-	return lang.ShouldSkipSmart(normPath, filename, nil)
+	skip, reason := lang.ShouldSkipSmart(normPath, filename, nil)
+	e.pathDecisions.Store(path, pathDecision{skip: skip, reason: reason})
+	return skip, reason
 }
 
 // ShouldSkipMeta reports whether a file should be excluded using only its
@@ -57,8 +79,8 @@ func (e *Evaluator) ShouldSkipMeta(path string, approxTokens int) (bool, string)
 // only invoking ShouldSkip on surviving candidates.
 func (e *Evaluator) ShouldSkip(path string, content []byte, tokens int) (bool, string) {
 	// 1. Token threshold guardrail.
-	if tokens > e.maxTokens {
-		return true, fmt.Sprintf("Exceeds smart token limit (%d tokens)", e.maxTokens)
+	if skip, reason := e.ExceedsTokenLimit(tokens); skip {
+		return true, reason
 	}
 
 	// 2. Generated header detection ("DO NOT EDIT", "@generated", etc.).
@@ -68,4 +90,14 @@ func (e *Evaluator) ShouldSkip(path string, content []byte, tokens int) (bool, s
 
 	// 3. Language-specific rules.
 	return e.ShouldSkipPath(path)
+}
+
+// ExceedsTokenLimit reports whether tokens breaches the per-file guardrail.
+// It lets callers that already ran the header and name checks skip straight
+// to the count check without re-running them.
+func (e *Evaluator) ExceedsTokenLimit(tokens int) (bool, string) {
+	if tokens > e.maxTokens {
+		return true, fmt.Sprintf("Exceeds smart token limit (%d tokens)", e.maxTokens)
+	}
+	return false, ""
 }

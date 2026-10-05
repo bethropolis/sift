@@ -108,7 +108,7 @@ type Item struct {
 	// RankScore is the git relevance score.
 	RankScore float64
 	// ModeReason explains the automatic mode recommendation when available.
-	ModeReason string
+	ModeReason   string
 	TestAffinity float64
 	// PreferredMode is the git-history-backed mode preference for this file.
 	// Empty means no preference; BuildTree falls back to the default full.

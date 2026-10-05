@@ -60,8 +60,10 @@ func (m *IgnoreMatcher) init() error {
 		// Check if it's just that no ignore files were found
 		if repoMatcher == nil {
 			m.logger.Warn("ignore.New: No .gitignore files found or loaded by library for '%s'. Continuing without repo rules.", m.rootDir)
-			// Create an empty matcher so methods don't panic
-			repoMatcher = gitignore.New(nil, "", nil)
+			// Create an empty matcher so methods don't panic. The reader
+			// must be non-nil: the library's lexer dereferences it and
+			// segfaults on nil (e.g. when rootDir does not exist).
+			repoMatcher = gitignore.New(strings.NewReader(""), "", nil)
 		} else {
 			// If there was a more serious error during loading
 			return fmt.Errorf("ignore: failed to load repository ignores: %w", repoErr)
@@ -76,12 +78,20 @@ func (m *IgnoreMatcher) init() error {
 		m.customIgnore = gitignore.New(strings.NewReader(strings.Join(m.customPatterns, "\n")), m.rootDir, nil)
 	}
 
-	// Build the default ignore matcher. It is a lowest-priority fallback that
-	// is only consulted when neither custom patterns nor repository rules
-	// decided the path, so user rules always win over built-in defaults.
-	if len(DefaultIgnorePatterns) > 0 {
-		m.logger.Debug("ignore.New: Building matcher from %d default patterns", len(DefaultIgnorePatterns))
-		m.defaultIgnore = gitignore.New(strings.NewReader(strings.Join(DefaultIgnorePatterns, "\n")), m.rootDir, nil)
+	// Build the default ignore tier from the classified fast set: the
+	// patterns the fast string tests can decide are never handed to the
+	// library (its fnmatch loop was the dominant per-path cost), and only
+	// the unclassifiable remainder is compiled into the fallback matcher.
+	// Both pieces together cover exactly DefaultIgnorePatterns; the fast
+	// tier proves equivalent to the library per pattern in
+	// TestClassifyOneMatchesLibrary.
+	if fastDefaults.usable {
+		m.fast = fastDefaults
+	}
+	if len(fastDefaults.remainder) > 0 {
+		m.logger.Debug("ignore.New: Building fallback matcher from %d remainder patterns (%d fast-classified)",
+			len(fastDefaults.remainder), len(DefaultIgnorePatterns)-len(fastDefaults.remainder))
+		m.defaultIgnore = gitignore.New(strings.NewReader(strings.Join(fastDefaults.remainder, "\n")), m.rootDir, nil)
 	}
 
 	return nil

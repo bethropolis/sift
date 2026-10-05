@@ -2,7 +2,6 @@ package ignore
 
 import (
 	"path/filepath"
-	"strings"
 )
 
 // Visibility describes presentation-relevant ignore metadata. Explicit and
@@ -20,23 +19,19 @@ func (m *IgnoreMatcher) ClassifyVisibility(relativePath string, isDir bool) Visi
 		return Visibility{}
 	}
 	path := filepath.ToSlash(relativePath)
-	visibility := Visibility{Hidden: isHiddenPath(path), ProtectedGit: isPathInGitDir(path)}
-	if visibility.ProtectedGit || m.repoIgnore == nil {
+	hidden, git := scanSegments(path)
+	visibility := Visibility{Hidden: hidden, ProtectedGit: git}
+	if visibility.ProtectedGit {
 		return visibility
 	}
-	if match := m.repoIgnore.Match(filepath.Join(m.rootDir, relativePath)); match != nil {
-		visibility.GitIgnored = match.Ignore()
+	// Relative skips the library Match wrapper, which stats the path on
+	// every call; the walker already knows whether the entry is a directory.
+	// repoIgnored also memoizes the tier so the metadata pass, the content
+	// pass, and ShouldIgnore share a single computation.
+	if d := m.repoIgnored(path, isDir); d.matched {
+		visibility.GitIgnored = d.ignored
 	}
 	return visibility
-}
-
-func isHiddenPath(path string) bool {
-	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
-		if part != "" && strings.HasPrefix(part, ".") {
-			return true
-		}
-	}
-	return false
 }
 
 // ShouldIgnore checks if a file or directory should be ignored
@@ -51,81 +46,97 @@ func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
 		return false // Never ignore the root itself
 	}
 
-	m.logger.Debug("ignore.ShouldIgnore: Checking path: %q (isDir: %v)", relativePath, isDir)
-
-	// Check for hidden files if ignoreHidden is enabled
-	if m.ignoreHidden {
-		// Check if the basename starts with a dot (more efficient than splitting)
-		base := filepath.Base(relativePath)
-		if strings.HasPrefix(base, ".") {
-			m.logger.Debug("ignore.ShouldIgnore: Ignored %q (hidden file rule)", relativePath)
-			return true
-		}
-
-		// Also check if any parent directory is hidden
-		dir := filepath.Dir(relativePath)
-		for dir != "." && dir != "/" && dir != "\\" {
-			base = filepath.Base(dir)
-			if strings.HasPrefix(base, ".") {
-				m.logger.Debug("ignore.ShouldIgnore: Ignored %q (hidden dir rule)", relativePath)
-				return true
-			}
-			dir = filepath.Dir(dir)
-		}
+	// One allocation-free segment scan replaces the hidden-basename check,
+	// the hidden-parent walk, and the .git component scan. The .git rule
+	// applies even when hidden files are visible (picker mode).
+	rel := filepath.ToSlash(relativePath)
+	hidden, git := scanSegments(rel)
+	if git {
+		return true
 	}
-
-	// Special check for .git directory
-	if isPathInGitDir(relativePath) {
-		m.logger.Debug("ignore.ShouldIgnore: Ignored %q (.git rule)", relativePath)
+	if m.ignoreHidden && hidden {
 		return true
 	}
 
 	// Custom ignore patterns first (highest priority). A match is definitive
 	// whether positive or negated: --ignore negations must win over every
-	// lower tier, including the built-in defaults.
-	absPath := filepath.Join(m.rootDir, relativePath)
+	// lower tier, including the built-in defaults. Relative takes the path
+	// relative to the matcher root and the walker-provided isDir, avoiding
+	// the library Match wrapper's filepath.Abs + os.Stat per tier per path.
 	if m.customIgnore != nil {
-		if match := m.customIgnore.Match(absPath); match != nil {
-			m.logger.Debug("ignore.ShouldIgnore: Path %q matched custom rule (ignore=%v)", relativePath, match.Ignore())
+		if match := m.customIgnore.Relative(rel, isDir); match != nil {
 			return match.Ignore()
 		}
 	}
 
 	// Delegate to gitignore library for repo rules. A repo match (including a
 	// negation) is definitive and takes precedence over the defaults below.
-	if m.ignoreGit && m.repoIgnore != nil {
-		m.logger.Debug("ignore.ShouldIgnore: Checking repo rules for path %q", relativePath)
-
-		if match := m.repoIgnore.Match(absPath); match != nil {
-			m.logger.Debug("ignore.ShouldIgnore: Path %q matched repo rule (ignore=%v)", relativePath, match.Ignore())
-			return match.Ignore()
+	// Memoized: this is by far the most expensive tier. The ignoreGit flag
+	// gates filtering only; ClassifyVisibility still reports repo metadata
+	// when the walker is configured not to filter on it.
+	if m.ignoreGit {
+		if d := m.repoIgnored(rel, isDir); d.matched {
+			return d.ignored
 		}
-	} else {
-		m.logger.Debug("ignore.ShouldIgnore: No repository ignore patterns loaded (m.repoIgnore is nil).")
 	}
 
-	// Fall back to the built-in default patterns. They are the lowest-priority
-	// safety net and only apply when neither custom patterns nor repository
-	// rules matched the path.
+	// Built-in default patterns: the pre-classified fast tier first, then
+	// the library fallback for unclassifiable patterns. They are the
+	// lowest-priority safety net and only apply when neither custom
+	// patterns nor repository rules matched the path. The defaults contain
+	// no negations (enforced by the usable flag), so order between the two
+	// sub-tiers cannot change the outcome.
+	if m.fast != nil && m.fast.usable && m.fast.match(rel, segmentBase(rel), isDir) {
+		return true
+	}
 	if m.defaultIgnore != nil {
-		if match := m.defaultIgnore.Match(absPath); match != nil {
-			m.logger.Debug("ignore.ShouldIgnore: Path %q matched default rule (ignore=%v)", relativePath, match.Ignore())
+		if match := m.defaultIgnore.Relative(rel, isDir); match != nil {
 			return match.Ignore()
 		}
 	}
 
-	m.logger.Debug("ignore.ShouldIgnore: Path %q NOT ignored by any rule", relativePath)
 	return false
 }
 
-// isPathInGitDir reports whether any path component is named ".git".
-// This covers both ".git" directories and Git submodule/worktree markers,
-// which are regular files named ".git" at the end of the path.
-func isPathInGitDir(relativePath string) bool {
-	for _, part := range strings.Split(filepath.ToSlash(relativePath), "/") {
-		if part == ".git" {
-			return true
+// repoDecision is the memoized outcome of the repository-ignore tier for one
+// path. matched distinguishes "a repo rule decided this path" from "no repo
+// rule matched, fall through to the defaults".
+type repoDecision struct {
+	matched bool
+	ignored bool
+}
+
+// repoIgnored consults the repository-ignore tier for rel, memoizing the
+// answer by path. The library's repository matcher walks the path's ancestor
+// directories, allocating a Clean/Split/Join per level; profiling showed it
+// dominating ShouldIgnore. The picker asks about the same path from
+// ClassifyVisibility (metadata and content passes) and ShouldIgnore, and the
+// scan is immutable for the matcher's lifetime, so one computation serves all
+// of them. sync.Map keeps concurrent walker workers lock-free.
+func (m *IgnoreMatcher) repoIgnored(rel string, isDir bool) repoDecision {
+	if m.repoIgnore == nil {
+		return repoDecision{}
+	}
+	if v, ok := m.repoCache.Load(rel); ok {
+		if d, ok := v.(cachedRepoDecision); ok && d.dir == isDir {
+			return d.repoDecision
 		}
 	}
-	return false
+	matched, ignored := false, false
+	if match := m.repoIgnore.Relative(rel, isDir); match != nil {
+		matched = true
+		ignored = match.Ignore()
+	}
+	m.repoCache.Store(rel, cachedRepoDecision{
+		repoDecision: repoDecision{matched: matched, ignored: ignored},
+		dir:          isDir,
+	})
+	return repoDecision{matched: matched, ignored: ignored}
+}
+
+// cachedRepoDecision pairs the decision with the entry type it was computed
+// for, so a file and a same-named directory never share an answer.
+type cachedRepoDecision struct {
+	repoDecision
+	dir bool
 }

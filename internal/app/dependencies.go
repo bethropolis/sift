@@ -75,8 +75,10 @@ func ExpandChosen(files, chosen []format.FileEntry, rootDir string, budget, maxD
 	if maxDepth == 0 || len(chosen) == 0 {
 		return chosen
 	}
+	// DependencyGraph skips git scoring: expansion needs the import
+	// adjacency only, and RankGraph's scores were discarded here anyway.
 	ranker := NewRankerWithWeights(rootDir, rank.DefaultWeights())
-	_, graph := ranker.RankGraph(append([]format.FileEntry(nil), files...))
+	graph := ranker.DependencyGraph(files)
 	deps := ExpandDependencies(chosen, files, graph, maxDepth)
 	if len(deps) == 0 {
 		return chosen

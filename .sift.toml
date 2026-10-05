@@ -1,0 +1,178 @@
+# .sift.toml — repository-local defaults for dumping sift itself.
+#
+# Committed so any clone can run `sift dump` with no flags. Flags still win.
+#
+# TOML SCOPING GOTCHA: bare top-level keys must appear BEFORE the first table
+# header. A key written after `[profiles.foo]` silently becomes a member of
+# that table. `default_profile` is such a key, so it lives here, not at the
+# bottom of the file.
+
+default_profile = "signatures"
+
+[sift]
+style = "xml"
+output = "codebase.md"
+compress_mode = "signatures"
+budget = 200000
+smart_filter = true
+extensions = ["go", "md", "yml", "yaml", "toml", "sh", "scss"]
+
+# Everything below is excluded from every profile/target below unless a
+# profile re-declares `ignore` (profiles do NOT inherit `ignore` from [sift]).
+#
+# Skip tests outright. `*_test.go` is the only reliable test signal we have in
+# config; role-based skipping (see `skip_roles`) applies to `sift select` and
+# the picker's smart-select, NOT to `sift dump`.
+#
+# `.gitignore` already covers vendor/, /eval/, /.site-preview/ and site/_docs/
+# for git, and `ignore_git` (default true) honors those rules for `dump` and
+# `select`. The picker deliberately walks ignored+hidden files regardless so its
+# visibility toggles work, so it shows more than these profiles do.
+ignore = [
+  "*_test.go",
+  "**/*_test.go",
+  "testdata/**",
+  "**/testdata/**",
+  "**/codebase*.md",
+  "**/*-context.md",
+  "*.test",          # stray `go test -c` binaries
+  "sift-tui-polish-guide.md",
+  "sift-theme-and-syntax-upgrade-guide.md",
+  "REVIEW.md",
+]
+
+# Repository-wide default: go + docs + CI/config, signatures-only for
+# everything else. The picker can still widen this per file.
+
+# ---------------------------------------------------------------------------
+# Per-area profiles.
+#
+# IMPORTANT: `sift dump` has NO per-file mode setting. `compress_mode` is one
+# value applied uniformly to every file in the run (verified: a signatures run
+# emits 176/176 files as mode="signatures"). There is no `modes = {glob = mode}`
+# key in the config schema.
+#
+# So "this file full, that one signatures" cannot be expressed for `dump` — it
+# is a picker-only, interactive capability. What we CAN do:
+#   * split by area and give each its own target (different modes per target)
+#   * use `ignore` to drop files entirely
+# Use `sift pick` when you need genuine per-file control.
+# ---------------------------------------------------------------------------
+
+# Whole repo, signatures — cheap orientation. Default, so bare `sift dump`
+# uses it.
+[profiles.signatures]
+compress_mode = "signatures"
+budget = 120000
+prompt = "Summarize what this repository does, its main packages, and how the pieces fit together."
+
+# Whole repo, full source — for bug hunts and refactors that need exact code.
+[profiles.full]
+extends = ["signatures"]
+compress_mode = "full"
+budget = 400000
+prompt = "Review this Go codebase for correctness, concurrency, and error-handling issues."
+
+# The hot path deserves real code; the periphery does not.
+[profiles.core]
+compress_mode = "full"
+budget = 200000
+ignore = [
+  "*_test.go", "**/*_test.go",
+  "testdata/**", "**/testdata/**",
+  "**/codebase*.md", "**/*-context.md",
+  "*.test",
+  # Leave the bulky periphery at signatures via its own target.
+  "internal/tui", "internal/lang", "site",
+  "sift-tui-polish-guide.md",
+  "sift-theme-and-syntax-upgrade-guide.md",
+  "REVIEW.md",
+]
+prompt = "Review the core engine (scan, rank, render, config, app) for correctness and error handling."
+
+# Text surfaces only, in full — docs, CI, config.
+[profiles.docs]
+extensions = ["md", "yml", "yaml", "toml", "sh", "scss"]
+compress_mode = "full"
+budget = 40000
+ignore = [
+  "**/codebase*.md",
+  "**/*-context.md",
+  "sift-tui-polish-guide.md",
+  "sift-theme-and-syntax-upgrade-guide.md",
+  "REVIEW.md",
+]
+prompt = "Summarize the documented behavior of this project for a new user."
+
+# ---------------------------------------------------------------------------
+# What `.sift.toml` controls per command
+#
+# Read this before assuming a key applies everywhere.
+#
+#   key                    dump    select    pick (TUI)
+#   ---------------------  ------  --------  -----------
+#   extensions             yes     yes       yes   (filters the walk)
+#   ignore                 yes     yes       yes   (filters the walk)
+#   smart_filter           yes     forced on  forced on
+#   budget                 yes     yes       yes   (TUI footer)
+#   prompt                 yes     yes       yes   (TUI prompt bar)
+#   style / scoring        yes     n/a       yes   (TUI preview styling)
+#   window_title           n/a     n/a       yes
+#   compress_mode          YES*    NO        per-file, interactive
+#   skip_roles             NO      yes       yes (smart-select)
+#
+#   * `compress_mode` is a `dump`-only uniform setting. `select` derives a
+#     mode per file from the relevance ranker (git recency/churn/centrality +
+#     role + compression yield), which is the whole point of that command, so
+#     your `[sift] compress_mode` does NOT flatten it. To steer `select`,
+#     tune `[scoring]` (full_band/skip_band/relevance weights) or pin roles
+#     with `skip_roles`.
+#
+#   `skip_roles` is the per-command one to remember: it does nothing for
+#   `dump`. `dump` has no role classifier, so tests are skipped there with
+#   the `ignore` globs above. `select`/picker skip test/fixture/mock roles
+#   automatically unless the task prompt is about tests.
+# ---------------------------------------------------------------------------
+
+[scoring]
+# These tune `sift select` and the picker's smart-select. They have NO effect on
+# `sift dump`, which ignores scoring entirely.
+#
+# NOTE on the FULL-heavy mix you see in a select run: `full_band` is only one
+# of several mode rules, and it is evaluated last (internal/rank/scoring.go).
+# A file is already forced to FULL when compression would not help, or when it
+# has an uncommitted change — both are checked BEFORE `full_band`. So raising
+# `full_band` alone may not visibly change the mix; the token budget and the
+# dirty working tree dominate it. Tune `skip_band` and `skip_roles` for the
+# reliable wins, and expect `full_band` to matter once the tree is clean.
+full_band = 0.75
+skip_band = 0.30
+
+# Keep the low-relevance periphery (signature emitters, per-language drivers)
+# out of automatic selection entirely. This one DOES bite immediately.
+skip_roles = ["test", "fixture", "mock", "generated", "vendor", "example"]
+
+# Named artifacts for CI or agents, each with its own output file. This is how
+# you get different modes per area in one pass: several targets, one mode each.
+[[targets]]
+name = "codebase"
+profile = "full"
+output = "codebase.md"
+style = "xml"
+
+[[targets]]
+name = "core"
+profile = "core"
+output = "core-context.md"
+style = "xml"
+
+[[targets]]
+name = "docs"
+profile = "docs"
+output = "docs-context.md"
+
+[[targets]]
+name = "review"
+profile = "full"
+output = "review-context.md"
+prompt = "Review this codebase for correctness and security issues. Cite file paths and line-level detail."

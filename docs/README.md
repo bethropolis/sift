@@ -16,8 +16,8 @@ most important context fits in a model's window.
 
 - [Interactive picker](picker.md) — the dual-pane TUI: navigation, per-file
   modes, smart selection, themes, and task prompts
-- [Configuration and profiles](configuration.md) — flags, `.sift.toml`
-  profiles, and how precedence works
+- [Configuration and profiles](configuration.md) — `.sift.toml` key reference,
+  profiles, targets, precedence, and relevance tuning
 - [Output formats and prompts](output.md) — the four styles, signature mode,
   task directives, and clipboard output
 - [Incremental deltas](delta.md) — feed an LLM only what changed since the

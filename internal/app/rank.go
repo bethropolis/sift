@@ -63,6 +63,16 @@ func (r *Ranker) RankGraph(files []format.FileEntry) (map[string]rank.FileScoreR
 	return results, graph
 }
 
+// DependencyGraph returns only the import-dependency adjacency, without
+// running git scoring or touching the entries. Dependency expansion
+// (ExpandChosen) discards RankGraph's scores, so routing it through
+// RankGraph paid for git status/diff/log subprocesses on every generate
+// just to throw the results away. It never mutates files.
+func (r *Ranker) DependencyGraph(files []format.FileEntry) map[string][]string {
+	_, graph := r.computeFanIn(files)
+	return graph
+}
+
 // RelatedTestAffinity scores each test file by the relevance of its related
 // implementation files. Same-directory source files and resolved imports are
 // considered; the result is normalized to the source file's existing rank.

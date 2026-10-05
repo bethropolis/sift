@@ -16,7 +16,7 @@
       desc: The dual-pane TUI — navigation, per-file modes, and task prompts.
     - title: Configuration and profiles
       url: /docs/configuration/
-      desc: Flags, .sift.toml profiles, and how precedence works.
+      desc: .sift.toml keys, profiles, targets, and precedence.
     - title: Output formats and prompts
       url: /docs/output/
       desc: The four styles, signature mode, and clipboard output.

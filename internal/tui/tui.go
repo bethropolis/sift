@@ -5,6 +5,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -56,6 +57,16 @@ func runProgram(root *TreeNode, opts Options, stream Stream) (Result, error) {
 	mm, ok := final.(model)
 	if !ok {
 		return Result{}, fmt.Errorf("tui: unexpected final model %T", final)
+	}
+	// A generate/copy job launched just before quitting still owns the output
+	// file (truncate + write) and the clipboard subprocess. Wait for it —
+	// bounded — so quitting cannot interleave with the picker's own final
+	// render or leave a half-written document when the process exits.
+	if mm.genDone != nil {
+		select {
+		case <-mm.genDone:
+		case <-time.After(genExitWait):
+		}
 	}
 	return Result{Selections: mm.root.Selections(), DeltaDone: mm.deltaDone}, nil
 }

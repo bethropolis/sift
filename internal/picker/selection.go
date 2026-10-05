@@ -96,14 +96,24 @@ func (s *service) copySelectionWithPrompt(files []format.FileEntry, selected []t
 // without leaving the picker (pressing g). The output file is truncated first
 // so repeated generates replace the previous dump instead of appending to it.
 func (s *service) generateSelection(files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection) error {
-	return s.generateSelectionWithPrompt(files, skipped, start, selected, s.cfg.Prompt)
+	_, err := s.generateSelectionWithPrompt(files, skipped, start, selected, s.cfg.Prompt)
+	return err
 }
 
-func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection, prompt string) error {
+// generateSelectionWithPrompt renders the selection once and returns the
+// rendered bytes alongside writing them to the output destination. Callers
+// that also need a clipboard copy reuse the returned buffer instead of
+// re-reading the file or rendering the whole selection a second time.
+//
+// When the destination is stdout (`--output -`) the write is skipped: the
+// picker owns the terminal through Bubble Tea's alternate screen, so flushing
+// a whole document there would corrupt the interface. The bytes are still
+// returned so Y can copy them, and `g` reports the destination in its notice.
+func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection, prompt string) ([]byte, error) {
 	chosen := applySelection(s.env.App, files, selected)
 	chosen = app.ExpandChosen(files, chosen, s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
 	if len(chosen) == 0 {
-		return fmt.Errorf("nothing selected")
+		return nil, fmt.Errorf("nothing selected")
 	}
 
 	// Render fully into memory first so a failed render (disk full, bad
@@ -111,7 +121,21 @@ func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped 
 	// is complete do we replace the output file's contents.
 	rendered, err := s.env.App.RenderFinalToBuffer(chosen, prompt)
 	if err != nil {
-		return fmt.Errorf("render output: %w", err)
+		return nil, fmt.Errorf("render output: %w", err)
+	}
+
+	// An empty OutputPath means the destination is stdout, which the picker
+	// cannot write to while its alternate screen is active.
+	if s.env.App.OutputPath() == "" {
+		if s.cfg.CopyOnGenerate {
+			if err := clipboard.Copy(rendered); err != nil {
+				return nil, fmt.Errorf("copy generated output to clipboard: %w", err)
+			}
+		}
+		if err := s.env.RecordDump(s.cfg.RootDir, chosen, "HEAD"); err != nil {
+			return rendered, err
+		}
+		return rendered, nil
 	}
 
 	out := s.env.App.Output()
@@ -120,21 +144,24 @@ func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped 
 		// previous dump instead of appending to it, without risking data loss
 		// on failure.
 		if err := f.Truncate(0); err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := f.Seek(0, 0); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if _, err := out.Write(rendered); err != nil {
-		return err
+		return nil, err
 	}
 	if s.cfg.CopyOnGenerate {
 		if err := clipboard.Copy(rendered); err != nil {
-			return fmt.Errorf("copy generated output to clipboard: %w", err)
+			return nil, fmt.Errorf("copy generated output to clipboard: %w", err)
 		}
 	}
 
 	// Update the baseline so a later delta dump knows what was just rendered.
-	return s.env.RecordDump(s.cfg.RootDir, chosen, "HEAD")
+	if err := s.env.RecordDump(s.cfg.RootDir, chosen, "HEAD"); err != nil {
+		return rendered, err
+	}
+	return rendered, nil
 }

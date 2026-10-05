@@ -1,21 +1,23 @@
 # Configuration
 
-Command-line flags configure a single run. Profiles and targets make those
-settings reusable and committable so `sift dump` does the right thing without
-flags — suitable for CI and automated dumping.
+This page is the guide to `.sift.toml`, the per-repository config file. Flags
+configure a single run; profiles and targets make settings reusable and
+committable so `sift dump` does the right thing without flags — suitable for CI
+and automated dumping. For the full flag list see
+[Flag reference](#flag-reference).
 
 ## Quick start: `[sift]` defaults
 
-Put repository-wide defaults in `.sift.toml` (project-local, committed) so
-any clone can run `sift dump` with no flags:
+Put repository-wide defaults in `.sift.toml` (project-local, committed) so any
+clone can run `sift dump` with no flags:
 
 ```toml
 [sift]
 style = "xml"
 budget = 40000
-mode = "full"
+compress_mode = "full"
 output = "codebase.md"
-smart = true
+smart_filter = true
 extensions = ["go", "md", "ts"]
 ignore = ["vendor/**", "dist/**"]
 prompt = "Review for correctness."
@@ -23,7 +25,90 @@ prompt = "Review for correctness."
 # prompt_file = "prompts/review.md"   # file path instead of inline prompt
 ```
 
+Every field is optional. Anything you omit keeps its built-in default, so start
+with only the two or three settings you actually care about.
+
 Flags still win: `sift dump --budget 80000` overrides `budget = 40000`.
+
+### Where the file is looked up
+
+The local file is resolved against the directory you are scanning, not your
+current working directory:
+
+- `sift dump` / `sift pick` in a repo → `./.sift.toml`
+- `sift dump /path/to/repo` → `/path/to/repo/.sift.toml`
+
+This means CI and tooling that scan a checkout from elsewhere still pick up the
+committed config. A relative `--dir` is resolved to an absolute path before the
+lookup, so `sift dump .` and `sift dump /abs/path` behave the same.
+
+## Key names
+
+TOML keys are **snake_case** and do not always match the flag spelling:
+
+| TOML key | Flag | Notes |
+| --- | --- | --- |
+| `compress_mode` | `--mode` | Values: `full`, `signatures`, `skip` |
+| `extensions` | `--ext` | Comma-separated on the CLI, a TOML array in the file |
+| `ignore` | `--ignore` | Globs in the file, comma-separated on the CLI |
+| `smart_filter` | `--smart` | Name differs from the flag |
+| `smart_max_tokens` | `--smart-max-tokens` | Per-file token ceiling |
+| `copy_on_generate` | `--clipboard` | Name differs from the flag |
+| `tokenize_model` | `--tokenize-model` | e.g. `cl100k_base` |
+| `ui_theme_file` | `--ui-theme-file` | Picker themes only |
+
+### Inverted booleans
+
+Several settings are phrased as "ignore/skip X" in TOML but as "include X" on
+the command line, because the flags default to filtering. This is the most
+common source of confusion in the file:
+
+| TOML key | Default | Set to `false` to | Flag (mirror image) |
+| --- | --- | --- | --- |
+| `ignore_hidden` | `true` | **include** hidden files | `--hidden=false` |
+| `ignore_git` | `true` | **include** Git-ignored files | `--git=false` |
+| `secret_scan` | `true` | disable secret redaction | `--secrets=false` |
+| `smart_filter` | `false` | disable the smart filter | `--smart=false` |
+
+So `ignore_hidden = false` means "do not ignore hidden files" — the opposite of
+how it reads at a glance.
+
+`ignore_git` / `--git` controls `.gitignore` handling, and the `.git` directory
+is always skipped. Note the flag's help text says "Ignore .git directories",
+which is misleading — the setting actually turns off `.gitignore` rule matching.
+
+One exception: the interactive picker always walks hidden and Git-ignored files
+so you can opt into them with its visibility toggles, regardless of these
+settings. They apply to `dump` and `select`.
+
+`force_secrets = true` includes detected credentials verbatim instead of
+redacting them. Only use this on trusted input.
+
+### Lists
+
+`extensions` and `ignore` are TOML arrays:
+
+```toml
+extensions = ["go", "md", "ts"]
+ignore = ["vendor/**", "dist/**", "**/*.min.js"]
+```
+
+`ignore` entries are glob patterns matched against repository-relative paths.
+`.gitignore` is honored independently; these patterns are additive.
+
+### Keep generated output out of the scan
+
+The document sift writes lands inside the repository by default, so on a second
+run it can be picked up and fed back into the next document. Add the output
+names to `ignore` (and to `.gitignore`) if that matters to you:
+
+```toml
+[sift]
+output = "codebase.md"
+ignore = ["codebase.md", "docs-context.md"]
+```
+
+Or point `output` outside the tree, or use `-` for stdout.
 
 ## Profiles
 
@@ -33,7 +118,7 @@ Profiles are named presets you select with `--profile` (or via a target):
 [profiles.review]
 style = "markdown"
 budget = 60000
-mode = "signatures"
+compress_mode = "signatures"
 prompt = "Review this codebase for correctness and security issues."
 extensions = ["go", "md"]
 
@@ -44,7 +129,7 @@ budget = 60000
 [profiles.rust-strict]
 extends = ["claude"]           # inherit, then override
 extensions = ["rs"]
-mode = "signatures"
+compress_mode = "signatures"
 prompt_file = "prompts/rust-review.md"
 output = "rust-context.md"
 ```
@@ -56,6 +141,31 @@ sift dump . --profile rust-strict
 
 `extends` composes profiles: ancestors are overlaid in order, then the
 profile's own fields win. Cycles are an error.
+
+You can make one profile the default so plain `sift dump` uses it:
+
+```toml
+default_profile = "claude"
+```
+
+A default profile still overrides `[sift]`, because profiles sit later in the
+chain. If you set both, the profile's values win.
+
+::: warning Top-level keys must precede the first table header
+`default_profile` (and any other bare key) must appear **before** the first
+`[table]` header. TOML assigns a bare key to whatever table is currently open,
+so this silently does nothing:
+
+```toml
+[profiles.review]
+prompt = "Review this."
+
+default_profile = "review"   # parsed as profiles.review.default_profile!
+```
+
+There is no error — the profile just never activates, and `[sift]` values are
+used as if you had not configured a default. Put top-level keys at the top of
+the file.
 
 ## Targets: multiple artifacts from one file
 
@@ -87,9 +197,12 @@ sift dump --target sig         # codebase.sig.xml
 sift dump --target docs        # docs-context.md (md-only, short budget)
 ```
 
-Target fields (`style`, `budget`, `mode`, `output`, `prompt`/`prompt_file`,
-`extensions`, `ignore`, `scoring`) override the resolved profile and `[sift]`
-defaults. Flags override everything.
+Target fields (`style`, `budget`, `compress_mode`, `output`,
+`prompt`/`prompt_file`, `extensions`, `ignore`, `scoring`) override the resolved
+profile and `[sift]` defaults. Flags override everything.
+
+Targets are the cleanest way to keep several committed artifacts in one repo —
+one `--target` per artifact, each writing its own file.
 
 ## Prompts
 
@@ -105,7 +218,7 @@ name = "api"
 prompt_file = "prompts/api.md"
 ```
 
-A reusable prompt library is also available:
+A `[prompts.NAME]` library is also parsed:
 
 ```toml
 [prompts.review]
@@ -115,8 +228,10 @@ text = "Review for correctness and security."
 file = "prompts/docs.md"
 ```
 
-Selected with the resolver's `WithPromptRef("review")` (programmatic) or via
-future `--prompt-ref` CLI flag.
+These named entries are only reachable from the Go API today
+(`config.WithPromptRef`); there is no CLI flag for them yet. Use inline
+`prompt` or `prompt_file` on a profile or target until that lands. A
+`[prompts.*]` entry with both `text` and `file` set is an error.
 
 ## Automation hints
 
@@ -135,27 +250,60 @@ hook_targets = ["full", "sig"]
 Built-in defaults (Config.New())
   → global ~/.config/sift/config.toml
   → local .sift.toml [sift] defaults
+  → default_profile (if set)
   → selected profile (+ extends expansion)
   → selected target overrides
   → explicit --flags (pflag.Changed guard)
 ```
 
 Local `.sift.toml` overlays global; `sift dump /path` resolves
-`.sift.toml` relative to the scanned root, not just `cwd`.
+`.sift.toml` relative to the scanned root, not just `cwd`. Within a layer only
+the fields you actually set are applied, so a local file can override a single
+global key without restating the rest.
 
 ## Legacy
 
-`default_profile = "NAME"` in either config file, and bare
-`[profiles.NAME]` without `[sift]`/`[[targets]]`, continue to work:
-
-```toml
-[profiles.claude]
-style = "xml"
-budget = 60000
-```
+Bare `[profiles.NAME]` without `[sift]`/`[[targets]]` continues to work, and so
+does `default_profile` in either config file.
 
 `extensions` and `ignore` as TOML arrays (e.g. `extensions = ["go", "md"]`)
 are canonical; comma strings are a CLI concern (`--ext go,md`), not TOML.
+
+## What applies to which command
+
+`.sift.toml` is read by every subcommand, but not every key means the same thing
+everywhere. The differences are by design:
+
+| Key | `dump` | `select` | `pick` (TUI) |
+| --- | --- | --- | --- |
+| `extensions` | yes | yes | yes (filters the walk) |
+| `ignore` | yes | yes | yes (filters the walk) |
+| `ignore_git`, `ignore_hidden` | yes | yes | **no** — always walked |
+| `budget` | yes | yes | yes (shown in the footer) |
+| `prompt` | yes | yes | yes (prompt bar) |
+| `style`, `scoring` | yes | n/a | yes (preview styling) |
+| `window_title` | n/a | n/a | yes |
+| `compress_mode` | **yes** | **no** | per-file, interactive |
+| `skip_roles` | **no** | yes | yes (smart-select) |
+
+Two entries deserve explanation:
+
+- **`compress_mode` only affects `dump`.** `sift select` derives a mode per file
+  from the relevance ranker (git recency, churn, centrality, role, and
+  compression yield). Forcing it uniform would defeat the command, so your
+  `[sift] compress_mode` is deliberately ignored there. Tune `[scoring]`
+  instead.
+- **`skip_roles` only affects `select` and the picker.** `dump` has no role
+  classifier, so to skip tests in a dump you need `ignore` globs such as
+  `"*_test.go"`. Conversely, `select` and the picker already skip
+  test/fixture/mock roles automatically unless the task prompt is about tests.
+
+`smart_filter` is forced on for `select` and `pick` regardless of the setting,
+since those workflows would otherwise surface generated and lock files.
+
+`ignore_git` and `ignore_hidden` are the reverse exception: the picker always
+walks hidden and Git-ignored files so its visibility toggles have something to
+toggle, so those two keys only affect `dump` and `select`.
 
 ## Tuning selection (`[scoring]`)
 
@@ -214,15 +362,15 @@ directory prefixes to custom area names; the longest matching prefix wins.
 
 ### Output
 
-| Flag | Default | Purpose |
-| --- | --- | --- |
-| `--output` | `codebase.md` | Output file; `-` writes to stdout |
-| `--style` | `markdown` | `plain`, `markdown`, `json`, or `xml` |
-| `--mode` | `full` | `full` content or `signatures` outline |
-| `--clipboard` | off | Copy the rendered output to the system clipboard |
-| `--copy-on-generate` | off | Also copy generated documents while writing them to the output file |
-| `--target` | — | Target from `.sift.toml` (`--target NAME`) |
-| `--profile` | — | Profile from config (`--profile NAME`) |
+| Flag | Default | TOML key | Purpose |
+| --- | --- | --- | --- |
+| `--output` | `codebase.md` | `output` | Output file; `-` writes to stdout |
+| `--style` | `markdown` | `style` | `plain`, `markdown`, `json`, or `xml` |
+| `--mode` | `full` | `compress_mode` | `full` content or `signatures` outline |
+| `--clipboard` | off | — | Copy the rendered output to the system clipboard |
+| `--copy-on-generate` | off | `copy_on_generate` | Also copy generated documents while writing them to the output file |
+| `--target` | — | — | Target from `.sift.toml` (`--target NAME`) |
+| `--profile` | — | — | Profile from config (`--profile NAME`) |
 
 ### Context and tokens
 
@@ -234,23 +382,23 @@ directory prefixes to custom area names; the longest matching prefix wins.
 
 ### Filtering
 
-| Flag | Default | Purpose |
-| --- | --- | --- |
-| `--ext` | — | Only include these extensions (comma-separated) |
-| `--ignore` | — | Extra gitignore-style patterns (comma-separated) |
-| `--max-size` | `0` | Max file size in MB; `0` is unlimited |
-| `--hidden` | `true` | Ignore hidden files; set `false` to include them |
-| `--git` | `true` | Ignore Git-ignored files; set `false` to include them |
-| `--binary` | off | Include binary files (skipped by default) |
-| `--smart` | off | Skip generated/lock/minified/oversized files |
-| `--smart-max-tokens` | `15000` | Per-file token ceiling for the smart filter |
+| Flag | Default | TOML key | Purpose |
+| --- | --- | --- | --- |
+| `--ext` | — | `extensions` | Only include these extensions (comma-separated) |
+| `--ignore` | — | `ignore` | Extra gitignore-style patterns (comma-separated) |
+| `--max-size` | `0` | — | Max file size in MB; `0` is unlimited |
+| `--hidden` | `true` | `ignore_hidden` | Ignore hidden files; set `false` to include them |
+| `--git` | `true` | `ignore_git` | Honor `.gitignore`; set `false` to include ignored files (`.git` is always skipped) |
+| `--binary` | off | — | Include binary files (skipped by default) |
+| `--smart` | off | `smart_filter` | Skip generated/lock/minified/oversized files |
+| `--smart-max-tokens` | `15000` | `smart_max_tokens` | Per-file token ceiling for the smart filter |
 
 ### Safety
 
-| Flag | Default | Purpose |
-| --- | --- | --- |
-| `--secrets` | `true` | Scan and redact detected credentials |
-| `--force-secrets` | off | Include secrets instead of redacting |
+| Flag | Default | TOML key | Purpose |
+| --- | --- | --- | --- |
+| `--secrets` | `true` | `secret_scan` | Scan and redact detected credentials |
+| `--force-secrets` | off | `force_secrets` | Include secrets instead of redacting |
 
 ### Terminal display
 

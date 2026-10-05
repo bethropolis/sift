@@ -14,6 +14,12 @@ import (
 // Git runs git against rootDir.
 type Git struct {
 	rootDir string
+
+	// availOnce memoizes the repository probe: it forks a git subprocess,
+	// and one scoring pass asks several times. Handles are constructed per
+	// scan/rank pass, so the answer stays fresh where it matters.
+	availOnce sync.Once
+	avail     bool
 }
 
 // New returns a Git handle rooted at dir.
@@ -46,9 +52,13 @@ func (g *Git) runList(args ...string) []string {
 	return strings.Split(out, "\n")
 }
 
-// Available reports whether rootDir is inside a git repository.
+// Available reports whether rootDir is inside a git repository. The probe is
+// memoized per Git handle so a scoring pass pays for at most one fork.
 func (g *Git) Available() bool {
-	return g.run("rev-parse", "--is-inside-work-tree") == "true"
+	g.availOnce.Do(func() {
+		g.avail = g.run("rev-parse", "--is-inside-work-tree") == "true"
+	})
+	return g.avail
 }
 
 // ChangesFor computes the relevance tiers for ref (default HEAD):
@@ -57,6 +67,7 @@ func (g *Git) Available() bool {
 //   - Committed: files in the latest commit at ref.
 //
 // The three git invocations run concurrently since they are independent.
+// The tier sets are normalized once before return so Score is O(depth).
 func (g *Git) ChangesFor(ref string) *Changes {
 	if ref == "" {
 		ref = "HEAD"
@@ -64,22 +75,29 @@ func (g *Git) ChangesFor(ref string) *Changes {
 	changes := NewChanges()
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
+		local := map[string]bool{}
 		for _, line := range strings.Split(g.runRaw("status", "--porcelain"), "\n") {
 			if len(line) > 3 {
 				p := strings.TrimSpace(line[3:])
 				if idx := strings.Index(p, " -> "); idx != -1 {
 					// Rename entry: "old.go -> new.go". Register both sides so
 					// the new path is scored as modified.
-					changes.Modified[p[idx+4:]] = true
-					changes.Modified[p[:idx]] = true
+					local[p[idx+4:]] = true
+					local[p[:idx]] = true
 				} else {
-					changes.Modified[p] = true
+					local[p] = true
 				}
 			}
 		}
+		mu.Lock()
+		for p := range local {
+			changes.Modified[p] = true
+		}
+		mu.Unlock()
 	}()
 	go func() {
 		defer wg.Done()
@@ -87,22 +105,35 @@ func (g *Git) ChangesFor(ref string) *Changes {
 			// Root commits (a single-commit history) have no parent, so the diff
 			// range "ref^..ref" is invalid; skip it rather than silently returning
 			// an empty list.
+			local := map[string]bool{}
 			for _, p := range g.runList("diff", "--name-only", parent+".."+ref) {
 				if p = strings.TrimSpace(p); p != "" {
-					changes.Diffed[p] = true
+					local[p] = true
 				}
 			}
+			mu.Lock()
+			for p := range local {
+				changes.Diffed[p] = true
+			}
+			mu.Unlock()
 		}
 	}()
 	go func() {
 		defer wg.Done()
+		local := map[string]bool{}
 		for _, p := range g.runList("log", "-n", "5", "--name-only", "--format=", ref) {
 			if p = strings.TrimSpace(p); p != "" {
-				changes.Committed[p] = true
+				local[p] = true
 			}
 		}
+		mu.Lock()
+		for p := range local {
+			changes.Committed[p] = true
+		}
+		mu.Unlock()
 	}()
 	wg.Wait()
+	changes.Normalize()
 	return changes
 }
 
@@ -240,9 +271,23 @@ func (g *Git) AnalyzeCommitHistory(depth int) map[string]string {
 		return modes
 	}
 	commits := g.CommitsBetween("HEAD~"+strconv.Itoa(depth), "HEAD")
-	for i := len(commits) - 1; i >= 0; i-- { // oldest first so newer wins.
-		c := commits[i]
-		changed := g.ChangedBetween(g.Parent(c.Hash), c.Hash)
+	// Per-commit diffs are independent git subprocesses; run them with a
+	// small bounded pool so a depth-5 history costs ~1 diff latency.
+	results := make([][]string, len(commits))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4)
+	for i, c := range commits {
+		wg.Add(1)
+		go func(i int, hash string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			results[i] = g.ChangedBetween(g.Parent(hash), hash)
+		}(i, c.Hash)
+	}
+	wg.Wait()
+	for i := len(results) - 1; i >= 0; i-- { // oldest first so newer wins.
+		changed := results[i]
 		preferred := "full"
 		if len(changed) > 10 {
 			preferred = "signatures"

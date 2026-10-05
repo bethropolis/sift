@@ -87,10 +87,10 @@ func runSelect(cmd *cobra.Command, args []string) error {
 			File:          file,
 			PreferredMode: preferred[file.Path].PreferredMode,
 			Signals: selection.Signals{
-				Recency:    preferred[file.Path].Signals.Recency,
-				Churn:      preferred[file.Path].Signals.Churn,
-				Centrality: preferred[file.Path].Signals.Centrality,
-				Role:       preferred[file.Path].Signals.Role,
+				Recency:      preferred[file.Path].Signals.Recency,
+				Churn:        preferred[file.Path].Signals.Churn,
+				Centrality:   preferred[file.Path].Signals.Centrality,
+				Role:         preferred[file.Path].Signals.Role,
 				TestAffinity: testAffinity[filepath.ToSlash(file.Path)],
 			},
 		})

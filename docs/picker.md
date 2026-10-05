@@ -60,6 +60,7 @@ cursor.
 | Key | Action |
 | --- | --- |
 | `g` | Generate the output document (stay in the picker) |
+| `y` | Copy the generated document to the clipboard |
 | `Y` | Generate the selected context and copy `codebase.md` to the clipboard |
 | `/` | Fuzzy path search (filter the tree) |
 | `PgUp`/`PgDn`, `[`/`]` | Scroll the preview pane |
@@ -139,7 +140,35 @@ stack), and whether to generate a document or copy it. See
 
 - `g` renders the current selection to the configured output destination
   (default `codebase.md`) without leaving the picker, so you can keep tweaking.
+- `y` copies the selection to the clipboard without writing the output file.
 - `Y` generates the current selection and copies `codebase.md` to the clipboard.
+  It renders the document once and copies those same bytes, instead of
+  rendering and re-reading the file.
 
 Generated output includes the active task prompt and applies secret redaction.
-`Y` writes that generated `codebase.md` and copies it to the clipboard.
+
+### Work runs in the background
+
+`g`, `y`, and `Y` hand their render/copy work to a background job, so the
+picker stays responsive while a large selection is processed. The footer shows
+the running job with a live elapsed-time counter (refreshed every 250ms), then
+the outcome:
+
+- While a job is running, pressing `g`, `y`, or `Y` again is refused with a
+  notice rather than stacking a second render over the same selection.
+- Only one job runs at a time; the notice is replaced once it finishes.
+- Quitting (`q`/`Esc`/`Ctrl+C`) during a job waits — up to 30 seconds — for the
+  in-flight write to finish so the output document is never left truncated.
+
+A failure (for example a missing clipboard tool) is reported in the same notice
+line instead of interrupting the session.
+
+### Clipboard helpers
+
+`y` and `Y` hand the document to your platform's clipboard tool (`wl-copy`,
+`xclip`, `xsel`, `pbcopy`, or `clip` on Windows). `wl-copy` and `xclip` hand the
+data off and then keep running in the background to serve the selection, so the
+copy is treated as successful once they have taken the payload rather than when
+they exit — waiting for exit would hang the picker indefinitely. `xsel` and
+`pbcopy` return once the data is delivered, so those are waited on as normal,
+with a 30-second bound.

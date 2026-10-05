@@ -24,13 +24,21 @@ type Changes struct {
 	Committed map[string]bool
 }
 
-// NewChanges returns an empty Changes.
+// NewChanges returns an empty Changes with pre-normalized lookup sets.
 func NewChanges() *Changes {
 	return &Changes{
 		Modified:  map[string]bool{},
 		Diffed:    map[string]bool{},
 		Committed: map[string]bool{},
 	}
+}
+
+// Normalize cleans all tier sets once after bulk insertion, so Score lookups
+// are O(depth) map probes instead of O(len(set)) scans with per-key cleans.
+func (c *Changes) Normalize() {
+	c.Modified = NormalizeSet(c.Modified)
+	c.Diffed = NormalizeSet(c.Diffed)
+	c.Committed = NormalizeSet(c.Committed)
 }
 
 // Score returns the highest tier score matching path.
@@ -48,14 +56,32 @@ func (c *Changes) Score(path string) float64 {
 }
 
 // matches reports whether path equals one of the keys or lives under a keyed
-// directory.
+// directory. keys must be pre-normalized with NormalizeSet.
 func matches(set map[string]bool, path string) bool {
 	path = filepath.ToSlash(filepath.Clean(path))
-	for p := range set {
-		p = filepath.ToSlash(filepath.Clean(p))
-		if p == path || strings.HasPrefix(path, p+"/") {
+	if set[path] {
+		return true
+	}
+	// Directory-prefix match: walk up the parents instead of scanning every
+	// key, so lookup is O(depth) rather than O(len(set)).
+	for {
+		idx := strings.LastIndex(path, "/")
+		if idx < 0 {
+			return false
+		}
+		path = path[:idx]
+		if set[path] {
 			return true
 		}
 	}
-	return false
+}
+
+// NormalizeSet cleans a git-reported path list into a lookup set once, so
+// per-file Score calls never re-clean every key.
+func NormalizeSet(paths map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(paths))
+	for p := range paths {
+		out[filepath.ToSlash(filepath.Clean(p))] = true
+	}
+	return out
 }

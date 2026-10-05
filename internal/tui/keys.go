@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -339,6 +340,8 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filter = ""
 		case "Y":
 			return m, m.generateAndCopy()
+		case "y":
+			return m, m.copy()
 		case "d":
 			m.openDelta()
 		case "?":
@@ -440,6 +443,12 @@ func (m model) updatePromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.commitPrompt()
 			m.promptOpen = false
 			return m, m.generate()
+		case "y":
+			// y commits the directive and copies, mirroring g/generate.
+			// (Custom input therefore cannot contain y, as with g.)
+			m.commitPrompt()
+			m.promptOpen = false
+			return m, m.copy()
 		case "q", "p":
 			if m.promptCustom {
 				m.promptInput += r
@@ -511,7 +520,41 @@ func (m *model) smartSelect() tea.Cmd {
 		count, pluralFiles(count), formatTokenCount(m.root.TotalActiveTokens())))
 }
 
+// startGenJob runs fn on a Bubble Tea command goroutine so the heavy render,
+// clipboard, and git work never blocks the Update loop (which would freeze
+// the whole TUI). It flips the busy guard, shows an immediate progress
+// notice, and arms a 250ms ticker that appends elapsed time until the job
+// reports back with genJobMsg. fn must not touch the model; it captures its
+// inputs before returning.
+func (m *model) startGenJob(label string, fn func() string) tea.Cmd {
+	m.genBusy = true
+	done := make(chan struct{})
+	m.genDone = done
+	m.notice = label
+	m.noticeID++
+	id := m.noticeID
+	started := time.Now()
+	return tea.Batch(
+		func() tea.Msg {
+			defer close(done)
+			return genJobMsg{text: fn()}
+		},
+		tea.Tick(genTickInterval, func(time.Time) tea.Msg {
+			return busyTickMsg{id: id, label: label, started: started}
+		}),
+	)
+}
+
+// busyNotice is the shared "job already running" reply for the generate and
+// copy actions.
+func (m *model) busyNotice() tea.Cmd {
+	return m.setNotice("Working… (a generate/copy job is already running)")
+}
+
 func (m *model) copy() tea.Cmd {
+	if m.genBusy {
+		return m.busyNotice()
+	}
 	if m.onCopy == nil && m.onCopyPrompt == nil {
 		return nil
 	}
@@ -519,19 +562,31 @@ func (m *model) copy() tea.Cmd {
 	if len(sel) == 0 {
 		return m.setNotice("Nothing selected to copy")
 	}
-	var err error
-	if m.onCopyPrompt != nil {
-		err = m.onCopyPrompt(sel, m.prompt)
-	} else {
-		err = m.onCopy(sel)
-	}
-	if err != nil {
-		return m.setNotice("Copy failed: " + err.Error())
-	}
-	return m.setNotice(fmt.Sprintf("Copied %d %s · %s tokens", len(sel), pluralFiles(len(sel)), formatTokenCount(m.root.TotalActiveTokens())))
+	onCopy, onCopyPrompt := m.onCopy, m.onCopyPrompt
+	prompt := m.prompt
+	label := fmt.Sprintf("Copying %d %s…", len(sel), pluralFiles(len(sel)))
+	// Captured on the main goroutine: the job goroutine must not read the
+	// tree while Update mutates it.
+	doneText := fmt.Sprintf("Copied %d %s · %s tokens",
+		len(sel), pluralFiles(len(sel)), formatTokenCount(m.root.TotalActiveTokens()))
+	return m.startGenJob(label, func() string {
+		var err error
+		if onCopyPrompt != nil {
+			err = onCopyPrompt(sel, prompt)
+		} else {
+			err = onCopy(sel)
+		}
+		if err != nil {
+			return "Copy failed: " + err.Error()
+		}
+		return doneText
+	})
 }
 
 func (m *model) generateAndCopy() tea.Cmd {
+	if m.genBusy {
+		return m.busyNotice()
+	}
 	if m.onGenerateCopy == nil {
 		return m.setNotice("Generate and copy unavailable")
 	}
@@ -539,15 +594,23 @@ func (m *model) generateAndCopy() tea.Cmd {
 	if len(sel) == 0 {
 		return m.setNotice("Nothing selected to generate")
 	}
-	if err := m.onGenerateCopy(sel, m.prompt); err != nil {
-		return m.setNotice("Generate and copy failed: " + err.Error())
-	}
-	return m.setNotice("Generated and copied codebase.md")
+	onGenerateCopy := m.onGenerateCopy
+	prompt := m.prompt
+	label := fmt.Sprintf("Generating and copying %d %s…", len(sel), pluralFiles(len(sel)))
+	return m.startGenJob(label, func() string {
+		if err := onGenerateCopy(sel, prompt); err != nil {
+			return "Generate and copy failed: " + err.Error()
+		}
+		return "Generated and copied codebase.md"
+	})
 }
 
 // generate renders the current selection to the output document without
 // leaving the picker, so the user can keep tweaking the selection.
 func (m *model) generate() tea.Cmd {
+	if m.genBusy {
+		return m.busyNotice()
+	}
 	if m.onGenerate == nil && m.onGeneratePrompt == nil {
 		return nil
 	}
@@ -555,16 +618,25 @@ func (m *model) generate() tea.Cmd {
 	if len(sel) == 0 {
 		return m.setNotice("Nothing selected to generate")
 	}
-	var err error
-	if m.onGeneratePrompt != nil {
-		err = m.onGeneratePrompt(sel, m.prompt)
-	} else {
-		err = m.onGenerate(sel)
-	}
-	if err != nil {
-		return m.setNotice("Generate failed: " + err.Error())
-	}
-	return m.setNotice(fmt.Sprintf("Generated output · %d %s · %s tokens", len(sel), pluralFiles(len(sel)), formatTokenCount(m.root.TotalActiveTokens())))
+	onGenerate, onGeneratePrompt := m.onGenerate, m.onGeneratePrompt
+	prompt := m.prompt
+	label := fmt.Sprintf("Generating %d %s…", len(sel), pluralFiles(len(sel)))
+	// Captured on the main goroutine: the job goroutine must not read the
+	// tree while Update mutates it.
+	doneText := fmt.Sprintf("Generated output · %d %s · %s tokens",
+		len(sel), pluralFiles(len(sel)), formatTokenCount(m.root.TotalActiveTokens()))
+	return m.startGenJob(label, func() string {
+		var err error
+		if onGeneratePrompt != nil {
+			err = onGeneratePrompt(sel, prompt)
+		} else {
+			err = onGenerate(sel)
+		}
+		if err != nil {
+			return "Generate failed: " + err.Error()
+		}
+		return doneText
+	})
 }
 
 // updateDeltaKey handles keys while the delta modal is open.

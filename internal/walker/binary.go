@@ -43,14 +43,11 @@ var knownBinaryExts = map[string]bool{
 // 2. Fast-path: Known binary extensions return true (0 disk I/O).
 // 3. Fallback: Magic-number sniffing via gabriel-vasile/mimetype.
 func IsBinaryFile(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	if ext != "" {
-		if knownTextExts[ext] {
-			return false
-		}
-		if knownBinaryExts[ext] {
-			return true
-		}
+	if IsBinaryExt(path) {
+		return true
+	}
+	if IsTextExt(path) {
+		return false
 	}
 
 	// Sniff magic numbers for extensionless or unknown-extension files.
@@ -61,5 +58,45 @@ func IsBinaryFile(path string) bool {
 
 	// In mimetype's hierarchy, all text formats descend from "text/plain".
 	// Is("text/plain") walks the parent chain to verify if the file is text.
+	return !mtype.Is("text/plain")
+}
+
+// IsBinaryExt reports whether path has a known-binary extension, without any
+// disk I/O. It backs the metadata walk so the skeleton never opens files.
+func IsBinaryExt(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext != "" && knownBinaryExts[ext]
+}
+
+// IsTextExt reports whether path has a known-text extension, without any
+// disk I/O.
+func IsTextExt(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext != "" && knownTextExts[ext]
+}
+
+// binarySniffLen bounds the prefix sniffed for binary detection. The first
+// 8KB holds any magic number while keeping detection O(1) per file instead
+// of scanning multi-MB buffers byte-by-byte.
+const binarySniffLen = 8192
+
+// IsBinaryContent sniffs already-read bytes, avoiding the second open that
+// DetectFile would cost after a read. Only a bounded prefix is examined, and
+// a NUL byte short-circuits before mimetype runs. Callers must have applied
+// the extension fast-paths first via IsBinaryExt/IsTextExt.
+func IsBinaryContent(content []byte) bool {
+	if len(content) == 0 {
+		return false
+	}
+	prefix := content
+	if len(prefix) > binarySniffLen {
+		prefix = prefix[:binarySniffLen]
+	}
+	for _, b := range prefix {
+		if b == 0 {
+			return true
+		}
+	}
+	mtype := mimetype.Detect(prefix)
 	return !mtype.Is("text/plain")
 }

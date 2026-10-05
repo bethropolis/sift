@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -193,8 +194,15 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 		} else if err := clipboard.Copy(buf.Bytes()); err != nil {
 			writeErr = fmt.Errorf("copy generated output to clipboard: %w", err)
 		}
-	} else if renderErr := a.renderDocumentTo(files, prompt, a.output); renderErr != nil {
-		writeErr = fmt.Errorf("render output: %w", renderErr)
+	} else {
+		// Buffer the render: renderers emit one fmt.Fprintf per line/fence,
+		// which would otherwise be a write syscall per call on large dumps.
+		bufw := bufio.NewWriterSize(a.output, 256<<10)
+		if renderErr := a.renderDocumentTo(files, prompt, bufw); renderErr != nil {
+			writeErr = fmt.Errorf("render output: %w", renderErr)
+		} else if flushErr := bufw.Flush(); flushErr != nil {
+			writeErr = fmt.Errorf("write output: %w", flushErr)
+		}
 	}
 
 	// --- Handle walk errors ---

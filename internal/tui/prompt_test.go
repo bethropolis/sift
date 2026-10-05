@@ -24,7 +24,9 @@ func TestPromptPresetReachesGenerateCallback(t *testing.T) {
 	if m.promptOpen || m.prompt != promptPresets[1].Text {
 		t.Fatalf("prompt after preset selection = %q, open=%v", m.prompt, m.promptOpen)
 	}
-	m = updateKey(m, tea.KeyRunes, 'g')
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	m = updated.(model)
+	m, _ = runGenJob(t, m, cmd)
 	if got != promptPresets[1].Text {
 		t.Errorf("callback prompt = %q, want %q", got, promptPresets[1].Text)
 	}
@@ -45,11 +47,13 @@ func TestPromptCustomDirectiveReachesCopyCallback(t *testing.T) {
 	for _, r := range "heck tests" {
 		m = updateKey(m, tea.KeyRunes, r)
 	}
-	m = updateKey(m, tea.KeyRunes, 'y')
-	if got != "check tests" {
-		t.Errorf("custom callback prompt = %q, want %q", got, "check tests")
-	}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m = updated.(model)
 	if m.promptOpen {
 		t.Error("y did not close prompt modal")
+	}
+	m, _ = runGenJob(t, m, cmd)
+	if got != "check tests" {
+		t.Errorf("custom callback prompt = %q, want %q", got, "check tests")
 	}
 }

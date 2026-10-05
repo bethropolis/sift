@@ -7,11 +7,13 @@ package picker
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/bethropolis/sift/internal/app"
+	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
@@ -65,19 +67,39 @@ func (s *service) run(ctx context.Context) (Result, error) {
 
 	// Structure-first launch: a cheap metadata pass builds the skeleton the
 	// TUI shows instantly; a background walk then streams enriched entries in.
-	metas, skipped, err := application.SkeletonPicker(ctx)
-	if err != nil {
-		return Result{}, err
+	// Git-history mode hints run concurrently with the skeleton so they never
+	// sit on the time-to-open critical path.
+	type skeletonResult struct {
+		metas   []walker.FileMeta
+		skipped []walker.SkippedItem
+		err     error
 	}
+	skeletonCh := make(chan skeletonResult, 1)
+	go func() {
+		metas, skipped, err := application.SkeletonPicker(ctx)
+		skeletonCh <- skeletonResult{metas: metas, skipped: skipped, err: err}
+	}()
 
 	// Analyze the last five commits to hint preferred modes before any
 	// enrichment streams in. An empty map (non-git or error) leaves every
 	// file with no preference.
 	var preferredModes map[string]string
 	absRoot, absErr := filepath.Abs(s.cfg.RootDir)
-	if absErr == nil {
-		preferredModes = rank.New(absRoot).AnalyzeCommitHistory(5)
+	modesCh := make(chan map[string]string, 1)
+	go func() {
+		if absErr != nil {
+			modesCh <- nil
+			return
+		}
+		modesCh <- rank.New(absRoot).AnalyzeCommitHistory(5)
+	}()
+
+	skeleton := <-skeletonCh
+	metas, skipped, err := skeleton.metas, skeleton.skipped, skeleton.err
+	if err != nil {
+		return Result{}, err
 	}
+	preferredModes = <-modesCh
 
 	var userThemes []tui.ThemePreset
 	if s.cfg.UIThemeFile != "" {
@@ -160,24 +182,35 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		},
 		OnGenerateCopy: func(sel []tui.Selection, prompt string) error {
 			files := snapshotFiles()
-			if err := s.generateSelectionWithPrompt(files, snapshotSkipped(), start, sel, prompt); err != nil {
+			rendered, err := s.generateSelectionWithPrompt(files, snapshotSkipped(), start, sel, prompt)
+			if err != nil {
 				return err
 			}
 			if s.cfg.CopyOnGenerate {
 				return nil
 			}
-			if s.cfg.OutputFile == "" || s.cfg.OutputFile == "-" {
-				chosen := applySelection(application, files, sel)
-				chosen = app.ExpandChosen(files, chosen, s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
-				return application.RenderToClipboardWithPrompt(chosen, prompt)
-			}
-			return application.CopyOutputToClipboard()
+			// Fast path: the document we just wrote is already in memory —
+			// copy it directly instead of re-reading the output file or
+			// re-running selection, dependency expansion, and a full render
+			// (the old stdout path did exactly that).
+			return clipboard.Copy(rendered)
 		},
 		OnGenerate: func(sel []tui.Selection) error {
+			// With `--output -` the destination is the terminal the picker
+			// owns, so the document is rendered but never written there.
+			if application.OutputPath() == "" {
+				return fmt.Errorf("output is stdout; press Y to copy to the clipboard instead")
+			}
 			return s.generateSelection(snapshotFiles(), snapshotSkipped(), start, sel)
 		},
 		OnGeneratePrompt: func(sel []tui.Selection, prompt string) error {
-			return s.generateSelectionWithPrompt(snapshotFiles(), snapshotSkipped(), start, sel, prompt)
+			// Same stdout caveat as OnGenerate: the alt-screen TUI owns the
+			// terminal, so the document is not written there.
+			if application.OutputPath() == "" {
+				return fmt.Errorf("output is stdout; press Y to copy to the clipboard instead")
+			}
+			_, err := s.generateSelectionWithPrompt(snapshotFiles(), snapshotSkipped(), start, sel, prompt)
+			return err
 		},
 		Delta: s.buildDeltaInfo(deltaFiles),
 		OnDelta: func(sel tui.DeltaSelection) error {

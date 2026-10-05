@@ -5,11 +5,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
-	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/logger"
 	"github.com/bethropolis/sift/internal/scan"
+	"github.com/bethropolis/sift/internal/smart"
 )
 
 // App encapsulates the main application functionality
@@ -32,22 +33,17 @@ type App struct {
 	// hash across Collect calls, so watch re-renders skip tree-sitter and
 	// BPE work for unchanged files.
 	contentCache *scan.ContentCache
-}
 
-// CopyOutputToClipboard copies the configured output document currently on
-// disk. It is used by the picker after a document has been generated.
-func (a *App) CopyOutputToClipboard() error {
-	if a.outputPath == "" {
-		return fmt.Errorf("output is not a file; set --output to a file before copying it")
-	}
-	data, err := os.ReadFile(a.outputPath)
-	if err != nil {
-		return fmt.Errorf("read output document: %w", err)
-	}
-	if len(data) == 0 {
-		return fmt.Errorf("output document is empty; generate it first")
-	}
-	return clipboard.Copy(data)
+	// processors caches one scan.Processor per collectMode so ReadEntry
+	// reuses the tokenizer and compressor instead of rebuilding them.
+	procMu     sync.Mutex
+	processors map[collectMode]*scan.Processor
+
+	// evalOnce guards the App-wide smart evaluator shared by the skeleton
+	// pass, the walker pre-read filter, and every scan.Processor, so path
+	// decisions are computed once and memoized across all three.
+	evalOnce  sync.Once
+	smartEval *smart.Evaluator
 }
 
 // Config returns the resolved application configuration. It is exposed to

@@ -2,6 +2,8 @@
 package ignore
 
 import (
+	"sync"
+
 	"github.com/bethropolis/sift/internal/utils"
 	gitignore "github.com/denormal/go-gitignore"
 )
@@ -17,6 +19,16 @@ type IgnoreMatcher struct {
 	// Matcher built from the built-in default patterns. It is consulted last,
 	// only when neither custom nor repository rules decided the path.
 	defaultIgnore gitignore.GitIgnore
+
+	// fast holds the default patterns pre-classified into cheap string
+	// tests; defaultIgnore only carries the unclassifiable remainder.
+	// nil disables the fast tier (used by equivalence tests).
+	fast *defaultFastSet
+
+	// repoCache memoizes the repository-ignore tier per path (see
+	// repoIgnored). It is populated on first ask and read by every later
+	// pass, so the picker's repeated enquiries cost one computation.
+	repoCache sync.Map
 
 	// Configuration flags
 	rootDir        string

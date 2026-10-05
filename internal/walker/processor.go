@@ -47,10 +47,11 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 		return nil
 	}
 
-	// Skip binary files before reading them, using extension fast-paths and
-	// magic-number sniffing as a fallback for unknown/extensionless files.
-	if !options.IncludeBinary && IsBinaryFile(path) {
-		options.Logger.Debug("processFile Skipping [%s]: Binary file detected", relativePath)
+	// Skip known-binary extensions before reading (zero I/O), then sniff the
+	// bytes once read for unknown/extensionless files. Sniffing content
+	// avoids the second open DetectFile would cost after a read.
+	if !options.IncludeBinary && IsBinaryExt(path) {
+		options.Logger.Debug("processFile Skipping [%s]: Binary extension detected", relativePath)
 		tracker.Track(relativePath, ReasonSkippedBinary, false)
 		stats.binarySkipped.Add(1)
 		stats.skippedFiles.Add(1)
@@ -67,6 +68,14 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 		return nil
 	}
 	stats.bytesRead.Add(int64(len(content)))
+
+	if !options.IncludeBinary && !IsTextExt(path) && IsBinaryContent(content) {
+		options.Logger.Debug("processFile Skipping [%s]: Binary content detected", relativePath)
+		tracker.Track(relativePath, ReasonSkippedBinary, false)
+		stats.binarySkipped.Add(1)
+		stats.skippedFiles.Add(1)
+		return nil
+	}
 
 	// Call the walk function with the content
 	options.Logger.Debug("processFile Success [%s]: Read %d bytes. Calling walkFn.", relativePath, len(content))

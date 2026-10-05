@@ -172,6 +172,21 @@ func (a *App) walkAndCollect(mode collectMode, ctx context.Context, emit func(fo
 	return skippedItems, err
 }
 
+// sharedEvaluator returns the App-wide smart evaluator, or nil when the
+// smart filter is off. One instance is shared by the skeleton pass, the
+// walker's pre-read filter, and the content processors, so its path-decision
+// memo is consulted by every pass that sees a given file instead of each
+// pass re-running the language-driver rule loop.
+func (a *App) sharedEvaluator() *smart.Evaluator {
+	if !a.cfg.SmartFilter {
+		return nil
+	}
+	a.evalOnce.Do(func() {
+		a.smartEval = smart.New(a.cfg.SmartMaxTokens)
+	})
+	return a.smartEval
+}
+
 // newProcessor builds a per-file processor from the app's configuration. The
 // signature compressor is only constructed for flows that use it (picker and
 // signatures mode), so ordinary full-content scans never load tree-sitter.
@@ -189,6 +204,7 @@ func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
 		Compress:       mode == collectPicker || (mode == collectBlocking && a.cfg.Mode == "signatures"),
 		Logger:         a.log,
 		Cache:          cache,
+		Evaluator:      a.sharedEvaluator(),
 	})
 	if err != nil {
 		return nil, err
@@ -200,6 +216,27 @@ func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
 		a.log.Debug("Compression mode: signatures (tree-sitter)")
 	}
 	return processor, nil
+}
+
+// sharedProcessor returns a cached processor for mode, building it once.
+// ReadEntry's fallback previously constructed a fresh tokenizer (BPE codec)
+// and compressor (tree-sitter parser pools) per call; sharing makes late
+// selections pay only the file's own work.
+func (a *App) sharedProcessor(mode collectMode) (*scan.Processor, error) {
+	a.procMu.Lock()
+	defer a.procMu.Unlock()
+	if p, ok := a.processors[mode]; ok {
+		return p, nil
+	}
+	p, err := a.newProcessor(mode)
+	if err != nil {
+		return nil, err
+	}
+	if a.processors == nil {
+		a.processors = map[collectMode]*scan.Processor{}
+	}
+	a.processors[mode] = p
+	return p, nil
 }
 
 // processWalkEntry adapts the processor to the walker's callback shape. It
@@ -279,10 +316,7 @@ func (a *App) SkeletonPicker(ctx context.Context) ([]walker.FileMeta, []walker.S
 		return metas, skipped, err
 	}
 
-	var smartEvaluator *smart.Evaluator
-	if a.cfg.SmartFilter {
-		smartEvaluator = smart.New(a.cfg.SmartMaxTokens)
-	}
+	smartEvaluator := a.sharedEvaluator()
 
 	if smartEvaluator != nil {
 		kept := metas[:0]
@@ -310,7 +344,7 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 	if err != nil {
 		return format.FileEntry{}, err
 	}
-	processor, err := a.newProcessor(collectPicker)
+	processor, err := a.sharedProcessor(collectPicker)
 	if err != nil {
 		return format.FileEntry{}, err
 	}
@@ -320,9 +354,12 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 	}
 
 	// Mirror the walker's pre-read safety checks so a selected-but-not-yet-
-	// streamed file is never pulled wholesale into RAM: stat first, drop
-	// non-regular entries, enforce the size cap, and reject binary files the
-	// same way the walker's processFile does.
+	// streamed file is never pulled wholesale into RAM: reject known-binary
+	// extensions with zero I/O, stat first, drop non-regular entries, enforce
+	// the size cap, then sniff the bytes once read for the rest.
+	if !a.cfg.IncludeBinary && walker.IsBinaryExt(absFile) {
+		return format.FileEntry{}, fmt.Errorf("%w: binary file", ErrFileSkipped)
+	}
 	info, err := os.Stat(absFile)
 	if err != nil {
 		return format.FileEntry{}, err
@@ -333,13 +370,13 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 	if maxMB := a.effectiveMaxFileSizeMB(collectPicker); maxMB > 0 && info.Size() > maxMB*1024*1024 {
 		return format.FileEntry{}, fmt.Errorf("%w: exceeds max size limit (%d MB)", ErrFileSkipped, maxMB)
 	}
-	if !a.cfg.IncludeBinary && walker.IsBinaryFile(absFile) {
-		return format.FileEntry{}, fmt.Errorf("%w: binary file", ErrFileSkipped)
-	}
 
 	content, err := os.ReadFile(absFile)
 	if err != nil {
 		return format.FileEntry{}, err
+	}
+	if !a.cfg.IncludeBinary && !walker.IsTextExt(absFile) && walker.IsBinaryContent(content) {
+		return format.FileEntry{}, fmt.Errorf("%w: binary file", ErrFileSkipped)
 	}
 	entry, err := processor.Process(relativePath, content, scan.ModePicker)
 	if err != nil {
@@ -427,8 +464,7 @@ func (a *App) walkerOptions(absRootDir string, ctx context.Context, mode collect
 			return true
 		}))
 	}
-	if a.cfg.SmartFilter {
-		evaluator := smart.New(a.cfg.SmartMaxTokens)
+	if evaluator := a.sharedEvaluator(); evaluator != nil {
 		walkOptions = append(walkOptions, walker.WithPreReadFilter(func(relativePath string) bool {
 			skip, _ := evaluator.ShouldSkipPath(relativePath)
 			return skip

@@ -3,10 +3,10 @@
 package selection
 
 import (
+	"path"
 	"sort"
 	"strings"
 	"unicode"
-	"path"
 
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/lang"
@@ -162,10 +162,10 @@ func (t Tuning) skipRole(role lang.Role, prompt string) bool {
 
 // Signals are optional ranking inputs retained for explainable reports.
 type Signals struct {
-	Recency    float64 `json:"recency,omitempty"`
-	Churn      float64 `json:"churn,omitempty"`
-	Centrality float64 `json:"centrality,omitempty"`
-	Role       float64 `json:"role,omitempty"`
+	Recency      float64 `json:"recency,omitempty"`
+	Churn        float64 `json:"churn,omitempty"`
+	Centrality   float64 `json:"centrality,omitempty"`
+	Role         float64 `json:"role,omitempty"`
 	TestAffinity float64 `json:"test_affinity,omitempty"`
 }
 
@@ -304,8 +304,8 @@ func Select(candidates []Candidate, request Request) Result {
 			}
 		}
 		area := candidateArea(ordered[i])
-	areaCounts[area]++
-	ordered[i].AreaWeight = areaMultiplier(areaCounts[area], tuning.AreaDiminishing)
+		areaCounts[area]++
+		ordered[i].AreaWeight = areaMultiplier(areaCounts[area], tuning.AreaDiminishing)
 	}
 
 	result := Result{Budget: request.Budget, Decisions: make([]Decision, 0, len(ordered))}
@@ -592,6 +592,7 @@ func opportunisticUpgrade(result *Result, ordered []Candidate, prompt string, tu
 		result.UsedTokens += u.cost
 	}
 }
+
 // bestAffordable returns the highest-utility variant that fits within budget,
 // or a zero-token skip variant when nothing fits. It prefers the most useful
 // representation of a file that the remaining budget can still pay for.

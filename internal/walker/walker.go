@@ -229,20 +229,15 @@ func newProcessEntry(
 			return nil, false
 		}
 
-		// Pre-prune common heavy build directories at entry, before the full
-		// ignore pass. Gated on the matcher so committed vendor/target dirs
-		// that are not ignored are still walked.
-		if isDir && heavyDirBasenames[filepath.Base(path)] &&
-			matcher != nil && matcher.ShouldIgnore(relativePath, true) {
-			options.Logger.Debug("Walker: Pruning heavy dir %q", relativePath)
-			tracker.Track(relativePath, ReasonIgnoredRule, true)
-			stats.skippedDirs.Add(1)
-			return filepath.SkipDir, false
-		}
-
-		// Check ignore status using the matcher
+		// Ignore decision, computed once. For directories a positive result
+		// returns SkipDir, which prunes the subtree; the former heavy-dir
+		// pre-check re-ran the same matcher call for nothing.
 		if matcher != nil && matcher.ShouldIgnore(relativePath, isDir) {
-			options.Logger.Debug("Walker: Ignored %q by matcher rules", relativePath)
+			if isDir && heavyDirBasenames[filepath.Base(path)] {
+				options.Logger.Debug("Walker: Pruning heavy dir %q", relativePath)
+			} else {
+				options.Logger.Debug("Walker: Ignored %q by matcher rules", relativePath)
+			}
 			tracker.Track(relativePath, ReasonIgnoredRule, isDir)
 			if isDir {
 				stats.skippedDirs.Add(1)
@@ -306,9 +301,10 @@ type FileMeta struct {
 
 // WalkMeta enumerates a directory tree and returns file metadata only: no
 // full file read. It applies the same ignore, extension, heavy-dir, path,
-// size, and binary filters as Walk, making it the cheap structure pass for
-// progressive UIs. Binary detection may sniff a small bounded prefix of
-// unknown-extension files; nothing is read in full.
+// and size filters as Walk. Binary filtering is intentionally limited to
+// known-binary extensions here (zero I/O); unknown-extension sniffing happens
+// once in the content walk over bytes already read, so the two walks never
+// open the same file twice just to classify it.
 func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]FileMeta, []SkippedItem, error) {
 	startTime := time.Now()
 
@@ -362,15 +358,18 @@ func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]
 			return nil
 		}
 
-		// Size and binary rules mirror processFile so the skeleton matches the
-		// later content walk: oversized and binary files are never advertised.
+		// Size rules mirror processFile so the skeleton matches the later
+		// content walk: oversized files are never advertised. Binary filtering
+		// stays in the content phase: unknown-extension files would otherwise
+		// cost an open+sniff per file here, doubling I/O across the two walks.
+		// Only known-binary extensions (zero I/O) are pruned at metadata time.
 		if options.MaxFileSize > 0 && info.Size() > options.MaxFileSize {
 			tracker.Track(relativePath, ReasonSkippedSizeLimit, false)
 			stats.sizeSkipped.Add(1)
 			stats.skippedFiles.Add(1)
 			return nil
 		}
-		if !options.IncludeBinary && IsBinaryFile(path) {
+		if !options.IncludeBinary && IsBinaryExt(path) {
 			tracker.Track(relativePath, ReasonSkippedBinary, false)
 			stats.binarySkipped.Add(1)
 			stats.skippedFiles.Add(1)

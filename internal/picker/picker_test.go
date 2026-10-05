@@ -3,6 +3,7 @@ package picker
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -197,6 +198,75 @@ func TestRunNoEligible(t *testing.T) {
 	}
 	if len(result.Selections) != 0 {
 		t.Errorf("Selections = %v, want empty", result.Selections)
+	}
+}
+
+// TestGenerateStdoutDestinationSkipsWrite covers the `--output -` case: the
+// picker owns the terminal through Bubble Tea's alternate screen, so the
+// rendered document must never be written to stdout. The bytes are still
+// returned so the clipboard path can use them.
+func TestGenerateStdoutDestinationSkipsWrite(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fallbackSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.New()
+	cfg.RootDir = dir
+	cfg.Quiet = true
+	cfg.OutputFile = "-"
+	application, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer application.Close()
+	if application.OutputPath() != "" {
+		t.Fatalf("OutputPath() = %q, want empty for stdout", application.OutputPath())
+	}
+
+	recorded := 0
+	s := &service{cfg: cfg, env: Env{
+		App:         application,
+		RecordDump:  func(string, []format.FileEntry, string) error { recorded++; return nil },
+		RecordDelta: func(string, string, int, int) error { return nil },
+		CountTokens: func([]byte) int { return 0 },
+	}}
+
+	entries := []format.FileEntry{{
+		Path:       "main.go",
+		Content:    []byte(fallbackSource),
+		TokensFull: 10,
+		Tokens:     10,
+	}}
+	sel := []tui.Selection{{Path: "main.go", Mode: tui.ModeFull}}
+
+	// Capture what would hit os.Stdout during the generate.
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	rendered, err := s.generateSelectionWithPrompt(entries, nil, time.Now(), sel, "")
+	w.Close()
+	os.Stdout = orig
+	if err != nil {
+		t.Fatalf("generateSelectionWithPrompt: %v", err)
+	}
+
+	leaked, _ := io.ReadAll(r)
+	r.Close()
+	if len(leaked) != 0 {
+		t.Errorf("wrote %d bytes to stdout while the TUI owns the terminal", len(leaked))
+	}
+	if len(rendered) == 0 {
+		t.Error("rendered buffer is empty; the clipboard path needs those bytes")
+	}
+	if !strings.Contains(string(rendered), "func main()") {
+		t.Errorf("rendered document missing the selected file: %q", rendered)
+	}
+	if recorded != 1 {
+		t.Errorf("RecordDump called %d times, want 1", recorded)
 	}
 }
 
