@@ -8,6 +8,7 @@
 
 import { modeTokens } from '../../lib/selection';
 import type { FileSelectionMode } from '../../lib/selection';
+import { fuzzyMatch, nameMatchIndices } from '../../lib/filter';
 import type { FlatRow, TreeNode } from './tree';
 
 export const ROW_HEIGHT = 24;
@@ -25,7 +26,7 @@ export interface FlattenOptions {
 /** Flatten the visible hierarchy into rows honoring collapse + filter. */
 export function flattenRows(opts: FlattenOptions): FlatRow[] {
   const { root, descendants, fileByPath, selections, collapsedDirs } = opts;
-  const query = opts.filterQuery.trim().toLowerCase();
+  const query = opts.filterQuery.trim();
   const rows: FlatRow[] = [];
 
   const traverse = (node: TreeNode) => {
@@ -52,10 +53,11 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
           }
           if (mode === 'sigs') sigsCount++;
         }
-        if (query && p.toLowerCase().includes(query)) matchesQuery = true;
+        if (query && !matchesQuery && fuzzyMatch(p, query)) matchesQuery = true;
       }
 
-      if (query && !matchesQuery && !node.path.toLowerCase().includes(query)) return;
+      const selfHit = query ? fuzzyMatch(node.path, query) : null;
+      if (query && !matchesQuery && !selfHit) return;
 
       const totalFiles = filePaths.length;
       const selectedState = selectedCount === 0 ? 'none' : selectedCount === totalFiles ? 'all' : 'partial';
@@ -70,11 +72,13 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
         selectedState,
         isExpanded,
         allSigs: selectedState === 'all' && sigsCount === totalFiles,
+        match: selfHit ? nameMatchIndices(node.path, node.name, selfHit.indices) : null,
       });
 
       if (isExpanded) for (const child of node.children) traverse(child);
     } else {
-      if (query && !node.path.toLowerCase().includes(query)) return;
+      const hit = query ? fuzzyMatch(node.path, query) : null;
+      if (query && !hit) return;
       const mode = selections[node.path] || 'full';
       const fileTokens = modeTokens(node.file?.tokens || 0, mode);
       rows.push({
@@ -86,6 +90,7 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
         selectedState: mode === 'skip' ? 'none' : 'all',
         isExpanded: false,
         allSigs: false,
+        match: hit ? nameMatchIndices(node.path, node.name, hit.indices) : null,
       });
     }
   };

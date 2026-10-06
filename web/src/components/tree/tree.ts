@@ -29,6 +29,8 @@ export interface FlatRow {
   isExpanded: boolean;
   /** Directory only: every descendant file is in sigs mode. */
   allSigs: boolean;
+  /** Fuzzy-filter hit indices into node.name; null when unfiltered/unmatched. */
+  match: number[] | null;
 }
 
 /** Build the directory hierarchy from a flat file list (sorted by path). */

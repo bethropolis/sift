@@ -320,6 +320,10 @@
   }
 
   let filePathsList = $derived(files.map((f) => f.path));
+  // Keyboard nav follows the visible tree order (filter- and
+  // collapse-aware) whenever the sidebar is mounted; otherwise all files.
+  let visiblePaths = $state<string[]>([]);
+  let navList = $derived(sidebarOpen && visiblePaths.length > 0 ? visiblePaths : filePathsList);
   let stylesList = $derived(meta?.styles || ['xml', 'markdown', 'plain']);
   let projectName = $derived(projectRoot.split('/').filter(Boolean).pop() || 'project');
 
@@ -369,16 +373,16 @@
       void handleGenerateAndCopy();
       return;
     }
-    if ((e.key === 'j' || e.key === 'ArrowDown') && filePathsList.length > 0) {
+    if ((e.key === 'j' || e.key === 'ArrowDown') && navList.length > 0) {
       e.preventDefault();
-      const currentIndex = focusedPath ? filePathsList.indexOf(focusedPath) : -1;
-      handleFocusFile(filePathsList[Math.min(filePathsList.length - 1, currentIndex + 1)]);
+      const currentIndex = focusedPath ? navList.indexOf(focusedPath) : -1;
+      handleFocusFile(navList[Math.min(navList.length - 1, currentIndex + 1)]);
       return;
     }
-    if ((e.key === 'k' || e.key === 'ArrowUp') && filePathsList.length > 0) {
+    if ((e.key === 'k' || e.key === 'ArrowUp') && navList.length > 0) {
       e.preventDefault();
-      const currentIndex = focusedPath ? filePathsList.indexOf(focusedPath) : 0;
-      handleFocusFile(filePathsList[Math.max(0, currentIndex - 1)]);
+      const currentIndex = focusedPath ? navList.indexOf(focusedPath) : 0;
+      handleFocusFile(navList[Math.max(0, currentIndex - 1)]);
       return;
     }
     if (e.key === ' ' && focusedPath) {
@@ -445,6 +449,7 @@
             {filterQuery}
             onFilterChange={(q) => (filterQuery = q)}
             bind:filterInput={filterEl}
+            bind:visibleFilePaths={visiblePaths}
             bind:treeActions
           />
         {/if}

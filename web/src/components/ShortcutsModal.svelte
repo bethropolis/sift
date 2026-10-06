@@ -15,6 +15,7 @@
     { key: 'b', desc: 'Toggle sidebar (collapse/expand)' },
     { key: 't', desc: 'Open Color Theme picker' },
     { key: '/', desc: 'Focus file filter' },
+    { key: 'Enter (in filter)', desc: 'Jump to first match' },
     { key: 's', desc: 'Run smart select' },
     { key: 'g', desc: 'Generate context document' },
     { key: 'y', desc: 'Generate and copy to clipboard' },

@@ -10,6 +10,7 @@
   import type { TreeFile } from '../lib/api';
   import { formatTokens } from '../lib/format';
   import { cycleMode, type FileSelectionMode } from '../lib/selection';
+  import { splitHighlight } from '../lib/filter';
   import { buildTree, collectDescendants } from './tree/tree';
   import { flattenRows, ROW_HEIGHT, windowRows } from './tree/rows';
   import Icon from './Icon.svelte';
@@ -31,6 +32,8 @@
     onFilterChange: (query: string) => void;
     filterInput?: HTMLInputElement | null;
     treeActions?: TreeFoldActions | null;
+    /** Visible file order (filter- and collapse-aware) for keyboard nav. */
+    visibleFilePaths?: string[];
   }
 
   // Re-exported via bind:filterInput so parents can focus the filter box.
@@ -48,6 +51,7 @@
     onFilterChange,
     filterInput = $bindable(null),
     treeActions = $bindable(null),
+    visibleFilePaths = $bindable([]),
   }: Props = $props();
 
   let collapsedDirs = $state<Record<string, boolean>>({});
@@ -141,6 +145,51 @@
   $effect(() => {
     treeActions = { expandAll, collapseAll };
   });
+
+  // Visible file order for filter-aware keyboard nav (workspace j/k).
+  $effect(() => {
+    visibleFilePaths = flatRows.filter((r) => !r.isDir).map((r) => r.node.path);
+  });
+
+  // Keep keyboard-driven focus visible (virtual list: manual scroll math,
+  // adjusted only when the focused row is outside the window).
+  $effect(() => {
+    const path = focusedPath;
+    const el = containerEl;
+    if (!path || !el) return;
+    const idx = flatRows.findIndex((r) => !r.isDir && r.node.path === path);
+    if (idx === -1) return;
+    const top = idx * ROW_HEIGHT;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (top + ROW_HEIGHT > el.scrollTop + el.clientHeight) {
+      el.scrollTop = top + ROW_HEIGHT - el.clientHeight;
+    }
+  });
+
+  // Matched (non-dir) rows while filtering, for the `n/m` counter.
+  let matchCount = $derived(flatRows.filter((r) => !r.isDir).length);
+
+  function clearFilter() {
+    onFilterChange('');
+    filterInput?.focus();
+  }
+
+  function handleFilterKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const first = flatRows.find((r) => !r.isDir);
+      if (first) {
+        onFocusFile(first.node.path);
+        filterInput?.blur();
+      }
+    } else if (e.key === 'Escape' && filterQuery) {
+      // Non-empty: clear but keep focus. Empty: fall through to the global
+      // handler, which blurs.
+      e.preventDefault();
+      e.stopPropagation();
+      onFilterChange('');
+    }
+  }
 </script>
 
 <div class="tree">
@@ -152,11 +201,14 @@
         type="text"
         value={filterQuery}
         oninput={(e) => onFilterChange(e.currentTarget.value)}
+        onkeydown={handleFilterKey}
         placeholder="Filter files (/)..."
         class="input input-mono filter-input"
+        class:has-query={!!filterQuery}
       />
       {#if filterQuery}
-        <button onclick={() => onFilterChange('')} class="filter-clear">✕</button>
+        <span class="font-mono tabular-nums match-count">{matchCount}/{files.length}</span>
+        <button onclick={clearFilter} title="Clear filter (Esc)" class="filter-clear">✕</button>
       {/if}
     </div>
 
@@ -221,7 +273,7 @@
     class="tree-list"
   >
     {#if totalRows === 0}
-      <div class="no-match">No files match "{filterQuery}"</div>
+      <div class="no-match">No files match "{filterQuery}" (Esc clears)</div>
     {:else}
       <div class="spacer" style:height={`${totalHeight}px`}>
         <div class="window" style:transform={`translateY(${offsetY}px)`}>
@@ -262,9 +314,11 @@
                 <Icon name={row.isDir ? 'folder' : 'file'} size={13} />
               </span>
 
-              <span class="font-mono row-name" class:skipped={isSkipped} class:dir={row.isDir}>
-                {node.name}
-              </span>
+              <span class="font-mono row-name" class:skipped={isSkipped} class:dir={row.isDir}
+                >{#each splitHighlight(node.name, row.match) as seg, si (si)}<span
+                    class:hl={seg.hit}>{seg.text}</span
+                  >{/each}</span
+              >
 
               {#if !row.isDir && node.file && node.file.score >= 0.75}
                 <span class="rel-dot" title={`Git relevance: ${Math.round(node.file.score * 100)}%`}></span>
@@ -356,6 +410,21 @@
     padding-right: 18px;
     height: 24px;
     font-size: 11px;
+  }
+  .filter-input.has-query {
+    padding-right: 64px;
+  }
+  .match-count {
+    position: absolute;
+    right: 22px;
+    font-size: 9.5px;
+    color: var(--ink-faint);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .row-name .hl {
+    background-color: rgba(128, 128, 128, 0.3);
+    border-radius: 2px;
   }
   .filter-clear {
     position: absolute;
