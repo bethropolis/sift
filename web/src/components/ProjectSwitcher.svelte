@@ -105,6 +105,13 @@
     color: var(--ink-faint);
     font-size: 10px;
   }
+  /* Narrow screens keep the project name; the full path lives in the
+     button title and the dropdown. */
+  @media (max-width: 720px) {
+    .switcher-path {
+      display: none;
+    }
+  }
   .dropdown {
     position: absolute;
     top: calc(100% + 4px);

@@ -61,9 +61,10 @@ path exists; denied project opens log only the last two path segments.
 - **No CORS, ever.** No `Access-Control-*` on any response (asserted).
 - **Headers everywhere:** strict CSP (`script-src 'self'`; `style-src 'self'`
   plus one `sha256` hash for the inline first-paint `<style>` in
-  `web/index.html` — no other inline anything, pinned by
-  `TestFirstPaintStyleHash`), `nosniff`, `no-referrer`, `DENY` framing,
-  `same-origin` COOP/CORP, HSTS on TLS.
+  `web/index.html`, pinned by `TestFirstPaintStyleHash`; `style-src-elem`
+  repeats both, and `style-src-attr 'unsafe-inline'` allows Svelte's runtime
+  style bindings, which cannot execute script), `nosniff`, `no-referrer`,
+  `DENY` framing, `same-origin` COOP/CORP, HSTS on TLS.
 - **Limits:** 5s header / 30s read timeouts, 16 KiB headers, request-context
   cancellation into scan and render.
 

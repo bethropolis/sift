@@ -197,6 +197,13 @@
     align-items: center;
     gap: 3px;
   }
+  /* Smallest screens keep project + redact; the budget stays adjustable
+     in Settings and on wider layouts. */
+  @media (max-width: 580px) {
+    .budget-presets {
+      display: none;
+    }
+  }
   .budget-label {
     font-size: 10.5px;
     color: var(--ink-faint);

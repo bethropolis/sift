@@ -442,7 +442,11 @@
     min-width: 180px;
     max-width: 320px;
     flex-shrink: 0;
+    min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
     border-right: 1px solid var(--border);
     padding: 4px 0;
     overscroll-behavior: contain;
@@ -503,6 +507,7 @@
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
+    padding: 10px 14px 24px;
   }
   .doc-spacer {
     width: max-content;

@@ -14,7 +14,14 @@ import (
 // m=re.search(r'<style>(.*?)</style>',sys.stdin.read(),re.S);
 // print('sha256-'+base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"
 // TestFirstPaintStyleHash pins the two together; edit either and it fails.
-const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'sha256-DOZ3BdFEccmOTseuxFlYHYD6ZM2KNwWBvAkmsBN0zOI='; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+//
+// Svelte `style:` directives (virtual-list spacer/window geometry, meter
+// fills) set style *attributes* at runtime, which strict style-src blocks.
+// Hence the split: style-src-elem keeps 'self' (bundled CSS) plus the
+// first-paint hash, while style-src-attr allows 'unsafe-inline'. Style
+// attributes cannot execute script, so script-src stays locked down; the
+// plain style-src fallback is kept for browsers without level-3 CSP.
+const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'sha256-DOZ3BdFEccmOTseuxFlYHYD6ZM2KNwWBvAkmsBN0zOI='; style-src-elem 'self' 'sha256-DOZ3BdFEccmOTseuxFlYHYD6ZM2KNwWBvAkmsBN0zOI='; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 // securityHeaders sets the response headers from the spec on everything.
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
