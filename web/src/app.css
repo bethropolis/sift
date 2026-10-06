@@ -42,6 +42,15 @@
   --code-line-number: #444b59;
   --code-gutter-bg: #0b0c10;
 
+  /* Preview syntax tokens (server spans; defaults = classic-light). */
+  --syn-kw: #111318;
+  --syn-str: #257035;
+  --syn-num: #8f641b;
+  --syn-com: #8f97a6;
+  --syn-typ: #111318;
+  --syn-fn: #b58532;
+  --syn-var: #b58532;
+
   /* Quiet mode tags */
   --mode-full: #257035;
   --mode-full-bg: #eef7f0;
@@ -936,6 +945,137 @@ a:focus-visible,
   --status-ok: #257035;
   --status-warn: #b58532;
   --status-danger: #c53030;
+}
+
+/* ==========================================================================
+   Preview syntax tokens (server highlight spans, mirroring the TUI
+   per-theme Syntax palettes in internal/tui/theme.go).
+   ========================================================================== */
+[data-theme="dark"] {
+  --syn-kw: #f0f3f8;
+  --syn-str: #86efac;
+  --syn-num: #fbbf24;
+  --syn-com: #525a6b;
+  --syn-typ: #f0f3f8;
+  --syn-fn: #d4a359;
+  --syn-var: #d4a359;
+}
+[data-theme="catppuccin-mocha"] {
+  --syn-kw: #cba6f7;
+  --syn-str: #a6e3a1;
+  --syn-num: #fab387;
+  --syn-com: #6c7086;
+  --syn-typ: #f9e2af;
+  --syn-fn: #89b4fa;
+  --syn-var: #eba0ac;
+}
+[data-theme="tokyo-night"] {
+  --syn-kw: #bb9af7;
+  --syn-str: #9ece6a;
+  --syn-num: #ff9e64;
+  --syn-com: #565f89;
+  --syn-typ: #7dcfff;
+  --syn-fn: #7aa2f7;
+  --syn-var: #73daca;
+}
+[data-theme="nord"] {
+  --syn-kw: #81a1c1;
+  --syn-str: #a3be8c;
+  --syn-num: #b48ead;
+  --syn-com: #4c566a;
+  --syn-typ: #88c0d0;
+  --syn-fn: #88c0d0;
+  --syn-var: #8fbcbb;
+}
+[data-theme="gruvbox-dark"] {
+  --syn-kw: #fb4934;
+  --syn-str: #b8bb26;
+  --syn-num: #d3869b;
+  --syn-com: #928374;
+  --syn-typ: #fabd2f;
+  --syn-fn: #83a598;
+  --syn-var: #8ec07c;
+}
+[data-theme="gruvbox-light"] {
+  --syn-kw: #458588;
+  --syn-str: #98971a;
+  --syn-num: #d79921;
+  --syn-com: #928374;
+  --syn-typ: #282828;
+  --syn-fn: #d79921;
+  --syn-var: #bdae93;
+}
+[data-theme="dracula"] {
+  --syn-kw: #ff79c6;
+  --syn-str: #f1fa8c;
+  --syn-num: #bd93f9;
+  --syn-com: #6272a4;
+  --syn-typ: #8be9fd;
+  --syn-fn: #50fa7b;
+  --syn-var: #ffb86c;
+}
+[data-theme="rose-pine"] {
+  --syn-kw: #c4a7e7;
+  --syn-str: #9ccfd8;
+  --syn-num: #f6c177;
+  --syn-com: #6e6a86;
+  --syn-typ: #ebbcba;
+  --syn-fn: #31748f;
+  --syn-var: #c4a7e7;
+}
+[data-theme="one-dark"] {
+  --syn-kw: #98c379;
+  --syn-str: #e5c07b;
+  --syn-num: #56b6c2;
+  --syn-com: #5c6370;
+  --syn-typ: #abb2bf;
+  --syn-fn: #61afef;
+  --syn-var: #98c379;
+}
+[data-theme="github-dark"] {
+  --syn-kw: #d2a8ff;
+  --syn-str: #d29922;
+  --syn-num: #79c0ff;
+  --syn-com: #8b949e;
+  --syn-typ: #e6edf3;
+  --syn-fn: #58a6ff;
+  --syn-var: #3fb950;
+}
+[data-theme="github-light"] {
+  --syn-kw: #8250df;
+  --syn-str: #9a6700;
+  --syn-num: #0969da;
+  --syn-com: #57606a;
+  --syn-typ: #1f2328;
+  --syn-fn: #0969da;
+  --syn-var: #1a7f37;
+}
+[data-theme="monokai"] {
+  --syn-kw: #a6e22e;
+  --syn-str: #e6db74;
+  --syn-num: #66d9ef;
+  --syn-com: #75715e;
+  --syn-typ: #f8f8f2;
+  --syn-fn: #f92672;
+  --syn-var: #a6e22e;
+}
+[data-theme="classic-dark"] {
+  --syn-kw: #f0f3f8;
+  --syn-str: #86efac;
+  --syn-num: #fbbf24;
+  --syn-com: #525a6b;
+  --syn-typ: #f0f3f8;
+  --syn-fn: #d4a359;
+  --syn-var: #d4a359;
+}
+[data-theme="classic-light"] {
+  --syn-kw: #111318;
+  --syn-str: #257035;
+  --syn-num: #8f641b;
+  --syn-com: #8f97a6;
+  --syn-typ: #111318;
+  --syn-fn: #b58532;
+  --syn-var: #b58532;
 }
 
 /* ==========================================================================

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/highlight"
 	"github.com/bethropolis/sift/internal/serve/auth"
 	"github.com/bethropolis/sift/internal/serve/jail"
 	"github.com/bethropolis/sift/web"
@@ -54,6 +55,9 @@ type Server struct {
 	mux     *http.ServeMux
 	packSem chan struct{}
 
+	// Shared theme-independent syntax documents for preview spans.
+	syntaxCache *highlight.SyntaxCache
+
 	httpSrv *http.Server
 
 	idleMu    sync.Mutex
@@ -82,12 +86,13 @@ func New(cfg *Config, engineCfg *config.Config, log *slog.Logger) (*Server, erro
 		log = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 	s := &Server{
-		cfg:       cfg,
-		engineCfg: engineCfg,
-		auth:      a,
-		jail:      j,
-		log:       log,
-		packSem:   make(chan struct{}, 2),
+		cfg:         cfg,
+		engineCfg:   engineCfg,
+		auth:        a,
+		jail:        j,
+		log:         log,
+		packSem:     make(chan struct{}, 2),
+		syntaxCache: highlight.NewSyntaxCache(),
 	}
 	s.remote = s.isRemoteBind()
 	s.tls = cfg.TLSCert != "" || cfg.TLSSelfSigned

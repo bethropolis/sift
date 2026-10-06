@@ -57,6 +57,13 @@ export interface FileContentResult {
   tokens: number;
   language: string;
   truncated: boolean;
+  /**
+   * Preview highlight spans from the shared server engine
+   * (`internal/highlight`, same as the TUI): [line, start, end, kind]
+   * tuples with byte offsets into each line. Absent for unsupported
+   * languages — render plain text.
+   */
+  spans?: Array<[number, number, number, string]>;
 }
 
 export type SelectionMode = 'full' | 'sigs' | 'skip';

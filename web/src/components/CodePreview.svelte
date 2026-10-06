@@ -8,46 +8,95 @@
     content: string;
     tokens: number;
     language: string;
+    /** Server highlight spans ([line, start, end, kind], byte offsets). */
+    spans?: Array<[number, number, number, string]>;
     mode: 'full' | 'sigs';
     isLoading: boolean;
     onModeToggle: (newMode: 'full' | 'sigs') => void;
   }
 
-  let { filePath, content, tokens, language, mode, isLoading, onModeToggle }: Props = $props();
+  let { filePath, content, tokens, language, spans, mode, isLoading, onModeToggle }: Props = $props();
 
-  const KEYWORDS = new Set([
-    'var', 'const', 'type', 'func', 'struct', 'package', 'import', 'return',
-    'if', 'else', 'switch', 'case', 'default', 'for', 'range', 'interface', 'select',
-  ]);
-  const TYPE_LITERALS = new Set(['error', 'string', 'int', 'bool', 'true', 'false', 'nil']);
+  // Server TokenKind -> visual group. Unlisted kinds render plain, and files
+  // without spans (unsupported language) render exactly as before.
+  const KIND_GROUP: Record<string, string> = {
+    keyword: 'kw',
+    string: 'str',
+    stringescape: 'str',
+    regex: 'str',
+    comment: 'com',
+    doccomment: 'com',
+    shebang: 'com',
+    number: 'num',
+    bool: 'num',
+    null: 'num',
+    type: 'typ',
+    builtin: 'typ',
+    constant: 'typ',
+    tag: 'typ',
+    function: 'fn',
+    decorator: 'fn',
+    markupheading: 'fn',
+    variable: 'var',
+    property: 'var',
+    attribute: 'var',
+    tagattribute: 'var',
+    markuplink: 'var',
+  };
 
-  interface Token {
+  interface Seg {
     text: string;
-    kind: 'plain' | 'str' | 'kw' | 'type' | 'comment';
+    group: string;
   }
 
-  // Gentle, low-contrast syntax tones that reduce visual fatigue.
-  function tokenize(line: string): Token[] {
-    if (!line) return [{ text: '\n', kind: 'plain' }];
-    const t = line.trim();
-    if (t.startsWith('//') || t.startsWith('/*') || t.startsWith('*')) {
-      return [{ text: line, kind: 'comment' }];
+  const encoder = new TextEncoder();
+
+  // Go byte offset -> JS string index within one line.
+  function byteToChar(line: string, target: number): number {
+    if (target <= 0) return 0;
+    let bytes = 0;
+    let i = 0;
+    while (i < line.length && bytes < target) {
+      const ch = String.fromCodePoint(line.codePointAt(i) ?? 0);
+      bytes += encoder.encode(ch).length;
+      i += ch.length;
     }
-    const parts = line.split(
-      /("(?:[^"\\]|\\.)*"|`[^`]*`|\b(?:var|const|type|func|struct|package|import|return|if|else|switch|case|default|for|range|interface|select|error|string|int|bool|true|false|nil)\b)/g,
-    );
-    const out: Token[] = [];
-    for (const part of parts) {
-      if (!part) continue;
-      if (part.startsWith('"') || part.startsWith('`')) out.push({ text: part, kind: 'str' });
-      else if (KEYWORDS.has(part)) out.push({ text: part, kind: 'kw' });
-      else if (TYPE_LITERALS.has(part)) out.push({ text: part, kind: 'type' });
-      else out.push({ text: part, kind: 'plain' });
+    return i;
+  }
+
+  // Clip spans to the line (mirroring the server renderer) and split into
+  // plain/highlighted segments. Stale or out-of-range spans are skipped.
+  function renderLine(line: string, tuples: Array<[number, number, number, string]>): Seg[] {
+    if (line === '') return [{ text: '\n', group: '' }];
+    if (tuples.length === 0) return [{ text: line, group: '' }];
+    const lineBytes = encoder.encode(line).length;
+    const sorted = [...tuples].sort((a, b) => a[1] - b[1]);
+    const segs: Seg[] = [];
+    let last = 0;
+    for (const [, start, end, kind] of sorted) {
+      if (end <= start || start < last || start >= lineBytes) continue;
+      const s = byteToChar(line, start);
+      const e = byteToChar(line, Math.min(end, lineBytes));
+      if (s < last || e <= s) continue;
+      if (s > last) segs.push({ text: line.slice(last, s), group: '' });
+      segs.push({ text: line.slice(s, e), group: KIND_GROUP[kind] ?? '' });
+      last = e;
     }
-    return out;
+    if (last < line.length) segs.push({ text: line.slice(last), group: '' });
+    if (segs.length === 0) segs.push({ text: line, group: '' });
+    return segs;
   }
 
   let lines = $derived(content.split('\n'));
+  let spansByLine = $derived.by(() => {
+    const map = new Map<number, Array<[number, number, number, string]>>();
+    for (const t of spans ?? []) {
+      const arr = map.get(t[0]);
+      if (arr) arr.push(t);
+      else map.set(t[0], [t]);
+    }
+    return map;
+  });
 </script>
 
 {#if !filePath}
@@ -92,11 +141,8 @@
             {/each}
           </div>
 
-          <pre class="code"><code>{#each lines as line, i (i)}<div class="code-line">{#each tokenize(line) as tok, ti (ti)}<span
-                      class:syn-str={tok.kind === 'str'}
-                      class:syn-kw={tok.kind === 'kw'}
-                      class:syn-type={tok.kind === 'type'}
-                      class:syn-comment={tok.kind === 'comment'}>{tok.text}</span
+          <pre class="code"><code>{#each lines as line, i (i)}<div class="code-line">{#each renderLine(line, spansByLine.get(i) ?? []) as seg, si (si)}<span
+                      class={seg.group ? `tok-${seg.group}` : undefined}>{seg.text}</span
                     >{/each}</div>{/each}</code></pre>
         </div>
       {/if}
@@ -230,17 +276,26 @@
   .code-line {
     min-height: 18px;
   }
-  .syn-str {
-    color: #98c379;
+  /* Server-span token colors (--syn-* per theme in app.css). */
+  .tok-kw {
+    color: var(--syn-kw);
   }
-  .syn-kw {
-    color: #abb2bf;
-    font-weight: 600;
+  .tok-str {
+    color: var(--syn-str);
   }
-  .syn-type {
-    color: #d19a66;
+  .tok-com {
+    color: var(--syn-com);
   }
-  .syn-comment {
-    color: var(--code-dim);
+  .tok-num {
+    color: var(--syn-num);
+  }
+  .tok-typ {
+    color: var(--syn-typ);
+  }
+  .tok-fn {
+    color: var(--syn-fn);
+  }
+  .tok-var {
+    color: var(--syn-var);
   }
 </style>

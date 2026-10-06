@@ -360,11 +360,15 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusForbidden, "cannot read that file")
 		return
 	}
+	// Spans come from the same highlight engine as the TUI preview, parsed
+	// on the exact redacted bytes sent below so offsets always line up.
+	absPath := filepath.Join(root, rel)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"content":   string(content),
 		"tokens":    tokens,
 		"language":  language,
 		"truncated": truncated,
+		"spans":     fileSpans(absPath, content, s.syntaxCache),
 	})
 }
 

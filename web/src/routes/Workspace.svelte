@@ -41,6 +41,7 @@
   let previewTokens = $state(0);
   let previewLang = $state('go');
   let previewMode = $state<'full' | 'sigs'>('sigs');
+  let previewSpans = $state<Array<[number, number, number, string]> | undefined>(undefined);
   let previewLoading = $state(false);
 
   // Pack & Document state
@@ -144,11 +145,13 @@
         previewContent = res.content;
         previewTokens = res.tokens;
         previewLang = res.language;
+        previewSpans = res.spans;
         previewLoading = false;
       })
       .catch((err) => {
         if (!alive) return;
         previewContent = `// Failed to load file: ${err instanceof Error ? err.message : err}`;
+        previewSpans = undefined;
         previewLoading = false;
       });
 
@@ -462,6 +465,7 @@
               content={previewContent}
               tokens={previewTokens}
               language={previewLang}
+              spans={previewSpans}
               mode={previewMode}
               isLoading={previewLoading}
               onModeToggle={(m) => {
