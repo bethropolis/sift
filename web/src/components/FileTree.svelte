@@ -85,8 +85,6 @@
   // Windowing calculations (overscan ±10 rows, see ./tree/rows.ts)
   let totalRows = $derived(flatRows.length);
   let win = $derived(windowRows(flatRows, scrollTop, viewportHeight));
-  let startIndex = $derived(win.startIndex);
-  let endIndex = $derived(win.endIndex);
   let visibleRows = $derived(win.visibleRows);
   let offsetY = $derived(win.offsetY);
   let totalHeight = $derived(win.totalHeight);

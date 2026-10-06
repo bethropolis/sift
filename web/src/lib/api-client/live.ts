@@ -22,13 +22,21 @@ export function handle401(): never {
 }
 
 /** POST /api/login with `{password}` or `{token}`. */
-export async function loginRequest(body: Record<string, string>): Promise<void> {
+export async function loginRequest(body: Record<string, string>, kind: 'token' | 'password'): Promise<void> {
   const res = await fetch('/api/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (res.status === 401) throw loginError('Wrong password');
+  // Tokens rotate on every server restart, so a stale login URL is the most
+  // common 401 here: say exactly that instead of "wrong password".
+  if (res.status === 401) {
+    throw loginError(
+      kind === 'token'
+        ? 'Invalid or expired token — copy the fresh login URL from the `sift serve` terminal and reopen it.'
+        : 'Wrong password',
+    );
+  }
   if (res.status === 429) {
     const data = await res.json().catch(() => ({ retryAfter: 15 }));
     throw loginError(`Too many attempts, try again in ${data.retryAfter || 15}s`, data.retryAfter || 15);

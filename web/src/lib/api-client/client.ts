@@ -26,12 +26,12 @@ export async function getMeta(): Promise<ApiMeta> {
 }
 
 export async function login(password: string): Promise<void> {
-    await loginRequest({ password });
+    await loginRequest({ password }, 'password');
     return;
 }
 
 export async function loginWithToken(token: string): Promise<void> {
-    await loginRequest({ token });
+    await loginRequest({ token }, 'token');
     return;
 }
 
