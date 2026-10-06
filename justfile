@@ -87,6 +87,11 @@ web-dev:
 web-budget:
   cd web && bun scripts/check-budget.ts
 
+# Fresh web UI build, then local install (binary to ~/.local/bin,
+# override with SIFT_INSTALL_DIR=...). install.sh reuses the just-built UI.
+install: web
+  bash scripts/install.sh
+
 # Sync docs/*.md into a site source dir as the /docs/ collection (default: site/)
 docs-site dest="site":
   bash scripts/sync-docs.sh {{ dest }}

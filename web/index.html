@@ -10,6 +10,13 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%2314171c'/><rect x='6' y='11' width='14' height='3' rx='1.5' fill='%23e3a63f'/><rect x='12' y='18' width='14' height='3' rx='1.5' fill='%23e3a63f'/></svg>" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0d12" />
+    <!-- First-paint guard (CSP-hashed in internal/serve/middleware.go): paints
+         the OS-matched page background during HTML parse, before the bundled
+         CSS arrives. Keep single-line; Vite rewrites the bytes at build time,
+         so the hash must be recomputed from web/dist after any change. -->
+    <style>html{background-color:#ffffff;color-scheme:light}body{background-color:#ffffff;margin:0}@media (prefers-color-scheme:dark){html{background-color:#0b0d12;color-scheme:dark}body{background-color:#0b0d12}}</style>
   </head>
   <body>
     <div id="root"></div>

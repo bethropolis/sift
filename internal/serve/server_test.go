@@ -2,6 +2,9 @@ package serve
 
 import (
 	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -185,6 +188,50 @@ func TestRequestHygiene(t *testing.T) {
 		if strings.HasPrefix(target, "/api/") && h.Get("Cache-Control") != "no-store" {
 			t.Fatalf("%s missing no-store", target)
 		}
+	}
+}
+
+// TestFirstPaintStyleHash pins the inline first-paint <style> in the built
+// index.html to the CSP hash: edit the block (or Vite's output changes) and
+// this fails until middleware.go is re-hashed. Skips on plain clones where
+// web/dist was never built.
+func TestFirstPaintStyleHash(t *testing.T) {
+	f, err := webDist().Open("dist/index.html.gz")
+	if err != nil {
+		t.Skip("web/dist not built")
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(gz)
+	_ = gz.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(raw)
+	var blocks []string
+	for rest := html; ; {
+		start := strings.Index(rest, "<style>")
+		if start < 0 {
+			break
+		}
+		rest = rest[start+len("<style>"):]
+		end := strings.Index(rest, "</style>")
+		if end < 0 {
+			t.Fatal("unclosed <style> in built index.html")
+		}
+		blocks = append(blocks, rest[:end])
+		rest = rest[end+len("</style>"):]
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("built index.html has %d inline <style> blocks, want exactly 1", len(blocks))
+	}
+	sum := sha256.Sum256([]byte(blocks[0]))
+	want := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+	if !strings.Contains(csp, want) {
+		t.Fatalf("CSP missing hash %s of built first-paint style; recompute from web/dist into middleware.go", want)
 	}
 }
 
