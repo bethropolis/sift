@@ -5,7 +5,7 @@
   import { buildTree, collectDescendants } from './tree/tree';
   import { flattenRows, ROW_HEIGHT, windowRows } from './tree/rows';
   import Icon from './Icon.svelte';
-  import Loader from './Loader.svelte';
+  import LoaderMark from './LoaderMark.svelte';
 
   // Back-compat: existing importers use `import ... from './FileTree.svelte'`.
   export type { FileSelectionMode };
@@ -125,13 +125,8 @@
       class="btn btn-sm smart-btn"
       title="Smart select based on git relevance and budget (s)"
     >
-      {#if isSmartSelecting}
-        <Loader inline size={12} />
-        <span>Selecting...</span>
-      {:else}
-        <Icon name="sparkles" size={11} />
-        <span>Smart</span>
-      {/if}
+      <LoaderMark size={12} animated={isSmartSelecting} />
+      <span>{isSmartSelecting ? 'Selecting...' : 'Smart'}</span>
     </button>
 
     <div class="batch-wrap">

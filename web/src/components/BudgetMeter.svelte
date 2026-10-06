@@ -1,7 +1,7 @@
 <script lang="ts">
   import { formatTokens } from '../lib/format';
   import Icon from './Icon.svelte';
-  import Loader from './Loader.svelte';
+  import LoaderMark from './LoaderMark.svelte';
 
   interface Props {
     selectedCount: number;
@@ -101,11 +101,7 @@
     </button>
 
     <button onclick={onSmartSelect} disabled={isSmartSelecting} class="btn btn-sm btn-ghost hint-btn hide-on-compact" title="Smart select (s)">
-      {#if isSmartSelecting}
-        <Loader inline size={12} />
-      {:else}
-        <kbd class="font-mono hint-kbd">s</kbd>
-      {/if}
+      <LoaderMark size={12} animated={isSmartSelecting} />
       <span>{isSmartSelecting ? 'Selecting...' : 'smart'}</span>
     </button>
 
@@ -115,11 +111,7 @@
       class="btn btn-sm action-btn"
       title="Generate context document (g)"
     >
-      {#if isGenerating}
-        <Loader inline size={12} />
-      {:else}
-        <Icon name="sparkles" size={11} />
-      {/if}
+      <LoaderMark size={12} animated={isGenerating} />
       <span>{isGenerating ? 'Packing...' : 'Generate'}</span>
       <kbd class="font-mono action-kbd">g</kbd>
     </button>
