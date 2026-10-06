@@ -188,12 +188,15 @@
 <style>
   .settings-page {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    padding: 20px 32px;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    padding: 16px 32px 20px;
     background-color: var(--bg);
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 14px;
     max-width: 720px;
     margin: 0 auto;
     width: 100%;
@@ -211,16 +214,16 @@
   .settings-form {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
   }
   .card {
     background-color: var(--surface-raised);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 16px 20px;
+    padding: 12px 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
   }
   .card-label {
     font-size: 13px;
@@ -296,6 +299,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    padding-bottom: 4px;
   }
   .save-btn {
     padding: 8px 18px;
@@ -306,5 +310,20 @@
     gap: 6px;
     font-size: 12px;
     color: var(--status-ok);
+  }
+  /* Wide viewports: two columns so the whole page fits without scrolling. */
+  @media (min-width: 900px) and (min-height: 560px) {
+    .settings-page {
+      max-width: 960px;
+      overflow: hidden;
+    }
+    .settings-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .save-row {
+      grid-column: 1 / -1;
+    }
   }
 </style>

@@ -170,6 +170,8 @@
   }
   .preview {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background-color: var(--code-bg);
@@ -177,21 +179,26 @@
     color: var(--code-text);
   }
   .preview-head {
-    height: 32px;
-    min-height: 32px;
+    height: 34px;
+    min-height: 34px;
+    flex-shrink: 0;
     background-color: var(--code-gutter-bg);
     border-bottom: 1px solid var(--code-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 0 10px;
     user-select: none;
+    min-width: 0;
   }
   .file-id {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
+    flex: 1;
+    overflow: hidden;
   }
   .file-path {
     font-size: 11.5px;
@@ -200,14 +207,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
+    flex: 1;
   }
   .lang-tag {
     font-size: 10px;
     color: var(--code-dim);
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(128, 128, 128, 0.14);
     padding: 1px 5px;
     border-radius: 3px;
     text-transform: uppercase;
+    flex-shrink: 0;
   }
   .token-count {
     font-size: 10.5px;
@@ -217,10 +227,11 @@
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-shrink: 0;
   }
   .mode-seg {
     display: inline-flex;
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: rgba(128, 128, 128, 0.12);
     border-radius: 3px;
     padding: 1px;
     border: 1px solid var(--code-border);
@@ -237,44 +248,88 @@
     cursor: pointer;
   }
   .mode-btn.active {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(128, 128, 128, 0.2);
     color: var(--code-text);
   }
   .mode-btn.active.sigs {
     color: var(--code-accent);
   }
+  /* Single scroll container on both axes: the gutter sticks left while
+     long lines scroll underneath. No nested scrollers, no drift. */
   .code-scroll {
     flex: 1;
+    min-height: 0;
     overflow: auto;
-    display: flex;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
     font-family: var(--font-mono);
-    font-size: 11.5px;
-    line-height: 1.55;
+    font-size: 12px;
+    line-height: 1.6;
   }
   .code-row {
     display: flex;
+    align-items: stretch;
+    width: max-content;
     min-width: 100%;
+    min-height: 100%;
   }
   .gutter {
-    padding: 8px 8px 8px 10px;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    align-self: stretch;
+    padding: 10px 10px 24px 12px;
     background-color: var(--code-gutter-bg);
     border-right: 1px solid var(--code-border);
     text-align: right;
     user-select: none;
     color: var(--code-line-number);
-    min-width: 38px;
+    min-width: 44px;
+    font-variant-numeric: tabular-nums;
+  }
+  .gutter > div {
+    white-space: pre;
+  }
+  .gutter > div:hover {
+    color: var(--code-dim);
   }
   .code {
     margin: 0;
-    padding: 8px 14px;
+    padding: 10px 20px 24px 14px;
     flex: 1;
-    overflow-x: auto;
+    min-width: 0;
+    overflow: visible;
     white-space: pre;
     tab-size: 4;
+    font-variant-ligatures: none;
     color: var(--code-text);
   }
+  .code ::selection {
+    background: rgba(125, 211, 252, 0.28);
+  }
   .code-line {
-    min-height: 18px;
+    min-height: 1.6em;
+    white-space: pre;
+    padding-right: 8px;
+    border-radius: 3px;
+  }
+  .code-line:hover {
+    background-color: rgba(128, 128, 128, 0.09);
+  }
+  @media (max-width: 640px) {
+    .token-count {
+      display: none;
+    }
+  }
+  @media (max-width: 480px) {
+    .lang-tag {
+      display: none;
+    }
+    .code {
+      padding-right: 12px;
+    }
   }
   /* Server-span token colors (--syn-* per theme in app.css). */
   .tok-kw {
