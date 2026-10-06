@@ -202,6 +202,29 @@ func (s *Server) buildHostSet() map[string]bool {
 
 func (s *Server) tlsActive() bool { return s.tls }
 
+// lanIPv4s extracts dialable LAN addresses from interface addresses:
+// IPv4, non-loopback, non-link-local, deduplicated. Used for the startup
+// URLs so a phone browser address is copy-pasteable.
+func lanIPv4s(addrs []net.Addr) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := ipnet.IP.To4()
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			continue
+		}
+		if s := ip.String(); !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // secureCookie applies the Secure flag when the session travels over TLS:
 // direct TLS, or a trusted proxy reporting https.
 func (s *Server) secureCookie(c *http.Cookie) {
@@ -313,6 +336,18 @@ func (s *Server) Run() error {
 		fmt.Fprintf(os.Stderr, "  %s %s\n",
 			serveDim.Sprint("open →"),
 			serveURL.Sprintf("%s://%s/#/login?token=%s", scheme, addr, s.auth.Token()))
+	} else {
+		// Remote logins are password-only, so print plain URLs: one per
+		// usable LAN address, ready to type into a phone browser.
+		if _, port, err := net.SplitHostPort(addr); err == nil {
+			if addrs, err := net.InterfaceAddrs(); err == nil {
+				for _, ip := range lanIPv4s(addrs) {
+					fmt.Fprintf(os.Stderr, "  %s %s\n",
+						serveDim.Sprint("lan →"),
+						serveURL.Sprintf("%s://%s:%s", scheme, ip, port))
+				}
+			}
+		}
 	}
 
 	if s.cfg.Open {

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -761,6 +762,35 @@ func TestPackSections(t *testing.T) {
 	}
 	if body := rec.Body.String(); !strings.Contains(body, `"sections":[]`) {
 		t.Fatalf("sections not an empty array: %s", body)
+	}
+}
+
+// TestLanIPv4s pins the startup-URL address filter: usable IPv4 only,
+// loopback/link-local/IPv6/duplicates excluded.
+func TestLanIPv4s(t *testing.T) {
+	mustAddr := func(s string) net.Addr {
+		t.Helper()
+		ip, ipnet, err := net.ParseCIDR(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ipnet.IP = ip
+		return ipnet
+	}
+	addrs := []net.Addr{
+		mustAddr("192.168.1.5/24"),
+		mustAddr("10.0.0.2/8"),
+		mustAddr("192.168.1.5/24"), // duplicate
+		mustAddr("127.0.0.1/8"),
+		mustAddr("169.254.9.9/16"),
+		mustAddr("fe80::1/64"),
+	}
+	got := lanIPv4s(addrs)
+	if len(got) != 2 || got[0] != "192.168.1.5" || got[1] != "10.0.0.2" {
+		t.Fatalf("lanIPv4s = %v, want [192.168.1.5 10.0.0.2]", got)
+	}
+	if got := lanIPv4s(nil); len(got) != 0 {
+		t.Fatalf("lanIPv4s(nil) = %v, want empty", got)
 	}
 }
 
