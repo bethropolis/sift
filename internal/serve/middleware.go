@@ -14,7 +14,7 @@ import (
 // m=re.search(r'<style>(.*?)</style>',sys.stdin.read(),re.S);
 // print('sha256-'+base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"
 // TestFirstPaintStyleHash pins the two together; edit either and it fails.
-const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'sha256-T83MervuVI2gHnd+VSsDxTeQ5Z21tng3TGBsNHSn710='; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'sha256-DOZ3BdFEccmOTseuxFlYHYD6ZM2KNwWBvAkmsBN0zOI='; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 // securityHeaders sets the response headers from the spec on everything.
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
