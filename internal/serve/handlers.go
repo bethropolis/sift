@@ -548,7 +548,7 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"defaultStyle":  firstNonEmpty(prefs.DefaultStyle, "xml"),
 		"defaultBudget": firstNonZero(prefs.DefaultBudget, 64000),
-		"theme":         firstNonEmpty(prefs.Theme, "system"),
+		"theme":         firstNonEmpty(state.EffectiveTheme(prefs), "system"),
 		"showHidden":    prefs.ShowHidden,
 		"fileSort":      firstNonEmpty(prefs.FileSort, "name"),
 	})
@@ -582,7 +582,10 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		prefs.DefaultBudget = body.DefaultBudget
 	}
 	if body.Theme != "" {
+		// One id drives both frontends: mirror it to the legacy TUI field
+		// so older builds follow a browser theme change.
 		prefs.Theme = body.Theme
+		prefs.UITheme = body.Theme
 	}
 	if body.ShowHidden != nil {
 		prefs.ShowHidden = *body.ShowHidden

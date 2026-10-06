@@ -172,7 +172,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		Prompt:            s.cfg.Prompt,
 		OnThemeChange: func(name string) error {
 			s.cfg.UITheme = name
-			return state.SavePreferences(state.Preferences{UITheme: name})
+			return state.SetTheme(name)
 		},
 		OnCopy: func(sel []tui.Selection) error {
 			return s.copySelection(snapshotFiles(), sel)

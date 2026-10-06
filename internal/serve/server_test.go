@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/state"
 )
 
 // testServer builds an unbound local server rooted at a temp project.
@@ -469,6 +470,21 @@ func TestSettingsBrowserPrefs(t *testing.T) {
 	}
 	if rec := do(srv, "PUT", "/api/settings", map[string]any{"fileSort": "evil"}, cookies); rec.Code != http.StatusBadRequest {
 		t.Fatalf("bad fileSort = %d, want 400", rec.Code)
+	}
+
+	// Theme mirrors to the legacy TUI field so one id drives both frontends.
+	if rec := do(srv, "PUT", "/api/settings", map[string]any{"theme": "dracula"}, cookies); rec.Code != http.StatusNoContent {
+		t.Fatalf("theme put = %d", rec.Code)
+	}
+	prefs, err := state.LoadPreferences()
+	if err != nil {
+		t.Fatalf("LoadPreferences: %v", err)
+	}
+	if prefs.Theme != "dracula" || prefs.UITheme != "dracula" {
+		t.Fatalf("theme not mirrored: %+v", prefs)
+	}
+	if rec := do(srv, "PUT", "/api/settings", map[string]any{"theme": "system"}, cookies); rec.Code != http.StatusNoContent {
+		t.Fatalf("theme restore = %d", rec.Code)
 	}
 	// Restore defaults so other tests see a clean state file.
 	if rec := do(srv, "PUT", "/api/settings", map[string]any{"showHidden": false, "fileSort": "name"}, cookies); rec.Code != http.StatusNoContent {

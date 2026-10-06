@@ -42,8 +42,29 @@ func validThemeID(id string) bool {
 	return true
 }
 
-// SanitizePreferences drops invalid values so a corrupt or hostile file can
-// never inject an unexpected theme id or negative budget.
+// EffectiveTheme resolves the single shared theme id: Theme wins, with the
+// legacy UITheme as fallback for files written before unification. Empty
+// means the default theme; "system" means follow the OS (web only, the TUI
+// falls back to its default).
+func EffectiveTheme(p Preferences) string {
+	if p.Theme != "" {
+		return p.Theme
+	}
+	return p.UITheme
+}
+
+// SetTheme records id as the shared theme for both the TUI and serve,
+// preserving every other preference. It replaces the old pattern of saving
+// Preferences{UITheme: name}, which silently wiped the rest of the file.
+func SetTheme(id string) error {
+	prefs, err := LoadPreferences()
+	if err != nil {
+		return err
+	}
+	prefs.Theme = id
+	prefs.UITheme = id
+	return SavePreferences(prefs)
+}
 func SanitizePreferences(p Preferences) Preferences {
 	if !validThemeID(p.Theme) {
 		p.Theme = ""

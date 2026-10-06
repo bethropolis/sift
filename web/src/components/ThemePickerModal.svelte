@@ -72,7 +72,20 @@
           <span class="font-mono panel-title">Color Theme</span>
         </div>
 
-        <button onclick={onClose} class="btn btn-sm btn-ghost close-btn" title="Close (Esc)">Esc</button>
+        <div class="head-actions">
+          <button
+            onclick={() => {
+              onSelectTheme('system');
+              onClose();
+            }}
+            class="btn btn-sm btn-ghost system-btn"
+            class:active={currentTheme === 'system'}
+            title="Follow the OS appearance"
+          >
+            System
+          </button>
+          <button onclick={onClose} class="btn btn-sm btn-ghost close-btn" title="Close (Esc)">Esc</button>
+        </div>
       </div>
 
       <div bind:this={listEl} class="theme-list">
@@ -230,6 +243,20 @@
     padding: 2px 6px;
     font-size: 11px;
     color: var(--ink-faint);
+  }
+  .head-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .system-btn {
+    padding: 2px 6px;
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .system-btn.active {
+    color: var(--accent);
+    border-color: var(--accent);
   }
   .theme-list {
     max-height: 260px;

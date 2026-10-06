@@ -246,6 +246,8 @@ var ThemePresets = []ThemePreset{
 func init() {
 	ThemePresets = append(ThemePresets,
 		catalogTheme("gruvbox-light", "Gruvbox Light", "Gruvbox", "Light", false, "#d79921", "#458588", "#928374", "#fbf1c7", "#282828", "#bdae93", "#98971a", "#d79921", "#fb4934"),
+		catalogTheme("classic-dark", "Classic Zinc (Dark)", "Classic Zinc", "Dark", true, "#d4a359", "#f0f3f8", "#525a6b", "#0b0d12", "#f0f3f8", "#d4a359", "#86efac", "#fbbf24", "#f87171"),
+		catalogTheme("classic-light", "Classic Zinc (Light)", "Classic Zinc", "Light", false, "#b58532", "#111318", "#8f97a6", "#ffffff", "#111318", "#b58532", "#257035", "#8f641b", "#c53030"),
 		catalogTheme("kanagawa-wave", "Kanagawa Wave", "Kanagawa", "Wave", true, "#957fb8", "#7e9cd8", "#727169", "#1f1f28", "#2a2a37", "#98bb6c", "#e6c384", "#7fb4ca", "#e82424"),
 		catalogTheme("kanagawa-dragon", "Kanagawa Dragon", "Kanagawa", "Dragon", true, "#c4746e", "#8ba4b0", "#727169", "#181616", "#2d4f67", "#8ba4b0", "#c4b28a", "#8ea4a2", "#c4746e"),
 		catalogTheme("kanagawa-lotus", "Kanagawa Lotus", "Kanagawa", "Lotus", false, "#4d699b", "#4d699b", "#727169", "#f2ecbc", "#e5ddb0", "#624c83", "#c84053", "#76946a", "#c84053"),
@@ -350,11 +352,16 @@ func themeIndexIn(themes []ThemePreset, name string) int {
 			}
 		}
 		aliases := map[string]string{
-			"rose pine":        "rose-pine",
-			"classic":          "classic",
-			"catppuccin mocha": "catppuccin-mocha",
-			"tokyo night":      "tokyo-night",
-			"gruvbox dark":     "gruvbox-dark",
+			"rose pine":          "rose-pine",
+			"classic":            "classic",
+			"classic zinc":       "classic-dark",
+			"classic zinc dark":  "classic-dark",
+			"classic zinc light": "classic-light",
+			"zinc dark":          "classic-dark",
+			"zinc light":         "classic-light",
+			"catppuccin mocha":   "catppuccin-mocha",
+			"tokyo night":        "tokyo-night",
+			"gruvbox dark":       "gruvbox-dark",
 		}
 		if id, ok := aliases[strings.ToLower(strings.TrimSpace(name))]; ok {
 			for i, p := range themes {

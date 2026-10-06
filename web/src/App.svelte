@@ -12,7 +12,9 @@
 
   let routeState = $state<RouteState>(parseHash(window.location.hash || '#/projects'));
   let meta = $state<ApiMeta | null>(null);
-  let theme = $state<string>(DEFAULT_THEME_ID);
+  // Null until the server theme arrives: with no data-theme the first paint
+  // follows the OS instead of flashing a default that gets replaced.
+  let theme = $state<string | null>(null);
   let showShortcuts = $state(false);
   let showThemePicker = $state(false);
 
@@ -28,9 +30,14 @@
     }
   });
 
+  function setTheme(id: string) {
+    theme = id === 'system' ? null : id;
+  }
+
   // Apply the theme via data-theme on <html>.
   $effect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    if (theme) document.documentElement.setAttribute('data-theme', theme);
+    else document.documentElement.removeAttribute('data-theme');
   });
 
   $effect(() => {
@@ -38,14 +45,18 @@
       .getMeta()
       .then((data) => {
         meta = data;
-        // Adopt the server-stored theme once settings are known.
-        if (data.authenticated) {
-          api.getSettings().then((s) => {
-            if (s.theme && s.theme !== 'system') theme = s.theme;
-          }).catch(() => {});
-        }
       })
       .catch((err) => console.error('Failed to load server metadata', err));
+    // Concurrent with meta: the stored theme applies once, with no
+    // intermediate default. Unreachable server keeps the OS-follow paint.
+    api
+      .getSettings()
+      .then((s) => {
+        if (s.theme && s.theme !== 'system') theme = s.theme;
+      })
+      .catch(() => {
+        theme = DEFAULT_THEME_ID;
+      });
   });
 
   function handleHashChange() {
@@ -84,7 +95,7 @@
     <GlobalNav
       {meta}
       currentRoute={routeState.route}
-      currentTheme={theme}
+      currentTheme={theme ?? 'system'}
       onOpenThemePicker={() => (showThemePicker = true)}
       onOpenShortcuts={() => (showShortcuts = true)}
       onNavigate={navigate}
@@ -111,7 +122,7 @@
     {:else if routeState.route === 'settings'}
       {#if settingsComponent}
         {@const SettingsComp = settingsComponent}
-        <SettingsComp {meta} currentTheme={theme} onThemeChange={(t) => (theme = t)} />
+        <SettingsComp {meta} currentTheme={theme ?? 'system'} onThemeChange={setTheme} />
       {:else}
         <div class="settings-fallback">Loading settings...</div>
       {/if}
@@ -122,8 +133,8 @@
 
   <ThemePickerModal
     isOpen={showThemePicker}
-    currentTheme={theme}
-    onSelectTheme={(t) => (theme = t)}
+    currentTheme={theme ?? 'system'}
+    onSelectTheme={setTheme}
     onClose={() => (showThemePicker = false)}
   />
 </div>

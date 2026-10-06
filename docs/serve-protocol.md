@@ -20,7 +20,7 @@ capped at 4 MiB and must be `application/json` (415 otherwise).
 | `GET /api/file?root=&path=&mode=full\|sigs` | session | Redacted. 1 MiB preview cap with `truncated`. |
 | `POST /api/smart-select` | session | `{root, budget}` → `{selections: {path: full\|sigs\|skip}}`. |
 | `POST /api/pack` | session | `{root, selections, budget, style, prompt, redact}` → `{document, tokens, fileCount, redactions, skipped}`. At most 2 concurrent packs (503 otherwise). |
-| `GET/PUT /api/settings` | session | `{defaultStyle, defaultBudget, theme, showHidden, fileSort}`; theme validated `[a-z0-9-]{1,32}`, `fileSort` is `name` or `updated`. |
+| `GET/PUT /api/settings` | session | `{defaultStyle, defaultBudget, theme, showHidden, fileSort}`; theme validated `[a-z0-9-]{1,32}` (`system` follows the OS), `fileSort` is `name` or `updated`. The theme id is shared with the TUI (mirrored to the legacy field), so changing it in either frontend changes it in both. |
 
 Failures use generic messages and status codes: 403 never reveals whether a
 path exists; denied project opens log only the last two path segments.

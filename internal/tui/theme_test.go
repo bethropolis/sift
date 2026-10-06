@@ -367,3 +367,20 @@ func TestTerminalThemeFollowsANSIColors(t *testing.T) {
 		t.Errorf("terminal syntax render is not extended ANSI-palette based: %q", rendered)
 	}
 }
+
+// TestWebThemeIDsResolveInTUI pins the shared theme contract: every web
+// theme id selects a TUI preset with the same id, so one stored id drives
+// both frontends.
+func TestWebThemeIDsResolveInTUI(t *testing.T) {
+	webIDs := []string{
+		"catppuccin-mocha", "tokyo-night", "nord", "gruvbox-dark", "gruvbox-light",
+		"dracula", "rose-pine", "one-dark", "github-dark", "github-light",
+		"monokai", "classic-dark", "classic-light",
+	}
+	for _, id := range webIDs {
+		idx := themeIndex(id)
+		if ThemePresets[idx].ID != id {
+			t.Errorf("web theme %q resolves to TUI preset %q", id, ThemePresets[idx].ID)
+		}
+	}
+}

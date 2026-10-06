@@ -43,7 +43,9 @@ func runPick(cmd *cobra.Command, args []string) error {
 	}
 	if prefs, err := state.LoadPreferences(); err == nil {
 		if cfg.UITheme == "" {
-			cfg.UITheme = prefs.UITheme
+			// One shared id drives the TUI and serve; UITheme is the legacy
+			// fallback for files written before unification.
+			cfg.UITheme = state.EffectiveTheme(prefs)
 		}
 	}
 

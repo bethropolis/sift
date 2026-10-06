@@ -174,6 +174,7 @@
           }}
           class="select select-mono theme-select"
         >
+          <option value="system">System (follows OS)</option>
           {#each THEMES as t (t.id)}
             <option value={t.id}>{t.name} {t.category === 'light' ? '(Light)' : '(Dark)'}</option>
           {/each}

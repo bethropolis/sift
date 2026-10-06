@@ -16,7 +16,9 @@
 
   let isRemote = $derived(meta?.mode === 'remote');
   let isTlsUnencrypted = $derived(isRemote && meta?.tls === false);
-  let themeInfo = $derived(getThemeById(currentTheme));
+  let themeInfo: { name: string } = $derived(
+    currentTheme === 'system' ? { name: 'System' } : getThemeById(currentTheme),
+  );
 </script>
 
 {#if isTlsUnencrypted}

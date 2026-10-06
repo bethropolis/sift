@@ -112,3 +112,35 @@ func TestSanitizePreferences(t *testing.T) {
 		t.Fatalf("valid prefs altered: %+v", ok)
 	}
 }
+
+// TestSharedThemeUnifiesTUIAndServe ensures one id drives both frontends and
+// that recording it never drops unrelated preferences.
+func TestSharedThemeUnifiesTUIAndServe(t *testing.T) {
+	isolateConfigDir(t)
+
+	if err := SavePreferences(SanitizePreferences(Preferences{DefaultBudget: 32000})); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetTheme("nord"); err != nil {
+		t.Fatalf("SetTheme: %v", err)
+	}
+	prefs, err := LoadPreferences()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prefs.Theme != "nord" || prefs.UITheme != "nord" {
+		t.Fatalf("theme not mirrored: %+v", prefs)
+	}
+	if prefs.DefaultBudget != 32000 {
+		t.Fatalf("unrelated pref wiped: %+v", prefs)
+	}
+	if got := EffectiveTheme(prefs); got != "nord" {
+		t.Fatalf("EffectiveTheme = %q", got)
+	}
+
+	// Legacy files carrying only UITheme still resolve.
+	legacy := Preferences{UITheme: "tokyo-night"}
+	if got := EffectiveTheme(legacy); got != "tokyo-night" {
+		t.Fatalf("legacy EffectiveTheme = %q", got)
+	}
+}
