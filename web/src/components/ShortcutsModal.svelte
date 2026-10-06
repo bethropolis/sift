@@ -7,20 +7,20 @@
   let { isOpen, onClose }: Props = $props();
 
   const SHORTCUT_LIST = [
-    { key: 'j / k or ↓ / ↑', desc: 'Move tree item focus' },
-    { key: 'Space', desc: 'Toggle selection (Full / Skip)' },
-    { key: 'm', desc: 'Cycle mode (Full → Sigs → Skip)' },
-    { key: 'E', desc: 'Expand all folders' },
-    { key: 'C', desc: 'Collapse all folders' },
-    { key: 'b', desc: 'Toggle sidebar (collapse/expand)' },
-    { key: 't', desc: 'Open Color Theme picker' },
-    { key: '/', desc: 'Focus file filter' },
-    { key: 'Enter (in filter)', desc: 'Jump to first match' },
-    { key: 's', desc: 'Run smart select' },
-    { key: 'g', desc: 'Generate context document' },
-    { key: 'y', desc: 'Generate and copy to clipboard' },
-    { key: '?', desc: 'Open this shortcuts overlay' },
-    { key: 'Esc', desc: 'Close overlay / blur inputs' },
+    { key: 'j / k · ↓ / ↑', desc: 'Move focus' },
+    { key: 'Space', desc: 'Toggle select' },
+    { key: 'm', desc: 'Cycle mode' },
+    { key: 'E', desc: 'Expand all' },
+    { key: 'C', desc: 'Collapse all' },
+    { key: '/', desc: 'Filter files' },
+    { key: 'Enter', desc: 'First filter match' },
+    { key: 'Esc', desc: 'Close / blur' },
+    { key: 'b', desc: 'Sidebar' },
+    { key: 't', desc: 'Theme picker' },
+    { key: 's', desc: 'Smart select' },
+    { key: 'g', desc: 'Generate' },
+    { key: 'y', desc: 'Generate + copy' },
+    { key: '?', desc: 'This overlay' },
   ];
 
   function handleWindowKey(e: KeyboardEvent) {
@@ -35,12 +35,8 @@
     <div onclick={(e) => e.stopPropagation()} class="panel">
       <div class="panel-head">
         <h2 class="font-mono panel-title">Keyboard Shortcuts</h2>
-        <span class="panel-hint">Press Esc to close</span>
+        <span class="panel-hint">Suspended while typing · Esc closes</span>
       </div>
-
-      <p class="panel-sub">
-        Shortcuts mirror the sift terminal picker. They are suspended while typing in text fields.
-      </p>
 
       <div class="shortcut-list">
         {#each SHORTCUT_LIST as item (item.key)}
@@ -71,15 +67,17 @@
   }
   .panel {
     width: 100%;
-    max-width: 460px;
+    max-width: 580px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
     background-color: var(--bg);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-strong);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-    padding: 20px 24px;
+    padding: 14px 20px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
   }
   .panel-head {
     display: flex;
@@ -96,22 +94,19 @@
     color: var(--ink-faint);
     font-family: var(--font-mono);
   }
-  .panel-sub {
-    font-size: 12px;
-    color: var(--ink-soft);
-  }
   .shortcut-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 24px;
   }
   .shortcut-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 0;
+    gap: 8px;
+    padding: 4px 0;
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: 11.5px;
   }
   .shortcut-desc {
     color: var(--ink);
@@ -120,9 +115,16 @@
     background-color: var(--surface-alt);
     border: 1px solid var(--border-strong);
     border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 11px;
+    padding: 1px 6px;
+    font-size: 10.5px;
     color: var(--ink);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  @media (max-width: 560px) {
+    .shortcut-list {
+      grid-template-columns: 1fr;
+    }
   }
   .panel-foot {
     display: flex;
