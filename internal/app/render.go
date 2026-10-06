@@ -51,7 +51,7 @@ func (a *App) RenderToClipboard(files []format.FileEntry) error {
 // directive without mutating application configuration.
 func (a *App) RenderToClipboardWithPrompt(files []format.FileEntry, prompt string) error {
 	var buf bytes.Buffer
-	if err := a.renderDocumentTo(files, prompt, &buf); err != nil {
+	if err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
 		return fmt.Errorf("render output: %w", err)
 	}
 	return clipboard.Copy(buf.Bytes())
@@ -64,7 +64,7 @@ func (a *App) RenderToClipboardWithPrompt(files []format.FileEntry, prompt strin
 // truncated, so a failed render never destroys the last good document.
 func (a *App) RenderFinalToBuffer(files []format.FileEntry, prompt string) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := a.renderDocumentTo(files, prompt, &buf); err != nil {
+	if err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
@@ -72,8 +72,9 @@ func (a *App) RenderFinalToBuffer(files []format.FileEntry, prompt string) ([]by
 
 // renderDocumentTo builds the output document for the given files (applying
 // secret redaction, promotion, and no token budget) and renders it to w. It is
-// the shared render core for file, clipboard, and buffer output.
-func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Writer) error {
+// the shared render core for file, clipboard, and buffer output. When
+// sections is non-nil it collects one byte range per rendered file.
+func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Writer, sections *[]format.Section) error {
 	renderer, err := format.NewRendererWithOptions(format.ParseStyle(a.cfg.EffectiveStyle()), format.RenderOptions{
 		UseColors: a.cfg.UseColors,
 		Highlight: highlight.Options{
@@ -81,6 +82,7 @@ func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Wri
 			Theme:   highlight.Theme(a.cfg.Theme), MaxBytes: a.cfg.HighlightMaxBytes,
 			Profile: terminalHighlightProfile(a.cfg.UseColors),
 		},
+		Sections: sections,
 	})
 	if err != nil {
 		return err
@@ -178,7 +180,7 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 	var writeErr error
 	if a.cfg.Clipboard {
 		var buf bytes.Buffer
-		if renderErr := a.renderDocumentTo(files, prompt, &buf); renderErr != nil {
+		if renderErr := a.renderDocumentTo(files, prompt, &buf, nil); renderErr != nil {
 			writeErr = fmt.Errorf("render output: %w", renderErr)
 		} else if err := clipboard.Copy(buf.Bytes()); err != nil {
 			writeErr = fmt.Errorf("copy output to clipboard: %w", err)
@@ -187,7 +189,7 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 		}
 	} else if a.cfg.CopyOnGenerate {
 		var buf bytes.Buffer
-		if renderErr := a.renderDocumentTo(files, prompt, &buf); renderErr != nil {
+		if renderErr := a.renderDocumentTo(files, prompt, &buf, nil); renderErr != nil {
 			writeErr = fmt.Errorf("render output: %w", renderErr)
 		} else if _, err := a.output.Write(buf.Bytes()); err != nil {
 			writeErr = fmt.Errorf("write output: %w", err)
@@ -198,7 +200,7 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 		// Buffer the render: renderers emit one fmt.Fprintf per line/fence,
 		// which would otherwise be a write syscall per call on large dumps.
 		bufw := bufio.NewWriterSize(a.output, 256<<10)
-		if renderErr := a.renderDocumentTo(files, prompt, bufw); renderErr != nil {
+		if renderErr := a.renderDocumentTo(files, prompt, bufw, nil); renderErr != nil {
 			writeErr = fmt.Errorf("render output: %w", renderErr)
 		} else if flushErr := bufw.Flush(); flushErr != nil {
 			writeErr = fmt.Errorf("write output: %w", flushErr)

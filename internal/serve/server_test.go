@@ -697,6 +697,73 @@ func TestTreeBudgetPrecedence(t *testing.T) {
 	}
 }
 
+// TestPackSections pins the outline contract: one byte range per kept
+// file, ordered, in-bounds, slicing the exact rendered block — and always
+// an array on the wire, never null.
+func TestPackSections(t *testing.T) {
+	srv, root := testServer(t)
+	cookies := loginCookies(t, srv)
+
+	rec := do(srv, "POST", "/api/pack", map[string]any{
+		"root": root, "budget": 64000, "style": "xml", "prompt": "", "redact": true,
+		"selections": map[string]string{"main.go": "full", "README.md": "full"},
+	}, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pack = %d", rec.Code)
+	}
+	var decoded struct {
+		Document string `json:"document"`
+		Sections []struct {
+			Path   string `json:"path"`
+			Tokens int    `json:"tokens"`
+			Start  int    `json:"start"`
+			End    int    `json:"end"`
+		} `json:"sections"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Sections) != 2 {
+		t.Fatalf("sections = %d, want 2", len(decoded.Sections))
+	}
+	seen := map[string]bool{}
+	prevEnd := -1
+	for _, s := range decoded.Sections {
+		if s.Start < 0 || s.End <= s.Start || s.End > len(decoded.Document) {
+			t.Fatalf("section %+v out of bounds (doc %d bytes)", s, len(decoded.Document))
+		}
+		if s.Start < prevEnd {
+			t.Fatalf("sections overlap or unordered: %+v after %d", s, prevEnd)
+		}
+		prevEnd = s.End
+		if s.Tokens <= 0 {
+			t.Fatalf("section %+v has no tokens", s)
+		}
+		seen[s.Path] = true
+		block := decoded.Document[s.Start:s.End]
+		trimmed := strings.Trim(block, "\n")
+		if !strings.HasPrefix(strings.TrimLeft(trimmed, " "), "<file path=") || !strings.HasSuffix(trimmed, "</file>") {
+			t.Fatalf("section %q does not slice a file block: %q", s.Path, block)
+		}
+	}
+	if !seen["main.go"] || !seen["README.md"] {
+		t.Fatalf("sections miss kept files: %v", seen)
+	}
+
+	// Empty selections still encode sections as [] (the output-tab crash
+	// class of bug: Svelte {#each} over null).
+	rec = do(srv, "POST", "/api/pack", map[string]any{
+		"root": root, "budget": 64000, "style": "xml", "prompt": "", "redact": true,
+		"selections": map[string]string{},
+	}, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("empty pack = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `"sections":[]`) {
+		t.Fatalf("sections not an empty array: %s", body)
+	}
+}
+
 // TestPackSkippedIsArray guards the output-tab crash: an empty skip list
 // must encode as [] not null.
 func TestPackSkippedIsArray(t *testing.T) {

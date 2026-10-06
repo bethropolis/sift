@@ -155,23 +155,30 @@ func (c ctxErrWriter) Write(p []byte) (int, error) {
 // render core. Cancellation is honored between the redaction pass and the
 // document write, and during the write itself.
 func RenderBuffer(ctx context.Context, files []format.FileEntry, prompt string, cfg *config.Config) ([]byte, error) {
+	doc, _, err := RenderBufferSections(ctx, files, prompt, cfg)
+	return doc, err
+}
+
+// RenderBufferSections renders exactly the given files (no token budget)
+// like RenderBuffer and additionally returns one byte range per rendered
+// file for outline navigation. Offsets index the returned document.
+func RenderBufferSections(ctx context.Context, files []format.FileEntry, prompt string, cfg *config.Config) ([]byte, []format.Section, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	a, err := NewBuffered(bufferedConfig("", cfg))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	// RenderFinalToBuffer shares renderDocumentTo; check cancellation first so
-	// a dead request never pays for redaction.
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var buf bytes.Buffer
-	if err := a.renderDocumentTo(files, prompt, ctxErrWriter{ctx: ctx, w: &buf}); err != nil {
-		return nil, err
+	sections := []format.Section{}
+	if err := a.renderDocumentTo(files, prompt, ctxErrWriter{ctx: ctx, w: &buf}, &sections); err != nil {
+		return nil, nil, err
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), sections, nil
 }
 
 // ReadPreview reads a single file inside root exactly as the picker would

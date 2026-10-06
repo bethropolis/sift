@@ -601,7 +601,7 @@ func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	doc, err := app.RenderBuffer(r.Context(), kept, body.Prompt, cfg)
+	doc, fileSections, err := app.RenderBufferSections(r.Context(), kept, body.Prompt, cfg)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "render failed")
 		return
@@ -611,13 +611,33 @@ func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
 		redactions += f.SecretCount
 	}
 	sort.Strings(skipped)
+	// Sections are byte ranges into document for outline navigation. Always
+	// an array on the wire, matching the skipped contract.
+	outSections := make([]packSection, 0, len(fileSections))
+	for _, fs := range fileSections {
+		outSections = append(outSections, packSection{
+			Path:   filepath.ToSlash(fs.Path),
+			Tokens: fs.Tokens,
+			Start:  fs.Start,
+			End:    fs.End,
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"document":   string(doc),
 		"tokens":     used,
 		"fileCount":  len(kept),
 		"redactions": redactions,
 		"skipped":    skipped,
+		"sections":   outSections,
 	})
+}
+
+// packSection is one file's byte range inside a packed document.
+type packSection struct {
+	Path   string `json:"path"`
+	Tokens int    `json:"tokens"`
+	Start  int    `json:"start"`
+	End    int    `json:"end"`
 }
 
 // handleSettingsGet returns shared defaults.

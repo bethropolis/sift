@@ -64,6 +64,10 @@ func NewRenderer(style Style, useColors bool) (Renderer, error) {
 type RenderOptions struct {
 	UseColors bool
 	Highlight highlight.Options
+	// Sections, when non-nil, collects one byte range per rendered file
+	// (XML/Markdown/Plain only; JSON marshals whole and records nothing).
+	// Offsets index the exact bytes written to w.
+	Sections *[]Section
 }
 
 // NewRendererWithOptions creates a renderer with explicit terminal display
@@ -71,13 +75,13 @@ type RenderOptions struct {
 func NewRendererWithOptions(style Style, options RenderOptions) (Renderer, error) {
 	switch style {
 	case StylePlain:
-		return &plainRenderer{useColors: options.UseColors, highlight: options.Highlight}, nil
+		return &plainRenderer{useColors: options.UseColors, highlight: options.Highlight, sections: options.Sections}, nil
 	case StyleMarkdown:
-		return &markdownRenderer{}, nil
+		return &markdownRenderer{sections: options.Sections}, nil
 	case StyleJSON:
 		return &jsonRenderer{}, nil
 	case StyleXML:
-		return &xmlRenderer{}, nil
+		return &xmlRenderer{sections: options.Sections}, nil
 	default:
 		return nil, fmt.Errorf("unknown output style %q", style)
 	}

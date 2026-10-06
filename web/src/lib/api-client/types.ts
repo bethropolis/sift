@@ -91,6 +91,19 @@ export interface PackResult {
   fileCount: number;
   redactions: number;
   skipped: string[];
+  /**
+   * Per-file byte ranges into `document` for outline navigation
+   * (XML/Markdown/Plain; empty when no files are kept). `start` is the
+   * first byte of the file's block, `end` one past its last byte.
+   */
+  sections: PackSection[];
+}
+
+export interface PackSection {
+  path: string;
+  tokens: number;
+  start: number;
+  end: number;
 }
 
 export interface SettingsData {

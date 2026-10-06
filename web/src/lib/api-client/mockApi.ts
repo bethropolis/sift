@@ -11,6 +11,7 @@ import type {
   FileContentResult,
   PackPayload,
   PackResult,
+  PackSection,
   RecentProject,
   SettingsData,
   SmartSelectResult,
@@ -320,15 +321,31 @@ export async function pack(payload: PackPayload): Promise<PackResult> {
   let redactionsCount = 0;
   const skipped: string[] = [];
   const formattedBlocks: string[] = [];
+  // Byte offsets mirror the '\n\n' join below so the mock outline is real.
+  const mockSections: PackSection[] = [];
+  const sectionEncoder = new TextEncoder();
+  let sectionBytes = 0;
+  function pushBlock(block: string, path?: string, tokens?: number) {
+    if (path !== undefined) {
+      mockSections.push({
+        path,
+        tokens: tokens ?? 0,
+        start: sectionBytes,
+        end: sectionBytes + sectionEncoder.encode(block).length,
+      });
+    }
+    formattedBlocks.push(block);
+    sectionBytes += sectionEncoder.encode(block).length + 2;
+  }
 
   // Prompt header
   if (prompt && prompt.trim()) {
     if (style === 'xml') {
-      formattedBlocks.push(`<task_prompt>\n${prompt.trim()}\n</task_prompt>\n`);
+      pushBlock(`<task_prompt>\n${prompt.trim()}\n</task_prompt>\n`);
     } else if (style === 'markdown') {
-      formattedBlocks.push(`## Task Prompt\n\n${prompt.trim()}\n\n---\n`);
+      pushBlock(`## Task Prompt\n\n${prompt.trim()}\n\n---\n`);
     } else {
-      formattedBlocks.push(`TASK PROMPT:\n${prompt.trim()}\n\n========================================\n`);
+      pushBlock(`TASK PROMPT:\n${prompt.trim()}\n\n========================================\n`);
     }
     totalTokens += Math.ceil(prompt.length / 4);
   }
@@ -367,17 +384,19 @@ export async function pack(payload: PackPayload): Promise<PackResult> {
     }
 
     if (style === 'xml') {
-      formattedBlocks.push(
+      pushBlock(
         `<file path="${path}" mode="${mode}" tokens="${fileTokens}">\n${codeSnippet}\n</file>`,
+        path,
+        fileTokens,
       );
     } else if (style === 'markdown') {
-      formattedBlocks.push(
+      pushBlock(
         `### ${path} (${mode.toUpperCase()})\n\`\`\`${file.language || 'text'}\n${codeSnippet}\n\`\`\`\n`,
+        path,
+        fileTokens,
       );
     } else {
-      formattedBlocks.push(
-        `--- FILE: ${path} [${mode.toUpperCase()}] ---\n${codeSnippet}\n`,
-      );
+      pushBlock(`--- FILE: ${path} [${mode.toUpperCase()}] ---\n${codeSnippet}\n`, path, fileTokens);
     }
   }
 
@@ -389,6 +408,7 @@ export async function pack(payload: PackPayload): Promise<PackResult> {
     fileCount,
     redactions: redact ? redactionsCount : 0,
     skipped,
+    sections: mockSections,
   };
 }
 
