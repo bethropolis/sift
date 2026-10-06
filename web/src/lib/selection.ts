@@ -11,7 +11,7 @@ export type FileSelectionMode = 'full' | 'sigs' | 'skip';
 /** Persisted form used by the pack API (identical values, distinct name). */
 export type ApiSelectionMode = FileSelectionMode;
 
-/** Cycle Full → Sigs → Skip → Full (the `f` key and row mode button). */
+/** Cycle Full → Sigs → Skip → Full (the `m` key and row mode button). */
 export function cycleMode(current: FileSelectionMode): FileSelectionMode {
   if (current === 'full') return 'sigs';
   if (current === 'sigs') return 'skip';

@@ -6,7 +6,7 @@
     type RecentProject,
     type ApiMeta,
   } from '../lib/api';
-  import FileTree from '../components/FileTree.svelte';
+  import FileTree, { type TreeFoldActions } from '../components/FileTree.svelte';
   import CodePreview from '../components/CodePreview.svelte';
   import OutputView from '../components/OutputView.svelte';
   import BudgetMeter from '../components/BudgetMeter.svelte';
@@ -66,6 +66,7 @@
   let isCompact = $derived(windowWidth < 900);
 
   let filterEl = $state<HTMLInputElement | null>(null);
+  let treeActions = $state<TreeFoldActions | null>(null);
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Load project tree (re-runs when projectRoot changes; stale responses ignored).
@@ -353,9 +354,20 @@
       handleModeChange(focusedPath, toggleMode(selections[focusedPath] || 'full'));
       return;
     }
-    if (e.key === 'f' && focusedPath) {
+    if ((e.key === 'm' || e.key === 'M') && focusedPath) {
       e.preventDefault();
       handleModeChange(focusedPath, cycleMode(selections[focusedPath] || 'full'));
+      return;
+    }
+    if (e.key === 'E') {
+      e.preventDefault();
+      treeActions?.expandAll();
+      return;
+    }
+    if (e.key === 'C') {
+      e.preventDefault();
+      treeActions?.collapseAll();
+      return;
     }
   }
 </script>
@@ -400,6 +412,7 @@
             {filterQuery}
             onFilterChange={(q) => (filterQuery = q)}
             bind:filterInput={filterEl}
+            bind:treeActions
           />
         {/if}
       </div>

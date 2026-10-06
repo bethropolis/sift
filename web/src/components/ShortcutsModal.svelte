@@ -9,7 +9,9 @@
   const SHORTCUT_LIST = [
     { key: 'j / k or ↓ / ↑', desc: 'Move tree item focus' },
     { key: 'Space', desc: 'Toggle selection (Full / Skip)' },
-    { key: 'f', desc: 'Cycle mode (Full → Sigs → Skip)' },
+    { key: 'm', desc: 'Cycle mode (Full → Sigs → Skip)' },
+    { key: 'E', desc: 'Expand all folders' },
+    { key: 'C', desc: 'Collapse all folders' },
     { key: 'b', desc: 'Toggle sidebar (collapse/expand)' },
     { key: 't', desc: 'Open Color Theme picker' },
     { key: '/', desc: 'Focus file filter' },

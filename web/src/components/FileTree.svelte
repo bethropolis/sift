@@ -1,3 +1,11 @@
+<script module lang="ts">
+  /** Fold actions exposed to the workspace keybinds via bind:treeActions. */
+  export interface TreeFoldActions {
+    expandAll: () => void;
+    collapseAll: () => void;
+  }
+</script>
+
 <script lang="ts">
   import type { TreeFile } from '../lib/api';
   import { formatTokens } from '../lib/format';
@@ -9,6 +17,7 @@
   // Back-compat: existing importers use `import ... from './FileTree.svelte'`.
   export type { FileSelectionMode };
 
+  /** Fold actions for the workspace keybinds, assigned after mount. */
   interface Props {
     files: TreeFile[];
     selections: Record<string, FileSelectionMode>;
@@ -21,6 +30,7 @@
     filterQuery: string;
     onFilterChange: (query: string) => void;
     filterInput?: HTMLInputElement | null;
+    treeActions?: TreeFoldActions | null;
   }
 
   // Re-exported via bind:filterInput so parents can focus the filter box.
@@ -37,6 +47,7 @@
     filterQuery,
     onFilterChange,
     filterInput = $bindable(null),
+    treeActions = $bindable(null),
   }: Props = $props();
 
   let collapsedDirs = $state<Record<string, boolean>>({});
@@ -96,9 +107,31 @@
     e.stopPropagation();
     const descendants = dirDescendants.get(dirPath) || [];
     if (descendants.length === 0) return;
-    const anyActive = descendants.some((p) => selections[p] && selections[p] !== 'skip');
-    onBatchModeChange(descendants, anyActive ? 'skip' : 'full');
+    // TUI parity: the directory aggregate cycles Full → Sigs → Skip → Full.
+    // All-sigs advances to skip, all-skip wraps to full, and all-full and
+    // mixed sets both advance to sigs.
+    const modes = descendants.map((p) => selections[p] || 'full');
+    let next: FileSelectionMode;
+    if (modes.every((m) => m === 'sigs')) next = 'skip';
+    else if (modes.every((m) => m === 'skip')) next = 'full';
+    else next = 'sigs';
+    onBatchModeChange(descendants, next);
   }
+
+  function expandAll() {
+    collapsedDirs = {};
+  }
+
+  function collapseAll() {
+    const all: Record<string, boolean> = {};
+    for (const dirPath of dirDescendants.keys()) all[dirPath] = true;
+    collapsedDirs = all;
+  }
+
+  // Expose fold actions to the workspace keybinds (E/C, TUI parity).
+  $effect(() => {
+    treeActions = { expandAll, collapseAll };
+  });
 </script>
 
 <div class="tree">
@@ -243,7 +276,7 @@
                   class="dir-check"
                   class:all={row.selectedState === 'all'}
                   class:partial={row.selectedState === 'partial'}
-                  title={`Folder selection: ${row.selectedState} (click to toggle all)`}
+                  title={`Folder selection (click to cycle full → sigs → skip)`}
                 >
                   {#if row.selectedState === 'all'}
                     <span class="check-full"></span>
@@ -259,7 +292,7 @@
                     onModeChange(node.path, cycleMode(mode));
                   }}
                   class={`mode-badge ${mode} row-mode`}
-                  title="Click to cycle mode (f: full -> sigs -> skip)"
+                  title="Click to cycle mode (m: full -> sigs -> skip)"
                 >
                   {mode}
                 </button>
