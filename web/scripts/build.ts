@@ -20,7 +20,9 @@ for (const entry of readdirSync(dist)) {
 // 2. Build. Production builds talk to the real Go server: default
 // VITE_MOCK to 'false' so `just web` and release builds embed the live UI.
 // Explicit VITE_MOCK=true keeps the mock for isolated UI work.
-const build = spawnSync('bunx', ['vite', 'build'], {
+// --logLevel error keeps `just web` to errors plus the summary line below;
+// warnings surface in `bunx vite build` runs without it.
+const build = spawnSync('bunx', ['vite', 'build', '--logLevel', 'error'], {
   stdio: 'inherit',
   env: { ...process.env, VITE_MOCK: process.env.VITE_MOCK ?? 'false' },
 });

@@ -77,7 +77,7 @@ sig:
 # Build the serve web UI (live API; gzip-precompressed into web/dist).
 # Isolated mock UI work: cd web && VITE_MOCK=true bun run dev
 web:
-  cd web && bun install --frozen-lockfile && VITE_MOCK=false bun run build
+  cd web && bun install --frozen-lockfile --silent && VITE_MOCK=false bun run build
 
 # Dev server for the web UI with /api proxied to a local `sift serve` (live)
 web-dev:
