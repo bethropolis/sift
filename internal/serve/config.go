@@ -29,6 +29,12 @@ type Config struct {
 	InsecureHTTP    bool
 	IdleTimeout     time.Duration
 	Open            bool
+	// EngineFlagOverrides carries operator-passed engine flags (name → value)
+	// recorded before profile resolution. Each request re-applies them over
+	// the target project's own .sift.toml, so CLI flag precedence holds
+	// without the server's startup directory leaking into other projects.
+	// Not a CLI flag.
+	EngineFlagOverrides map[string]string
 }
 
 // DefaultListen is the fixed local port, keeping the browser origin stable.

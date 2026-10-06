@@ -1,9 +1,13 @@
 <script lang="ts">
   import type { TreeFile } from '../lib/api';
   import { formatTokens } from '../lib/format';
+  import { cycleMode, type FileSelectionMode } from '../lib/selection';
+  import { buildTree, collectDescendants } from './tree/tree';
+  import { flattenRows, ROW_HEIGHT, windowRows } from './tree/rows';
   import Icon from './Icon.svelte';
 
-  export type FileSelectionMode = 'full' | 'sigs' | 'skip';
+  // Back-compat: existing importers use `import ... from './FileTree.svelte'`.
+  export type { FileSelectionMode };
 
   interface Props {
     files: TreeFile[];
@@ -35,27 +39,6 @@
     filterInput = $bindable(null),
   }: Props = $props();
 
-  interface TreeNode {
-    name: string;
-    path: string;
-    isDir: boolean;
-    file?: TreeFile;
-    children: TreeNode[];
-    depth: number;
-  }
-
-  interface FlatRow {
-    key: string;
-    node: TreeNode;
-    isDir: boolean;
-    depth: number;
-    aggregateTokens: number;
-    selectedState: 'all' | 'none' | 'partial';
-    isExpanded: boolean;
-  }
-
-  const ROW_HEIGHT = 24;
-
   let collapsedDirs = $state<Record<string, boolean>>({});
   let showBatchMenu = $state(false);
   let containerEl: HTMLDivElement | null = $state(null);
@@ -74,55 +57,11 @@
 
   // Filter input element, bindable so parents can focus it (keyboard `/`).
 
-  // Build tree hierarchy
-  let rootTree = $derived.by(() => {
-    const root: TreeNode = { name: '', path: '', isDir: true, children: [], depth: -1 };
-    const dirMap = new Map<string, TreeNode>();
-    dirMap.set('', root);
-    const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path));
-
-    for (const file of sortedFiles) {
-      const parts = file.path.split('/');
-      let currentPath = '';
-      let parentNode = root;
-
-      for (let i = 0; i < parts.length - 1; i++) {
-        const dirName = parts[i];
-        currentPath = currentPath ? `${currentPath}/${dirName}` : dirName;
-        let dirNode = dirMap.get(currentPath);
-        if (!dirNode) {
-          dirNode = { name: dirName, path: currentPath, isDir: true, children: [], depth: i };
-          dirMap.set(currentPath, dirNode);
-          parentNode.children.push(dirNode);
-        }
-        parentNode = dirNode;
-      }
-
-      parentNode.children.push({
-        name: parts[parts.length - 1],
-        path: file.path,
-        isDir: false,
-        file,
-        children: [],
-        depth: parts.length - 1,
-      });
-    }
-    return root;
-  });
+  // Build tree hierarchy (pure helper in ./tree/tree.ts)
+  let rootTree = $derived(buildTree(files));
 
   // Collect descendants for directory selection calculations
-  let dirDescendants = $derived.by(() => {
-    const map = new Map<string, string[]>();
-    const traverse = (node: TreeNode): string[] => {
-      if (!node.isDir) return node.path ? [node.path] : [];
-      const allFiles: string[] = [];
-      for (const child of node.children) allFiles.push(...traverse(child));
-      if (node.path) map.set(node.path, allFiles);
-      return allFiles;
-    };
-    traverse(rootTree);
-    return map;
-  });
+  let dirDescendants = $derived(collectDescendants(rootTree));
 
   let fileByPath = $derived.by(() => {
     const map = new Map<string, TreeFile>();
@@ -130,82 +69,26 @@
     return map;
   });
 
-  // Flatten visible rows based on collapsed state and filter
-  let flatRows = $derived.by(() => {
-    const query = filterQuery.trim().toLowerCase();
-    const rows: FlatRow[] = [];
+  // Flatten visible rows based on collapsed state and filter (./tree/rows.ts)
+  let flatRows = $derived(
+    flattenRows({
+      root: rootTree,
+      descendants: dirDescendants,
+      fileByPath,
+      selections,
+      collapsedDirs,
+      filterQuery,
+    }),
+  );
 
-    const traverse = (node: TreeNode) => {
-      if (node.depth === -1) {
-        for (const child of node.children) traverse(child);
-        return;
-      }
-
-      if (node.isDir) {
-        const filePaths = dirDescendants.get(node.path) || [];
-        let dirTokens = 0;
-        let selectedCount = 0;
-        let matchesQuery = false;
-
-        for (const p of filePaths) {
-          const f = fileByPath.get(p);
-          const mode = selections[p] || 'full';
-          if (f) {
-            const tokenVal = mode === 'sigs' ? Math.floor(f.tokens * 0.22) : f.tokens;
-            if (mode !== 'skip') {
-              dirTokens += tokenVal;
-              selectedCount++;
-            }
-          }
-          if (query && p.toLowerCase().includes(query)) matchesQuery = true;
-        }
-
-        if (query && !matchesQuery && !node.path.toLowerCase().includes(query)) return;
-
-        const totalFiles = filePaths.length;
-        const selectedState: 'all' | 'none' | 'partial' =
-          selectedCount === 0 ? 'none' : selectedCount === totalFiles ? 'all' : 'partial';
-        const isExpanded = query ? true : !collapsedDirs[node.path];
-
-        rows.push({
-          key: node.path,
-          node,
-          isDir: true,
-          depth: node.depth,
-          aggregateTokens: dirTokens,
-          selectedState,
-          isExpanded,
-        });
-
-        if (isExpanded) for (const child of node.children) traverse(child);
-      } else {
-        if (query && !node.path.toLowerCase().includes(query)) return;
-        const mode = selections[node.path] || 'full';
-        const fileTokens =
-          mode === 'sigs' ? Math.floor((node.file?.tokens || 0) * 0.22) : node.file?.tokens || 0;
-        rows.push({
-          key: node.path,
-          node,
-          isDir: false,
-          depth: node.depth,
-          aggregateTokens: fileTokens,
-          selectedState: mode === 'skip' ? 'none' : 'all',
-          isExpanded: false,
-        });
-      }
-    };
-
-    traverse(rootTree);
-    return rows;
-  });
-
-  // Windowing calculations
+  // Windowing calculations (overscan ±10 rows, see ./tree/rows.ts)
   let totalRows = $derived(flatRows.length);
-  let startIndex = $derived(Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 10));
-  let endIndex = $derived(Math.min(totalRows, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + 10));
-  let visibleRows = $derived(flatRows.slice(startIndex, endIndex));
-  let offsetY = $derived(startIndex * ROW_HEIGHT);
-  let totalHeight = $derived(totalRows * ROW_HEIGHT);
+  let win = $derived(windowRows(flatRows, scrollTop, viewportHeight));
+  let startIndex = $derived(win.startIndex);
+  let endIndex = $derived(win.endIndex);
+  let visibleRows = $derived(win.visibleRows);
+  let offsetY = $derived(win.offsetY);
+  let totalHeight = $derived(win.totalHeight);
 
   function toggleDirectory(dirPath: string) {
     collapsedDirs = { ...collapsedDirs, [dirPath]: !collapsedDirs[dirPath] };
@@ -217,12 +100,6 @@
     if (descendants.length === 0) return;
     const anyActive = descendants.some((p) => selections[p] && selections[p] !== 'skip');
     onBatchModeChange(descendants, anyActive ? 'skip' : 'full');
-  }
-
-  function cycleMode(currentMode: FileSelectionMode): FileSelectionMode {
-    if (currentMode === 'full') return 'sigs';
-    if (currentMode === 'sigs') return 'skip';
-    return 'full';
   }
 </script>
 

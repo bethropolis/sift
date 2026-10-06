@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/spf13/pflag"
+
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
@@ -43,18 +45,38 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
-// engineConfigFor returns a per-request engine config: the shared defaults
-// with output sinks disabled. Roots and selections always come from the
-// jailed request, never from globals.
-func (s *Server) engineConfigFor(root string) *config.Config {
-	cfg := *s.engineCfg
-	cfg.RootDir = root
-	cfg.OutputFile = "-"
-	cfg.Clipboard = false
-	cfg.CopyOnGenerate = false
-	cfg.ShowProgress = false
-	cfg.Quiet = true
-	return &cfg
+// engineConfigFor resolves the engine config for one request exactly like
+// the CLI resolves it inside the target directory: built-in defaults, the
+// global file, the TARGET project's own .sift.toml (never the server's
+// startup directory), then the operator's explicit serve flags. Output sinks
+// stay disabled. Roots and selections always come from the jailed request,
+// never from globals.
+func (s *Server) engineConfigFor(root string) (*config.Config, error) {
+	runCfg := config.New()
+	fs := pflag.NewFlagSet("serve-request", pflag.ContinueOnError)
+	config.RegisterFlags(runCfg, fs)
+	runCfg.RootDir = root
+	// Pinned to the target root: unlike localConfigPathFor there is no cwd
+	// fallback, so the server's startup directory can never leak its
+	// .sift.toml into projects that have none.
+	if err := config.ResolveConfig(runCfg, fs, config.WithLocalConfig(filepath.Join(root, ".sift.toml"))); err != nil {
+		return nil, err
+	}
+	for name, val := range s.cfg.EngineFlagOverrides {
+		if fs.Lookup(name) == nil {
+			continue
+		}
+		if err := fs.Set(name, val); err != nil {
+			return nil, err
+		}
+	}
+	runCfg.RootDir = root
+	runCfg.OutputFile = "-"
+	runCfg.Clipboard = false
+	runCfg.CopyOnGenerate = false
+	runCfg.ShowProgress = false
+	runCfg.Quiet = true
+	return runCfg, nil
 }
 
 // handleMeta serves version/mode/TLS/auth facts. Unauthenticated callers get
@@ -273,7 +295,12 @@ func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusForbidden, "cannot open that project")
 		return
 	}
-	cfg := s.engineConfigFor(root)
+	cfg, err := s.engineConfigFor(root)
+	if err != nil {
+		s.log.Warn("config resolve", "root", relForm(r.URL.Query().Get("root")), "err", err)
+		writeAPIError(w, http.StatusInternalServerError, "scan failed")
+		return
+	}
 	files, _, err := app.ScanPicker(r.Context(), root, cfg)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "scan failed")
@@ -318,7 +345,12 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusForbidden, "cannot read that file")
 		return
 	}
-	cfg := s.engineConfigFor(root)
+	cfg, err := s.engineConfigFor(root)
+	if err != nil {
+		s.log.Warn("config resolve", "root", relForm(q.Get("root")), "err", err)
+		writeAPIError(w, http.StatusForbidden, "cannot read that file")
+		return
+	}
 	content, tokens, _, language, truncated, err := app.ReadPreview(root, filepath.ToSlash(rel), mode, previewCap, cfg)
 	if err != nil {
 		writeAPIError(w, http.StatusForbidden, "cannot read that file")
@@ -364,7 +396,12 @@ func (s *Server) handleSmartSelect(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusForbidden, "cannot open that project")
 		return
 	}
-	cfg := s.engineConfigFor(root)
+	cfg, err := s.engineConfigFor(root)
+	if err != nil {
+		s.log.Warn("config resolve", "root", relForm(body.Root), "err", err)
+		writeAPIError(w, http.StatusInternalServerError, "scan failed")
+		return
+	}
 	if body.Budget > 0 {
 		cfg.Budget = body.Budget
 	}
@@ -450,7 +487,12 @@ func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := s.engineConfigFor(root)
+	cfg, err := s.engineConfigFor(root)
+	if err != nil {
+		s.log.Warn("config resolve", "root", relForm(body.Root), "err", err)
+		writeAPIError(w, http.StatusInternalServerError, "scan failed")
+		return
+	}
 	if body.Style != "" {
 		cfg.Style = body.Style
 	}
@@ -469,7 +511,8 @@ func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
 		byPath[filepath.ToSlash(f.Path)] = f
 	}
 	chosen := make([]format.FileEntry, 0, len(body.Selections))
-	var skipped []string
+	// Always an array on the wire: a null skipped crashed the output tab.
+	skipped := []string{}
 	for path, mode := range body.Selections {
 		if r.Context().Err() != nil {
 			writeAPIError(w, 499, "client closed request")

@@ -51,6 +51,17 @@ Local use stays loopback-only with a generated token; opening the printed
 URL logs in automatically. Remote use requires --allow-remote plus a
 password, explicit roots and hosts, and exactly one TLS story.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Snapshot explicitly-passed flags before profile resolution: each
+		// request re-applies them over the target project's own .sift.toml
+		// (CLI flag precedence), so the startup directory never leaks into
+		// other projects. Serve-only flags never match an engine flag and
+		// are skipped per request.
+		serveCfg.EngineFlagOverrides = map[string]string{}
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			if f.Changed {
+				serveCfg.EngineFlagOverrides[f.Name] = f.Value.String()
+			}
+		})
 		if err := applyProfile(cmd); err != nil {
 			return err
 		}

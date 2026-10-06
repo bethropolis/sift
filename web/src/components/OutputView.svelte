@@ -2,6 +2,7 @@
   import type { PackResult } from '../lib/api';
   import { formatTokens } from '../lib/format';
   import Icon from './Icon.svelte';
+  import Loader from './Loader.svelte';
 
   interface Props {
     packResult: PackResult | null;
@@ -15,6 +16,8 @@
   let copied = $state(false);
   let showSkipped = $state(false);
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
+  // The wire contract is always an array, but never crash on a null again.
+  let skipped = $derived(packResult?.skipped ?? []);
 
   function ext(): string {
     if (style === 'xml') return 'xml';
@@ -56,9 +59,7 @@
 </script>
 
 {#if isGenerating}
-  <div class="center mono-dim">
-    <span>Packing context document & masking secrets...</span>
-  </div>
+  <Loader label="Packing context document & masking secrets..." />
 {:else if !packResult || !packResult.document}
   <div class="center mono-dim padded">
     <span>No context document generated yet</span>
@@ -100,7 +101,7 @@
         <span>·</span>
         <span class="tabular-nums">{packResult.redactions} redacted</span>
 
-        {#if packResult.skipped.length > 0}
+        {#if skipped.length > 0}
           <span>·</span>
           <button onclick={() => (showSkipped = !showSkipped)} class="skipped-toggle">
             {#if showSkipped}
@@ -108,7 +109,7 @@
             {:else}
               <Icon name="chevron-right" size={11} />
             {/if}
-            <span>{packResult.skipped.length} skipped</span>
+            <span>{skipped.length} skipped</span>
           </button>
         {/if}
       </div>
@@ -116,10 +117,10 @@
 
     <div class="divider"></div>
 
-    {#if showSkipped && packResult.skipped.length > 0}
+    {#if showSkipped && skipped.length > 0}
       <div class="skipped-panel">
         <div class="skipped-head">Skipped due to budget limit:</div>
-        {#each packResult.skipped as f (f)}
+        {#each skipped as f (f)}
           <div class="skipped-file">- {f}</div>
         {/each}
       </div>

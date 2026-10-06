@@ -7,7 +7,7 @@
     type ApiMeta,
   } from '../lib/api';
   import ProjectSwitcher from '../components/ProjectSwitcher.svelte';
-  import FileTree, { type FileSelectionMode } from '../components/FileTree.svelte';
+  import FileTree from '../components/FileTree.svelte';
   import CodePreview from '../components/CodePreview.svelte';
   import OutputView from '../components/OutputView.svelte';
   import BudgetMeter from '../components/BudgetMeter.svelte';
@@ -15,6 +15,8 @@
   import RedactionModal from '../components/RedactionModal.svelte';
   import Icon from '../components/Icon.svelte';
   import { formatTokens } from '../lib/format';
+  import { cycleMode, isIncluded, modeTokens, toggleMode, type FileSelectionMode } from '../lib/selection';
+  import { isEditingTarget, isPlainKey } from '../lib/keyboard';
 
   interface Props {
     projectRoot: string;
@@ -202,10 +204,10 @@
   let usedTokens = $derived.by(() => {
     let tokens = 0;
     for (const [path, mode] of Object.entries(selections)) {
-      if (mode === 'skip') continue;
+      if (!isIncluded(mode)) continue;
       const file = fileByPath.get(path);
       if (!file) continue;
-      tokens += mode === 'sigs' ? Math.floor(file.tokens * 0.22) : file.tokens;
+      tokens += modeTokens(file.tokens, mode);
     }
     return tokens;
   });
@@ -295,48 +297,42 @@
   }
 
   function handleWindowKey(e: KeyboardEvent) {
-    const target = e.target as HTMLElement;
-    if (
-      target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.tagName === 'SELECT' ||
-      target.isContentEditable
-    ) {
-      if (e.key === 'Escape') target.blur();
+    if (isEditingTarget(e)) {
+      if (e.key === 'Escape') (e.target as HTMLElement).blur();
       return;
     }
 
-    if (e.key === '?' && !e.metaKey && !e.ctrlKey) {
+    if (isPlainKey(e, '?')) {
       e.preventDefault();
       onOpenShortcuts();
       return;
     }
-    if ((e.key === 't' || e.key === 'T') && !e.metaKey && !e.ctrlKey) {
+    if (isPlainKey(e, 't') || isPlainKey(e, 'T')) {
       e.preventDefault();
       onOpenThemePicker?.();
       return;
     }
-    if ((e.key === 'b' || e.key === 'B') && !e.metaKey && !e.ctrlKey) {
+    if (isPlainKey(e, 'b') || isPlainKey(e, 'B')) {
       e.preventDefault();
       sidebarOpen = !sidebarOpen;
       return;
     }
-    if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
+    if (isPlainKey(e, '/')) {
       e.preventDefault();
       focusFilter();
       return;
     }
-    if (e.key === 's' && !e.metaKey && !e.ctrlKey) {
+    if (isPlainKey(e, 's')) {
       e.preventDefault();
       void handleSmartSelect();
       return;
     }
-    if (e.key === 'g' && !e.metaKey && !e.ctrlKey) {
+    if (isPlainKey(e, 'g')) {
       e.preventDefault();
       void handleGenerate();
       return;
     }
-    if ((e.key === 'y' || e.key === 'Y') && !e.metaKey && !e.ctrlKey) {
+    if (isPlainKey(e, 'y') || isPlainKey(e, 'Y')) {
       e.preventDefault();
       void handleGenerateAndCopy();
       return;
@@ -355,17 +351,12 @@
     }
     if (e.key === ' ' && focusedPath) {
       e.preventDefault();
-      const currentMode = selections[focusedPath] || 'full';
-      handleModeChange(focusedPath, currentMode === 'skip' ? 'full' : 'skip');
+      handleModeChange(focusedPath, toggleMode(selections[focusedPath] || 'full'));
       return;
     }
     if (e.key === 'f' && focusedPath) {
       e.preventDefault();
-      const currentMode = selections[focusedPath] || 'full';
-      handleModeChange(
-        focusedPath,
-        currentMode === 'full' ? 'sigs' : currentMode === 'sigs' ? 'skip' : 'full',
-      );
+      handleModeChange(focusedPath, cycleMode(selections[focusedPath] || 'full'));
     }
   }
 </script>

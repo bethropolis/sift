@@ -66,6 +66,11 @@ startup-resolved roots → denylist. Failures are a generic 403.
   skipped (walker) or 403 (API). Only regular files are ever opened.
 - Project `.sift.toml` files are screened by `config.CheckProjectConfig`:
   `prompt_file` / `output` / `ui_theme_file` escapes refuse the project.
+- Every request resolves its engine config like the CLI inside the target
+  directory (defaults → global file → that project's `.sift.toml`); the
+  server's startup directory never leaks into other projects. Explicit serve
+  flags overlay the project file, exactly like CLI flag precedence. Output
+  sinks stay disabled.
 - The scan itself is read-only: hardened git (`GIT_OPTIONAL_LOCKS=0`, no
   fsmonitor/hooks/drivers, scrubbed env) plus the tree-hash proof test.
 

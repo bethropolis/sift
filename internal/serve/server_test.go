@@ -492,6 +492,100 @@ func TestSettingsBrowserPrefs(t *testing.T) {
 	}
 }
 
+// TestPerProjectConfigIsolation pins the reported bug: a server started in a
+// directory whose .sift.toml restricts extensions must not apply those
+// restrictions to other projects. Each request resolves like the CLI inside
+// the target root; only explicit serve flags overlay it.
+func TestPerProjectConfigIsolation(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "main.rs"), []byte("fn main() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Park the test cwd in a directory with a restrictive .sift.toml,
+	// exactly like a server started inside dir-dumper: without the
+	// WithLocalConfig pin, the cwd file would leak into the target.
+	serverCWD := t.TempDir()
+	if err := os.WriteFile(filepath.Join(serverCWD, ".sift.toml"), []byte("[sift]\nextensions = [\"go\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(serverCWD)
+
+	// Simulate a server started in dir-dumper (go-only extensions).
+	polluted := config.New()
+	polluted.Extensions = "go"
+	srv, err := New(&Config{Listen: "127.0.0.1:7777", Roots: []string{root}}, polluted, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	cfg, err := srv.engineConfigFor(root)
+	if err != nil {
+		t.Fatalf("engineConfigFor: %v", err)
+	}
+	if cfg.Extensions != "" {
+		t.Fatalf("server-cwd extensions leaked: %q", cfg.Extensions)
+	}
+
+	// End to end: the rust file survives the tree.
+	cookies := loginCookies(t, srv)
+	rec := do(srv, "GET", "/api/tree?root="+root, nil, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("tree = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "main.rs") {
+		t.Fatalf("main.rs filtered by another project's config: %s", body)
+	}
+
+	// The target's OWN .sift.toml still applies (per-directory mapping),
+	// including its default profile: this is also the nil-FlagSet panic
+	// regression (profile apply must never see a nil set).
+	if err := os.WriteFile(filepath.Join(root, ".sift.toml"), []byte("[sift]\nextensions = [\"rs\"]\nbudget = 777\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = srv.engineConfigFor(root)
+	if err != nil {
+		t.Fatalf("engineConfigFor: %v", err)
+	}
+	if cfg.Extensions != "rs" {
+		t.Fatalf("target config not applied: %q", cfg.Extensions)
+	}
+	if cfg.Budget != 777 {
+		t.Fatalf("target budget not applied: %d", cfg.Budget)
+	}
+
+	// Explicit operator flags win over the project file (CLI precedence).
+	srv.cfg.EngineFlagOverrides = map[string]string{"ext": "go"}
+	cfg, err = srv.engineConfigFor(root)
+	if err != nil {
+		t.Fatalf("engineConfigFor: %v", err)
+	}
+	if cfg.Extensions != "go" {
+		t.Fatalf("operator flag lost: %q", cfg.Extensions)
+	}
+}
+
+// TestPackSkippedIsArray guards the output-tab crash: an empty skip list
+// must encode as [] not null.
+func TestPackSkippedIsArray(t *testing.T) {
+	srv, root := testServer(t)
+	cookies := loginCookies(t, srv)
+
+	rec := do(srv, "POST", "/api/pack", map[string]any{
+		"root": root, "budget": 64000, "style": "xml", "prompt": "", "redact": true,
+		"selections": map[string]string{"main.go": "full"},
+	}, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pack = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `"skipped":[]`) {
+		t.Fatalf("skipped not an empty array: %s", body)
+	}
+}
+
 // TestRemoteRedactRefused rejects redact=false without --allow-unredacted.
 func TestRemoteRedactRefused(t *testing.T) {
 	root := t.TempDir()

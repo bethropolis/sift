@@ -285,6 +285,11 @@ type ResolveOption func(*resolveOpts)
 type resolveOpts struct {
 	targetName string
 	promptName string
+	// localPath pins the local .sift.toml. When localSet, no cwd fallback
+	// happens: "" means "no local file". Serve uses this so the server's
+	// startup directory can never leak into other projects.
+	localPath string
+	localSet  bool
 }
 
 // WithTarget selects a named [[targets]] entry.
@@ -295,6 +300,14 @@ func WithTarget(name string) ResolveOption {
 // WithPromptRef selects a named [prompts.NAME] entry as the prompt.
 func WithPromptRef(name string) ResolveOption {
 	return func(o *resolveOpts) { o.promptName = name }
+}
+
+// WithLocalConfig pins the local .sift.toml path, disabling the cwd
+// fallback. Pass "" for no local file. Serve passes the target root's file
+// (missing reads as empty) so per-directory configs map only to their own
+// directory.
+func WithLocalConfig(path string) ResolveOption {
+	return func(o *resolveOpts) { o.localPath = path; o.localSet = true }
 }
 
 // localConfigPathFor returns the local .sift.toml path, preferring RootDir
@@ -331,7 +344,13 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	if err != nil {
 		return fmt.Errorf("read global config: %w", err)
 	}
-	localCF, err := readConfigFile(localConfigPathFor(c))
+	localPath := ""
+	if ro.localSet {
+		localPath = ro.localPath
+	} else {
+		localPath = localConfigPathFor(c)
+	}
+	localCF, err := readConfigFile(localPath)
 	if err != nil {
 		return fmt.Errorf("read .sift.toml: %w", err)
 	}
