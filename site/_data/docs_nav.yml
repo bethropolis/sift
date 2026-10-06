@@ -29,3 +29,6 @@
     - title: MCP server
       url: /docs/mcp/
       desc: Expose sift to coding agents over stdio.
+    - title: Browser picker
+      url: /docs/serve/
+      desc: sift serve — the embedded web UI and its protocol.

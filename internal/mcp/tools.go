@@ -94,7 +94,7 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 	}
 	defer application.Close()
 
-	files, _, err := application.CollectPicker()
+	files, _, err := app.ScanPicker(ctx, runCfg.RootDir, &runCfg)
 	if err != nil {
 		return "", err
 	}
@@ -132,7 +132,7 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 		MaxDepth:   runCfg.MaxDepth,
 	})
 
-	buf, err := application.RenderFinalToBuffer(result.Selected, runCfg.Prompt)
+	buf, err := app.RenderBuffer(ctx, result.Selected, runCfg.Prompt, &runCfg)
 	return string(buf), err
 }
 
@@ -182,23 +182,26 @@ func handlePackDiff(ctx context.Context, args map[string]any, cfg *config.Config
 
 	runCfg := *cfg
 	runCfg.OutputFile = "-"
-	application, err := app.New(&runCfg)
-	if err != nil {
-		return "", err
-	}
-	defer application.Close()
 
 	only := make(map[string]bool, len(changed))
 	for _, p := range changed {
 		only[filepath.ToSlash(p)] = true
 	}
+
+	// OnlyPaths is an App-level restriction; apply it through a buffered
+	// app since the engine Scan always walks the whole root.
+	application, err := app.NewBuffered(&runCfg)
+	if err != nil {
+		return "", err
+	}
+	defer application.Close()
 	application.OnlyPaths = only
 
 	files, _, err := application.Collect()
 	if err != nil {
 		return "", err
 	}
-	buf, err := application.RenderFinalToBuffer(files, "")
+	buf, err := app.RenderBuffer(ctx, files, "", &runCfg)
 	return string(buf), err
 }
 
@@ -213,13 +216,7 @@ func handleListTree(ctx context.Context, args map[string]any, cfg *config.Config
 	stringArg(args, "ignore", &runCfg.CustomIgnore)
 	runCfg.OutputFile = "-" // app.New must not create codebase.md
 
-	application, err := app.New(&runCfg)
-	if err != nil {
-		return "", err
-	}
-	defer application.Close()
-
-	metas, _, err := application.SkeletonPicker(ctx)
+	metas, _, err := app.Skeleton(ctx, runCfg.RootDir, &runCfg)
 	if err != nil {
 		return "", err
 	}

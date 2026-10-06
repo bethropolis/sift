@@ -11,14 +11,19 @@ import (
 // traversal; a non-nil return signals "stop walking". Stat/read failures are
 // reported to walkFn via the err argument and return nil from here (the walk
 // continues), but they are counted as skipped so stats stay consistent.
-func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc, tracker *SkippedTracker, stats *walkStats) error {
+//
+// Symlinks are contained: a link whose target escapes root is skipped, never
+// read. Links resolving inside the root keep the historical behavior of being
+// read as regular files.
+func processFile(root, path, relativePath string, options WalkOptions, walkFn WalkFunc, tracker *SkippedTracker, stats *walkStats) error {
 	options.Logger.Debug("processFile: Reading [%s]", relativePath)
 	stats.currentFile.Store(&relativePath)
 
 	// Always stat the file so non-regular entries (sockets, devices, …) are
 	// dropped before they can block a read, and oversized files skip the read
 	// when a size cap is configured. Stat follows symlinks, preserving the
-	// historical behavior of reading symlinked files.
+	// historical behavior of reading symlinked files that stay inside the
+	// root; links escaping the root are dropped below.
 	info, err := os.Stat(path)
 	if err != nil {
 		options.Logger.Error("processFile Error [%s]: Failed to get file info: %v", relativePath, err)
@@ -33,6 +38,29 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 		tracker.Track(relativePath, ReasonSkippedNotRegular, false)
 		stats.skippedFiles.Add(1)
 		return nil
+	}
+
+	// Contain symlinks: resolve once and read the resolved path so the
+	// check and the open cannot diverge.
+	readPath := path
+	if IsSymlink(path) {
+		resolved, containErr := ContainPath(root, path)
+		if containErr != nil {
+			options.Logger.Debug("processFile Skipping [%s]: Symlink escapes root.", relativePath)
+			tracker.Track(relativePath, ReasonSkippedSymlinkEscape, false)
+			stats.skippedFiles.Add(1)
+			return nil
+		}
+		readPath = resolved
+		// The target may differ in size from the link; re-stat the resolved
+		// path so size and regularity describe what will be read.
+		if targetInfo, statErr := os.Stat(resolved); statErr != nil || !targetInfo.Mode().IsRegular() {
+			tracker.Track(relativePath, ReasonSkippedNotRegular, false)
+			stats.skippedFiles.Add(1)
+			return nil
+		} else {
+			info = targetInfo
+		}
 	}
 
 	if options.MaxFileSize > 0 && info.Size() > options.MaxFileSize {
@@ -59,7 +87,7 @@ func processFile(path, relativePath string, options WalkOptions, walkFn WalkFunc
 	}
 
 	// Read file content
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(readPath)
 	if err != nil {
 		options.Logger.Error("processFile Error [%s]: Failed to read file: %v", relativePath, err)
 		tracker.Track(relativePath, ReasonSkippedReadError, false)

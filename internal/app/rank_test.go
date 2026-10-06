@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -122,7 +123,7 @@ func TestApplyRankScoresBaseline(t *testing.T) {
 	dir := t.TempDir()
 	files := []format.FileEntry{compressible("a.go")}
 	a := &App{}
-	a.applyRank(collectPicker, dir, &files)
+	a.applyRank(context.Background(), collectPicker, dir, &files)
 	if files[0].RankScore != rank.ScoreBaseline {
 		t.Errorf("RankScore = %v, want baseline %v", files[0].RankScore, rank.ScoreBaseline)
 	}

@@ -110,7 +110,7 @@ func (a *App) collect(mode collectMode) ([]format.FileEntry, []walker.SkippedIte
 	// (or lack thereof) is diagnosable.
 	absRootDir, absErr := a.absRoot()
 	if absErr == nil {
-		a.applyRank(mode, absRootDir, &files)
+		a.applyRank(ctx, mode, absRootDir, &files)
 	} else {
 		a.log.Debug("Skipping git-relevance ranking: %v", absErr)
 	}
@@ -352,6 +352,16 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 	if err != nil {
 		return format.FileEntry{}, err
 	}
+	// Contain symlinks exactly like the walker: a link escaping the root is
+	// rejected before any content is read.
+	readFile := absFile
+	if walker.IsSymlink(absFile) {
+		resolved, containErr := walker.ContainPath(absRootDir, absFile)
+		if containErr != nil {
+			return format.FileEntry{}, fmt.Errorf("%w: symlink escapes root", ErrFileSkipped)
+		}
+		readFile = resolved
+	}
 
 	// Mirror the walker's pre-read safety checks so a selected-but-not-yet-
 	// streamed file is never pulled wholesale into RAM: reject known-binary
@@ -371,7 +381,7 @@ func (a *App) ReadEntry(relativePath string) (format.FileEntry, error) {
 		return format.FileEntry{}, fmt.Errorf("%w: exceeds max size limit (%d MB)", ErrFileSkipped, maxMB)
 	}
 
-	content, err := os.ReadFile(absFile)
+	content, err := os.ReadFile(readFile)
 	if err != nil {
 		return format.FileEntry{}, err
 	}
@@ -481,9 +491,13 @@ func (a *App) walkerOptions(absRootDir string, ctx context.Context, mode collect
 
 // applyRank scores and sorts files by the unified relevance score for the
 // blocking collect path. Outside a git repository picker files keep the
-// baseline score.
-func (a *App) applyRank(mode collectMode, absRootDir string, files *[]format.FileEntry) {
-	r := NewRanker(absRootDir)
+// baseline score. Git subprocesses inherit ctx so cancellation kills them.
+func (a *App) applyRank(ctx context.Context, mode collectMode, absRootDir string, files *[]format.FileEntry) {
+	// NOTE: default weights, not WeightsFromScoring: the blocking collect
+	// path (dump/diff) has always ranked with engine defaults, while
+	// selection flows (select, picker stream, MCP) apply config scoring.
+	// Serve follows the same split. Do not unify them here.
+	r := NewRankerWithContext(ctx, absRootDir, rank.DefaultWeights())
 	if r.Available() {
 		a.log.Debug("Ranking %d files by git relevance", len(*files))
 		r.Rank(*files)

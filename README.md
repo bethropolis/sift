@@ -33,7 +33,7 @@ LLM. Along the way it:
   or streams to stdout. `sift copy` copies an existing `codebase.md` document
   for pasting into another app.
 
-`dump`, `pick`, `select`, `clone`, `copy`, `diff`, `delta`, and `watch` cover the different
+`dump`, `pick`, `select`, `clone`, `copy`, `diff`, `delta`, `watch`, and `serve` cover the different
 ways you'd want to generate that document: a full one-shot scan, an
 interactive selection, an automatic budget-aware selection, just what
 changed relative to a git ref, just what changed since your last dump, or a
@@ -123,6 +123,7 @@ sift select [path]  # automatically select useful files
 sift diff [ref]     # dump files changed relative to a git ref
 sift delta [path]   # dump only changes since the last recorded dump
 sift watch [path]   # re-render the document on file changes
+sift serve          # serve the browser file picker (http://127.0.0.1:7777)
 ```
 
 `sift dump` writes `codebase.md` next to the scanned root by default; use

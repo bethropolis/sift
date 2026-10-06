@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,6 +26,12 @@ type Ranker struct {
 // NewRanker returns a Ranker rooted at dir using the default scoring weights.
 func NewRanker(rootDir string) *Ranker {
 	return NewRankerWithWeights(rootDir, rank.DefaultWeights())
+}
+
+// NewRankerWithContext returns a Ranker like NewRankerWithWeights whose git
+// subprocesses are killed when ctx is done.
+func NewRankerWithContext(ctx context.Context, rootDir string, weights rank.Weights) *Ranker {
+	return &Ranker{rootDir: rootDir, g: rank.NewWithContext(ctx, rootDir), weights: weights}
 }
 
 // NewRankerWithWeights returns a Ranker rooted at dir with explicit scoring

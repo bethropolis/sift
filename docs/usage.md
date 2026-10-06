@@ -37,6 +37,7 @@ sift
 | `sift diff [ref]` | Render only files changed relative to a Git ref (default `HEAD`) |
 | `sift delta [path]` | Render only changes since the last recorded dump |
 | `sift watch [path]` | Re-render the document whenever files change |
+| `sift serve` | Serve the browser file picker (embedded web UI) |
 
 Run `sift <command> --help` for each command's options, and `sift --help` for
 the shared flags.

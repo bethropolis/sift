@@ -1,0 +1,67 @@
+package main
+
+import (
+	"log/slog"
+	"os"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+
+	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/serve"
+)
+
+var serveCfg = &serve.Config{Listen: serve.DefaultListen}
+
+func init() {
+	rootCmd.AddCommand(serveCmd)
+	// Shared engine flags (style, budget, ignore, secrets, scoring...) so
+	// profiles, .sift.toml, and completion keep working for serve.
+	config.RegisterFlags(cfg, serveCmd.Flags())
+	registerServeFlags(serveCmd.Flags())
+}
+
+// registerServeFlags binds the serve-only flags. Secrets never travel as
+// flag values (shell history, ps): the password comes from a file or env.
+func registerServeFlags(fs *pflag.FlagSet) {
+	fs.StringVar(&serveCfg.Listen, "listen", serveCfg.Listen, "Host:port to bind (default loopback)")
+	fs.StringArrayVar(&serveCfg.Roots, "root", nil, "Allowed project root (repeatable; default $HOME locally, required remotely)")
+	fs.StringArrayVar(&serveCfg.Deny, "deny", nil, "Extra denylisted path (repeatable)")
+	fs.StringVar(&serveCfg.PasswordFile, "password-file", "", "File holding the password (also SIFT_SERVE_PASSWORD)")
+	fs.BoolVar(&serveCfg.AllowRemote, "allow-remote", false, "Required for any non-loopback bind")
+	fs.StringVar(&serveCfg.TLSCert, "tls-cert", "", "TLS certificate file")
+	fs.StringVar(&serveCfg.TLSKey, "tls-key", "", "TLS key file")
+	fs.BoolVar(&serveCfg.TLSSelfSigned, "tls-self-signed", false, "Serve with an ephemeral self-signed certificate")
+	fs.BoolVar(&serveCfg.BehindProxy, "behind-proxy", false, "Trust X-Forwarded-Proto/For behind a TLS proxy")
+	fs.StringArrayVar(&serveCfg.AllowedHosts, "allowed-host", nil, "Extra allowed Host value (repeatable)")
+	fs.BoolVar(&serveCfg.AllowUnredacted, "allow-unredacted", false, "Remote only: permit redact=false")
+	fs.BoolVar(&serveCfg.InsecureHTTP, "insecure-http", false, "Remote without TLS (loud warning)")
+	fs.DurationVar(&serveCfg.IdleTimeout, "idle-timeout", 0, "Exit after no requests for this long (e.g. '30m')")
+	fs.BoolVar(&serveCfg.Open, "open", false, "Open the browser (local only)")
+}
+
+// serveCmd starts the browser-frontend server: an embedded Svelte SPA backed
+// by the same scan/rank/render engine as the TUI and the MCP server.
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Serve the browser file picker",
+	Long: `Start a local web server for the embedded browser file picker.
+
+Local use stays loopback-only with a generated token; opening the printed
+URL logs in automatically. Remote use requires --allow-remote plus a
+password, explicit roots and hosts, and exactly one TLS story.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := applyProfile(cmd); err != nil {
+			return err
+		}
+		if serveCfg.InsecureHTTP && serveCfg.AllowRemote {
+			cmd.PrintErrln("WARNING: serving remote traffic over plain HTTP; credentials and code cross the network unencrypted.")
+		}
+		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+		srv, err := serve.New(serveCfg, cfg, log)
+		if err != nil {
+			return err
+		}
+		return srv.Run()
+	},
+}

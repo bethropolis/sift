@@ -60,12 +60,12 @@ func readConfigFile(path string) (configFile, error) {
 	if path == "" {
 		return cf, nil
 	}
-	data, err := os.ReadFile(path)
+	data, err := readConfigFileCapped(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return cf, nil
-		}
 		return cf, err
+	}
+	if len(data) == 0 {
+		return cf, nil
 	}
 	if err := toml.Unmarshal(data, &cf); err != nil {
 		return cf, err

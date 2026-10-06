@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,12 +66,12 @@ func readProfilesFile(path string) (profilesFile, error) {
 	if path == "" {
 		return pf, nil
 	}
-	data, err := os.ReadFile(path)
+	data, err := readConfigFileCapped(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return pf, nil
-		}
 		return pf, err
+	}
+	if len(data) == 0 {
+		return pf, nil
 	}
 	if err := toml.Unmarshal(data, &pf); err != nil {
 		return pf, err

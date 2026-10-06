@@ -25,6 +25,8 @@ most important context fits in a model's window.
 - [Dependency expansion](dependencies.md) — auto-include imports of the
   selected files as signature-compressed context
 - [MCP server](mcp.md) — expose sift to coding agents over stdio
+- [Browser picker](serve.md) — `sift serve`: the embedded web UI and its
+  [protocol and threat model](serve-protocol.md)
 
 ## Command cheat-sheet
 

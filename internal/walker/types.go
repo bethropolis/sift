@@ -24,6 +24,9 @@ const (
 	ReasonSkippedInfoError  SkippedReason = "Skipped (File Info Error)"
 	ReasonSkippedPathError  SkippedReason = "Skipped (Path Calculation Error)"
 	ReasonSkippedSmart      SkippedReason = "Skipped (Smart Filter)"
+	// ReasonSkippedSymlinkEscape marks a symlink whose target resolves
+	// outside the scan root. The link is never read.
+	ReasonSkippedSymlinkEscape SkippedReason = "Skipped (Symlink Escapes Root)"
 )
 
 // SkippedItem holds information about a skipped path.

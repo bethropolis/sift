@@ -74,6 +74,18 @@ delta-patch:
 sig:
   go run {{ pkg }} dump . --mode signatures --style xml
 
+# Build the serve web UI (bun + Vite, gzip-precompressed into web/dist)
+web:
+  cd web && bun install --frozen-lockfile && bun run build
+
+# Dev server for the web UI with /api proxied to a local `sift serve`
+web-dev:
+  cd web && bun run dev
+
+# Check the web UI size budgets (initial JS <60KB gz, total <150KB gz)
+web-budget:
+  cd web && bun scripts/check-budget.ts
+
 # Sync docs/*.md into a site source dir as the /docs/ collection (default: site/)
 docs-site dest="site":
   bash scripts/sync-docs.sh {{ dest }}

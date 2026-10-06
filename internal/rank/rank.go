@@ -5,6 +5,8 @@
 package rank
 
 import (
+	"context"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -12,8 +14,21 @@ import (
 )
 
 // Git runs git against rootDir.
+//
+// The repository under scan is untrusted input (notably for `sift serve`,
+// which opens arbitrary projects). Every invocation is therefore hardened:
+//   - commands run with the caller's context so cancellation kills the child;
+//   - the environment is scrubbed of GIT_* overrides and index locks are
+//     disabled (GIT_OPTIONAL_LOCKS=0), so a scan never writes .git state;
+//   - system config is ignored and fsmonitor/hooks are neutralized, so a
+//     hostile repo config cannot execute anything;
+//   - diff invocations disable external diff drivers and textconv, which a
+//     repo could otherwise point at arbitrary commands;
+//   - ref arguments are validated and terminated with "--" so a hostile ref
+//     cannot smuggle flags.
 type Git struct {
 	rootDir string
+	ctx     context.Context
 
 	// availOnce memoizes the repository probe: it forks a git subprocess,
 	// and one scoring pass asks several times. Handles are constructed per
@@ -22,9 +37,18 @@ type Git struct {
 	avail     bool
 }
 
-// New returns a Git handle rooted at dir.
+// New returns a Git handle rooted at dir with a background context.
 func New(dir string) *Git {
-	return &Git{rootDir: dir}
+	return NewWithContext(context.Background(), dir)
+}
+
+// NewWithContext returns a Git handle rooted at dir whose subprocesses are
+// killed when ctx is done.
+func NewWithContext(ctx context.Context, dir string) *Git {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return &Git{rootDir: dir, ctx: ctx}
 }
 
 func (g *Git) run(args ...string) string {
@@ -35,13 +59,98 @@ func (g *Git) run(args ...string) string {
 // runRaw captures git stdout verbatim so column-aligned output like porcelain
 // status survives unscathed.
 func (g *Git) runRaw(args ...string) string {
-	cmd := exec.Command("git", args...)
+	full := make([]string, 0, len(args)+4)
+	full = append(full,
+		"-c", "core.fsmonitor=false",
+		"-c", "core.hooksPath=/dev/null",
+	)
+	full = append(full, args...)
+	cmd := exec.CommandContext(g.ctx, "git", full...)
 	cmd.Dir = g.rootDir
+	cmd.Env = gitEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
 	return string(out)
+}
+
+// runDiff runs `git diff` with external drivers disabled: a hostile repo
+// config (.git/config diff.*.command, .gitattributes textconv) must never
+// execute during a scan.
+func (g *Git) runDiff(args ...string) string {
+	full := make([]string, 0, len(args)+2)
+	full = append(full, "--no-ext-diff", "--no-textconv")
+	full = append(full, args...)
+	return g.runRaw(append([]string{"diff"}, full...)...)
+}
+
+// runRef appends "--" so a validated ref can never be parsed as a flag.
+func (g *Git) runRef(args ...string) string {
+	out := g.runRaw(append(args, "--")...)
+	return strings.TrimSpace(out)
+}
+
+func (g *Git) runListRef(args ...string) []string {
+	out := g.runRef(args...)
+	if out == "" {
+		return nil
+	}
+	return strings.Split(out, "\n")
+}
+
+// runDiffList is runList through runDiff: driver-free name-only diffs.
+func (g *Git) runDiffList(args ...string) []string {
+	out := strings.TrimSpace(g.runDiff(args...))
+	if out == "" {
+		return nil
+	}
+	return strings.Split(out, "\n")
+}
+
+// cleanRef validates a user-supplied revision: it must be non-empty, must not
+// look like a flag, and must not contain whitespace or control characters.
+// Invalid refs yield "" and the callers' git invocations then fail closed
+// (empty output), exactly as a git error surfaces today.
+func cleanRef(ref string) string {
+	if ref == "" || strings.HasPrefix(ref, "-") || ref == "--" {
+		return ""
+	}
+	for _, r := range ref {
+		if r <= ' ' || r == 0x7f {
+			return ""
+		}
+	}
+	return ref
+}
+
+// gitEnv returns a scrubbed environment for git subprocesses: inherited
+// GIT_* overrides (which could redirect the repository, config, or objects)
+// are dropped, index locks are disabled so read-only probes never write
+// .git state, and system config is ignored.
+func gitEnv() []string {
+	kept := os.Environ()
+	env := kept[:0]
+	for _, kv := range kept {
+		key := kv
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			key = kv[:i]
+		}
+		switch key {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_NAMESPACE", "GIT_INDEX_FILE",
+			"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+			"GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+			"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+			"GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM":
+			continue
+		}
+		if strings.HasPrefix(key, "GIT_CONFIG_KEY_") || strings.HasPrefix(key, "GIT_CONFIG_VALUE_") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	env = append(env, "GIT_OPTIONAL_LOCKS=0", "GIT_CONFIG_NOSYSTEM=1")
+	return env
 }
 
 func (g *Git) runList(args ...string) []string {
@@ -106,7 +215,7 @@ func (g *Git) ChangesFor(ref string) *Changes {
 			// range "ref^..ref" is invalid; skip it rather than silently returning
 			// an empty list.
 			local := map[string]bool{}
-			for _, p := range g.runList("diff", "--name-only", parent+".."+ref) {
+			for _, p := range g.runDiffList("--name-only", parent+".."+ref) {
 				if p = strings.TrimSpace(p); p != "" {
 					local[p] = true
 				}
@@ -120,8 +229,11 @@ func (g *Git) ChangesFor(ref string) *Changes {
 	}()
 	go func() {
 		defer wg.Done()
+		if cleanRef(ref) == "" {
+			return
+		}
 		local := map[string]bool{}
-		for _, p := range g.runList("log", "-n", "5", "--name-only", "--format=", ref) {
+		for _, p := range g.runListRef("log", "-n", "5", "--name-only", "--format=", ref) {
 			if p = strings.TrimSpace(p); p != "" {
 				local[p] = true
 			}
@@ -163,28 +275,37 @@ type Commit struct {
 
 // Head returns the short hash and subject of the current HEAD commit.
 func (g *Git) Head() (short, subject string) {
-	short = g.run("rev-parse", "--short", "HEAD")
-	subject = g.run("log", "-1", "--format=%s", "HEAD")
+	short = g.runRef("rev-parse", "--short", "HEAD")
+	subject = g.runRef("log", "-1", "--format=%s", "HEAD")
 	return short, subject
 }
 
 // Ref returns the short hash and subject of the given ref.
 func (g *Git) Ref(ref string) (short, subject string) {
-	short = g.run("rev-parse", "--short", ref)
-	subject = g.run("log", "-1", "--format=%s", ref)
+	if cleanRef(ref) == "" {
+		return "", ""
+	}
+	short = g.runRef("rev-parse", "--short", ref)
+	subject = g.runRef("log", "-1", "--format=%s", ref)
 	return short, subject
 }
 
 // Parent returns the short hash of ref's first parent, or "" when ref has no
 // parent (e.g. the repository root commit).
 func (g *Git) Parent(ref string) string {
-	return g.run("rev-parse", "--short", ref+"^")
+	if cleanRef(ref) == "" {
+		return ""
+	}
+	return g.runRef("rev-parse", "--short", ref+"^")
 }
 
 // CommitsBetween lists the commits in the range from..to, newest first, in
 // short form. The range is empty when to is not an ancestor of HEAD.
 func (g *Git) CommitsBetween(from, to string) []Commit {
-	lines := g.runList("log", "--format=%h%x09%H%x09%s", from+".."+to)
+	if cleanRef(from) == "" || cleanRef(to) == "" {
+		return nil
+	}
+	lines := g.runListRef("log", "--format=%h%x09%H%x09%s", from+".."+to)
 	commits := make([]Commit, 0, len(lines))
 	for _, l := range lines {
 		short, hash, subject := splitCommit(l)
@@ -208,7 +329,10 @@ func splitCommit(line string) (short, hash, subject string) {
 
 // RawPatch returns the unified diff between from and to.
 func (g *Git) RawPatch(from, to string) string {
-	return g.runRaw("diff", from+".."+to)
+	if cleanRef(from) == "" || cleanRef(to) == "" {
+		return ""
+	}
+	return g.runDiff(from+".."+to, "--")
 }
 
 // RawWorktreePatch returns the unified diff of uncommitted working-tree
@@ -217,13 +341,19 @@ func (g *Git) RawWorktreePatch(ref string) string {
 	if ref == "" {
 		ref = "HEAD"
 	}
-	return g.runRaw("diff", ref)
+	if cleanRef(ref) == "" {
+		return ""
+	}
+	return g.runDiff(ref, "--")
 }
 
 // ChangedBetween returns the paths changed between two refs.
 func (g *Git) ChangedBetween(from, to string) []string {
 	set := map[string]bool{}
-	for _, p := range g.runList("diff", "--name-only", from+".."+to) {
+	if cleanRef(from) == "" || cleanRef(to) == "" {
+		return nil
+	}
+	for _, p := range g.runDiffList("--name-only", from+".."+to, "--") {
 		if p = strings.TrimSpace(p); p != "" {
 			set[p] = true
 		}
@@ -242,6 +372,9 @@ func (g *Git) ChangedSinceRef(ref string) []string {
 	if ref == "" {
 		ref = "HEAD"
 	}
+	if cleanRef(ref) == "" {
+		return nil
+	}
 	set := map[string]bool{}
 	add := func(lines []string) {
 		for _, p := range lines {
@@ -250,8 +383,8 @@ func (g *Git) ChangedSinceRef(ref string) []string {
 			}
 		}
 	}
-	add(g.runList("diff", "--name-only", ref))
-	add(g.runList("diff", "--name-only", ref+"..HEAD"))
+	add(g.runDiffList("--name-only", ref, "--"))
+	add(g.runDiffList("--name-only", ref+"..HEAD", "--"))
 	paths := make([]string, 0, len(set))
 	for p := range set {
 		paths = append(paths, p)

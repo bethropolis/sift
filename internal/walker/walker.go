@@ -145,7 +145,7 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 			// Triple check - make sure this isn't the root dir or "."
 			if path != absRootDir && relativePath != "." {
 				options.Logger.Debug("Walker Processing Sequentially: File [%s]", relativePath)
-				if cbErr := processFile(path, relativePath, options, walkFn, tracker, stats); cbErr != nil {
+				if cbErr := processFile(absRootDir, path, relativePath, options, walkFn, tracker, stats); cbErr != nil {
 					// The callback asked to stop; abort the walk so the caller's
 					// error surfaces instead of being silently swallowed.
 					options.Logger.Error("Walker: Aborting traversal after %q callback error: %v", relativePath, cbErr)
@@ -354,6 +354,21 @@ func WalkMeta(rootDir string, matcher *ignore.IgnoreMatcher, opts ...Option) ([]
 		if infoErr != nil {
 			options.Logger.Error("Walker Error: Failed to stat meta %q: %v", relativePath, infoErr)
 			tracker.Track(relativePath, ReasonSkippedInfoError, false)
+			stats.skippedFiles.Add(1)
+			return nil
+		}
+
+		// Mirror the content walk: only regular files are advertised, and
+		// symlinks must resolve inside the root. d.Info follows links, so
+		// check the link itself first without following it.
+		if d.Type()&os.ModeSymlink != 0 {
+			if _, containErr := ContainPath(absRootDir, path); containErr != nil {
+				tracker.Track(relativePath, ReasonSkippedSymlinkEscape, false)
+				stats.skippedFiles.Add(1)
+				return nil
+			}
+		} else if !info.Mode().IsRegular() {
+			tracker.Track(relativePath, ReasonSkippedNotRegular, false)
 			stats.skippedFiles.Add(1)
 			return nil
 		}

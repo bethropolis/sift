@@ -66,7 +66,7 @@ func walkConcurrent(
 	options.Logger.Debug("Starting %d workers for concurrent processing.", options.MaxWorkers)
 	for i := 0; i < options.MaxWorkers; i++ {
 		wg.Add(1)
-		go fileProcessorWorker(i+1, filesChan, &wg, options, walkFn, tracker, stats, abort)
+		go fileProcessorWorker(i+1, absRootDir, filesChan, &wg, options, walkFn, tracker, stats, abort)
 	}
 
 	// Use a goroutine to walk the directory tree and queue files
@@ -160,6 +160,7 @@ func walkConcurrent(
 // fileProcessorWorker is the goroutine function for concurrent processing.
 func fileProcessorWorker(
 	id int,
+	root string,
 	filesChan <-chan struct{ path, relativePath string },
 	wg *sync.WaitGroup,
 	options WalkOptions,
@@ -177,7 +178,7 @@ func fileProcessorWorker(
 			return
 		}
 		options.Logger.Debug("Worker %d: Processing file [%s]", id, item.relativePath)
-		if err := processFile(item.path, item.relativePath, options, walkFn, tracker, stats); err != nil {
+		if err := processFile(root, item.path, item.relativePath, options, walkFn, tracker, stats); err != nil {
 			// The callback asked to stop. Record it so the walk aborts and the
 			// error surfaces; the worker exits and stops consuming further work.
 			options.Logger.Debug("Worker %d: Callback requested abort on %s", id, item.relativePath)
