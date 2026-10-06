@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type ApiMeta } from './lib/api';
+  import { api, type ApiMeta, type SettingsData } from './lib/api';
   import { parseHash, navigate, type RouteState } from './lib/router.svelte';
   import GlobalNav from './components/GlobalNav.svelte';
   import ShortcutsModal from './components/ShortcutsModal.svelte';
@@ -29,12 +29,27 @@
     }
   });
 
+  // Last server settings snapshot: every theme change persists against it,
+  // so picking a theme in the picker (not just Settings Save) survives reload.
+  let lastSettings = $state<SettingsData | null>(null);
+
   function setTheme(id: string) {
     if (id === 'system') {
       theme = null;
       applySystemTheme();
     } else {
       theme = id;
+    }
+    void persistTheme(id);
+  }
+
+  async function persistTheme(id: string): Promise<void> {
+    try {
+      const base = lastSettings ?? (await api.getSettings());
+      lastSettings = { ...base, theme: id };
+      await api.saveSettings(lastSettings);
+    } catch {
+      // Logged out or unreachable: the theme still applies for the session.
     }
   }
 
@@ -76,6 +91,7 @@
           api
             .getSettings()
             .then((s) => {
+              lastSettings = s;
               if (s.theme && s.theme !== 'system') theme = s.theme;
             })
             .catch(() => {});
