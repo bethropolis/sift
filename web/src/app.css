@@ -363,16 +363,11 @@ a:focus-visible,
   }
 }
 
-/* Pre-hydration flash guard (CSP-safe, no inline script): while <html> has no
-   data-theme yet, honor the OS preference with page-level colors only. The
-   full theme tokens apply on mount. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    color-scheme: dark;
-    --bg: #0b0d12;
-    --ink: #f0f3f8;
-  }
-}
+/* Pre-hydration guard (CSP-safe, no inline script): with no data-theme yet
+   (JS disabled or failed), render the complete light palette. The boot code
+   in main.ts always sets a concrete OS-matched theme pre-paint, and the app
+   never removes the attribute afterwards, so a half-themed state is
+   unreachable. */
 
 /* ==========================================================================
    Developer Theme Palettes

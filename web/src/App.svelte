@@ -30,13 +30,38 @@
   });
 
   function setTheme(id: string) {
-    theme = id === 'system' ? null : id;
+    if (id === 'system') {
+      theme = null;
+      applySystemTheme();
+    } else {
+      theme = id;
+    }
+  }
+
+  // Concrete OS-matched theme for system mode. The attribute is never
+  // removed: an absent data-theme mixed light surfaces with dark page
+  // colors and must stay unreachable.
+  function applySystemTheme() {
+    const dark =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', dark ? 'classic-dark' : 'classic-light');
   }
 
   // Apply the theme via data-theme on <html>.
   $effect(() => {
     if (theme) document.documentElement.setAttribute('data-theme', theme);
-    else document.documentElement.removeAttribute('data-theme');
+    else applySystemTheme();
+  });
+
+  // Follow OS changes while in system mode.
+  $effect(() => {
+    if (theme !== null) return;
+    if (typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => applySystemTheme();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
   });
 
   $effect(() => {
