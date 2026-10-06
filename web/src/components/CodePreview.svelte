@@ -1,6 +1,7 @@
 <script lang="ts">
   import { formatTokens } from '../lib/format';
   import Icon from './Icon.svelte';
+  import Loader from './Loader.svelte';
 
   interface Props {
     filePath: string | null;
@@ -82,10 +83,7 @@
 
     <div class="code-scroll">
       {#if isLoading}
-        <div class="loading" role="status" aria-label="Loading file content">
-          <Icon name="spinner" size={22} />
-          <span>Loading file content...</span>
-        </div>
+        <Loader label="Loading file content..." />
       {:else}
         <div class="code-row">
           <div aria-hidden="true" class="gutter">
@@ -94,7 +92,7 @@
             {/each}
           </div>
 
-          <pre class="code"><code>{#each lines as line, i (i)}<div class="code-line">{#each tokenize(line) as tok (tok.text + tok.kind)}<span
+          <pre class="code"><code>{#each lines as line, i (i)}<div class="code-line">{#each tokenize(line) as tok, ti (ti)}<span
                       class:syn-str={tok.kind === 'str'}
                       class:syn-kw={tok.kind === 'kw'}
                       class:syn-type={tok.kind === 'type'}
@@ -206,18 +204,6 @@
     font-family: var(--font-mono);
     font-size: 11.5px;
     line-height: 1.55;
-  }
-  .loading {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding: 16px;
-    color: var(--code-dim);
-    font-size: 12px;
-    min-height: 200px;
   }
   .code-row {
     display: flex;

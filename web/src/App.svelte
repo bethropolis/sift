@@ -16,15 +16,17 @@
   let showShortcuts = $state(false);
   let showThemePicker = $state(false);
 
-  // Lazy-load Settings to keep the initial bundle small.
-  let settingsComponent = $state<Promise<Component> | null>(null);
+  // Lazy-load Settings to keep the initial bundle small. Resolved inside an
+  // effect, never during render (render-phase $state writes throw).
+  let settingsComponent = $state<Component | null>(null);
 
-  function openSettings(): Promise<Component> {
-    if (!settingsComponent) {
-      settingsComponent = import('./routes/Settings.svelte').then((m) => m.default);
+  $effect(() => {
+    if (routeState.route === 'settings' && !settingsComponent) {
+      import('./routes/Settings.svelte').then((m) => {
+        settingsComponent = m.default;
+      });
     }
-    return settingsComponent;
-  }
+  });
 
   // Apply the theme via data-theme on <html>.
   $effect(() => {
@@ -73,9 +75,6 @@
     }
   }
 
-  $effect(() => {
-    if (routeState.route === 'settings') openSettings();
-  });
 </script>
 
 <svelte:window onhashchange={handleHashChange} onkeydown={handleGlobalKey} />
@@ -110,11 +109,12 @@
         onOpenThemePicker={() => (showThemePicker = true)}
       />
     {:else if routeState.route === 'settings'}
-      {#await openSettings()}
-        <div class="settings-fallback">Loading settings...</div>
-      {:then SettingsComp}
+      {#if settingsComponent}
+        {@const SettingsComp = settingsComponent}
         <SettingsComp {meta} currentTheme={theme} onThemeChange={(t) => (theme = t)} />
-      {/await}
+      {:else}
+        <div class="settings-fallback">Loading settings...</div>
+      {/if}
     {/if}
   </main>
 

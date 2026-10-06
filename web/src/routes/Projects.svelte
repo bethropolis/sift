@@ -2,6 +2,7 @@
   import { api, type RecentProject, type BrowseResult, type ApiMeta } from '../lib/api';
   import { truncateMiddle, formatRelativeTime } from '../lib/format';
   import Icon from '../components/Icon.svelte';
+  import Loader from '../components/Loader.svelte';
 
   interface Props {
     meta: ApiMeta | null;
@@ -341,7 +342,7 @@
           <div class="crumb-bar">
             <div class="crumbs">
               <button type="button" onclick={() => loadBrowse('/')} class="crumb">/</button>
-              {#each pathParts as part, index (part)}
+              {#each pathParts as part, index (index)}
                 {@const fullSubPath = '/' + pathParts.slice(0, index + 1).join('/')}
                 {@const isLast = index === pathParts.length - 1}
                 <span class="crumb-sep"><Icon name="chevron-right" size={10} /></span>
@@ -368,7 +369,7 @@
 
           <div class="browse-body">
             {#if browseLoading}
-              <div class="loading-pad">Scanning directory...</div>
+              <Loader label="Scanning directory..." />
             {:else if browseError}
               <div class="denied">
                 <div class="denied-icon"><Icon name="warning" size={24} /></div>
@@ -638,10 +639,13 @@
     width: 90px;
     text-align: right;
     flex-shrink: 0;
+    padding-right: 10px;
   }
   .c-act {
-    width: 26px;
+    width: 32px;
     flex-shrink: 0;
+    display: flex;
+    justify-content: center;
   }
   .row {
     display: flex;
