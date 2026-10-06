@@ -168,6 +168,18 @@
 
   // Matched (non-dir) rows while filtering, for the `n/m` counter.
   let matchCount = $derived(flatRows.filter((r) => !r.isDir).length);
+  let isFiltering = $derived(filterQuery.trim() !== '');
+  // Batch menu scope: just the filtered files while filtering (matches are
+  // force-expanded, so all of them are in the rows); everything otherwise —
+  // flat rows would miss files hidden inside collapsed folders.
+  let batchPaths = $derived(
+    isFiltering ? flatRows.filter((r) => !r.isDir).map((r) => r.node.path) : files.map((f) => f.path),
+  );
+
+  function runBatch(mode: FileSelectionMode) {
+    showBatchMenu = false;
+    onBatchModeChange(batchPaths, mode);
+  }
 
   function clearFilter() {
     onFilterChange('');
@@ -234,31 +246,25 @@
       {#if showBatchMenu}
         <div class="batch-menu">
           <button
-            onclick={() => {
-              showBatchMenu = false;
-              onBatchModeChange(files.map((f) => f.path), 'full');
-            }}
+            onclick={() => runBatch('full')}
             class="btn btn-sm btn-ghost batch-item"
+            title={isFiltering ? `Set all ${matchCount} filtered files to Full` : 'Set all files to Full'}
           >
-            Select all (Full)
+            {isFiltering ? `Select filtered (${matchCount})` : 'Select all (Full)'}
           </button>
           <button
-            onclick={() => {
-              showBatchMenu = false;
-              onBatchModeChange(files.map((f) => f.path), 'sigs');
-            }}
+            onclick={() => runBatch('sigs')}
             class="btn btn-sm btn-ghost batch-item"
+            title={isFiltering ? `Set all ${matchCount} filtered files to Sigs` : 'Set all files to Sigs'}
           >
-            Select all (Sigs)
+            {isFiltering ? `Sigs filtered (${matchCount})` : 'Select all (Sigs)'}
           </button>
           <button
-            onclick={() => {
-              showBatchMenu = false;
-              onBatchModeChange(files.map((f) => f.path), 'skip');
-            }}
+            onclick={() => runBatch('skip')}
             class="btn btn-sm btn-ghost batch-item"
+            title={isFiltering ? `Skip all ${matchCount} filtered files` : 'Skip all files'}
           >
-            Clear all (Skip)
+            {isFiltering ? `Clear filtered (${matchCount})` : 'Clear all (Skip)'}
           </button>
         </div>
       {/if}
