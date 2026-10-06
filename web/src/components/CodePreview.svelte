@@ -82,7 +82,10 @@
 
     <div class="code-scroll">
       {#if isLoading}
-        <div class="loading"><span>Loading file content...</span></div>
+        <div class="loading" role="status" aria-label="Loading file content">
+          <Icon name="spinner" size={22} />
+          <span>Loading file content...</span>
+        </div>
       {:else}
         <div class="code-row">
           <div aria-hidden="true" class="gutter">
@@ -205,11 +208,16 @@
     line-height: 1.55;
   }
   .loading {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     padding: 16px;
     color: var(--code-dim);
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    font-size: 12px;
+    min-height: 200px;
   }
   .code-row {
     display: flex;

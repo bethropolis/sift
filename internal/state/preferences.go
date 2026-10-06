@@ -19,6 +19,10 @@ type Preferences struct {
 	DefaultStyle string `json:"default_style,omitempty"`
 	// DefaultBudget is the default token budget for fresh sessions.
 	DefaultBudget int `json:"default_budget,omitempty"`
+	// ShowHidden reveals dotfiles in the serve folder browser. Default hides them.
+	ShowHidden bool `json:"show_hidden,omitempty"`
+	// FileSort orders the serve folder browser: "name" (default) or "updated".
+	FileSort string `json:"file_sort,omitempty"`
 }
 
 // validThemeID reports whether id is a safe theme identifier.
@@ -51,6 +55,11 @@ func SanitizePreferences(p Preferences) Preferences {
 	}
 	if p.DefaultBudget < 0 {
 		p.DefaultBudget = 0
+	}
+	switch p.FileSort {
+	case "", "name", "updated":
+	default:
+		p.FileSort = ""
 	}
 	return p
 }

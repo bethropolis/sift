@@ -367,6 +367,115 @@ func TestDataEndpoints(t *testing.T) {
 	}
 }
 
+// TestBrowseHiddenDefault ensures dot-directories stay hidden unless
+// ?hidden=1, entries carry modTime, and authed meta names a defaultBrowse
+// inside the jail.
+func TestBrowseHiddenDefault(t *testing.T) {
+	srv, root := testServer(t)
+	cookies := loginCookies(t, srv)
+
+	if err := os.MkdirAll(filepath.Join(root, "visible"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var browse struct {
+		Entries []struct {
+			Name    string `json:"name"`
+			ModTime int64  `json:"modTime"`
+		} `json:"entries"`
+	}
+	rec := do(srv, "GET", "/api/browse?path="+root, nil, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("browse = %d", rec.Code)
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&browse); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range browse.Entries {
+		if strings.HasPrefix(e.Name, ".") {
+			t.Fatalf("dot-dir %q listed without ?hidden=1", e.Name)
+		}
+		if e.ModTime <= 0 {
+			t.Fatalf("entry %q lacks modTime", e.Name)
+		}
+	}
+	seen := false
+	for _, e := range browse.Entries {
+		if e.Name == "visible" {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatalf("visible dir missing: %+v", browse.Entries)
+	}
+
+	rec = do(srv, "GET", "/api/browse?path="+root+"&hidden=1", nil, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("browse hidden=1 = %d", rec.Code)
+	}
+	browse.Entries = nil
+	if err := json.NewDecoder(rec.Body).Decode(&browse); err != nil {
+		t.Fatal(err)
+	}
+	seen = false
+	for _, e := range browse.Entries {
+		if e.Name == ".hidden" {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatalf(".hidden missing with ?hidden=1: %+v", browse.Entries)
+	}
+
+	var meta struct {
+		DefaultBrowse string   `json:"defaultBrowse"`
+		Roots         []string `json:"roots"`
+	}
+	rec = do(srv, "GET", "/api/meta", nil, cookies)
+	if err := json.NewDecoder(rec.Body).Decode(&meta); err != nil {
+		t.Fatal(err)
+	}
+	if len(meta.Roots) == 0 || meta.DefaultBrowse == "" {
+		t.Fatalf("meta lacks roots/defaultBrowse: %+v", meta)
+	}
+	if meta.DefaultBrowse != root && !strings.HasPrefix(meta.DefaultBrowse, root+string(os.PathSeparator)) {
+		// ~/Projects inside the jail wins when present; otherwise the root.
+		t.Fatalf("defaultBrowse %q escapes the jail root %q", meta.DefaultBrowse, root)
+	}
+}
+
+// TestSettingsBrowserPrefs round-trips the folder-browser settings and
+// rejects bad fileSort values.
+func TestSettingsBrowserPrefs(t *testing.T) {
+	srv, _ := testServer(t)
+	cookies := loginCookies(t, srv)
+
+	if rec := do(srv, "PUT", "/api/settings", map[string]any{"showHidden": true, "fileSort": "updated"}, cookies); rec.Code != http.StatusNoContent {
+		t.Fatalf("settings put = %d", rec.Code)
+	}
+	var got struct {
+		ShowHidden bool   `json:"showHidden"`
+		FileSort   string `json:"fileSort"`
+	}
+	rec := do(srv, "GET", "/api/settings", nil, cookies)
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.ShowHidden || got.FileSort != "updated" {
+		t.Fatalf("settings = %+v, want showHidden/fileSort", got)
+	}
+	if rec := do(srv, "PUT", "/api/settings", map[string]any{"fileSort": "evil"}, cookies); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad fileSort = %d, want 400", rec.Code)
+	}
+	// Restore defaults so other tests see a clean state file.
+	if rec := do(srv, "PUT", "/api/settings", map[string]any{"showHidden": false, "fileSort": "name"}, cookies); rec.Code != http.StatusNoContent {
+		t.Fatalf("settings restore = %d", rec.Code)
+	}
+}
+
 // TestRemoteRedactRefused rejects redact=false without --allow-unredacted.
 func TestRemoteRedactRefused(t *testing.T) {
 	root := t.TempDir()

@@ -74,8 +74,25 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	if authed {
 		meta["roots"] = s.jail.Roots()
 		meta["styles"] = []string{"xml", "markdown", "plain"}
+		meta["defaultBrowse"] = s.defaultBrowse()
 	}
 	writeJSON(w, http.StatusOK, meta)
+}
+
+// defaultBrowse prefers ~/Projects when it exists inside the jail, falling
+// back to the first allowed root so the folder browser never opens on a
+// missing directory.
+func (s *Server) defaultBrowse() string {
+	roots := s.jail.Roots()
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if proj, err := s.jail.Resolve(filepath.Join(home, "Projects")); err == nil {
+			return proj
+		}
+	}
+	if len(roots) > 0 {
+		return roots[0]
+	}
+	return ""
 }
 
 // handleLogin exchanges a token or password for a session cookie. The token
@@ -187,7 +204,8 @@ func (s *Server) handleRecentsDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleBrowse lists directories only, capped at 5000 entries. isGitRepo is
-// decided by lstat(.git): no git subprocess, no writes.
+// decided by lstat(.git): no git subprocess, no writes. Dotfiles are hidden
+// unless ?hidden=1 (the folder browser passes the ShowHidden setting).
 func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	dir, err := s.jail.Resolve(r.URL.Query().Get("path"))
 	if err != nil {
@@ -200,14 +218,19 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusForbidden, "cannot read that folder")
 		return
 	}
+	showHidden := r.URL.Query().Get("hidden") == "1"
 	type entry struct {
 		Name      string `json:"name"`
 		IsDir     bool   `json:"isDir"`
 		IsGitRepo bool   `json:"isGitRepo"`
+		ModTime   int64  `json:"modTime"`
 	}
 	out := make([]entry, 0, len(entries))
 	for _, e := range entries {
 		if !e.IsDir() {
+			continue
+		}
+		if !showHidden && strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		if len(out) >= browseCap {
@@ -216,7 +239,11 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		full := filepath.Join(dir, e.Name())
 		gitMarker := filepath.Join(full, ".git")
 		_, statErr := os.Lstat(gitMarker)
-		out = append(out, entry{Name: e.Name(), IsDir: true, IsGitRepo: statErr == nil})
+		var modTime int64
+		if info, infoErr := e.Info(); infoErr == nil {
+			modTime = info.ModTime().UnixMilli()
+		}
+		out = append(out, entry{Name: e.Name(), IsDir: true, IsGitRepo: statErr == nil, ModTime: modTime})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	parent := ""
@@ -522,6 +549,8 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 		"defaultStyle":  firstNonEmpty(prefs.DefaultStyle, "xml"),
 		"defaultBudget": firstNonZero(prefs.DefaultBudget, 64000),
 		"theme":         firstNonEmpty(prefs.Theme, "system"),
+		"showHidden":    prefs.ShowHidden,
+		"fileSort":      firstNonEmpty(prefs.FileSort, "name"),
 	})
 }
 
@@ -531,6 +560,8 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 		DefaultStyle  string `json:"defaultStyle"`
 		DefaultBudget int    `json:"defaultBudget"`
 		Theme         string `json:"theme"`
+		ShowHidden    *bool  `json:"showHidden"`
+		FileSort      string `json:"fileSort"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
@@ -553,9 +584,19 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if body.Theme != "" {
 		prefs.Theme = body.Theme
 	}
+	if body.ShowHidden != nil {
+		prefs.ShowHidden = *body.ShowHidden
+	}
+	if body.FileSort != "" {
+		prefs.FileSort = body.FileSort
+	}
 	prefs = state.SanitizePreferences(prefs)
 	if body.Theme != "" && prefs.Theme == "" {
 		writeAPIError(w, http.StatusBadRequest, "bad theme id")
+		return
+	}
+	if body.FileSort != "" && prefs.FileSort == "" {
+		writeAPIError(w, http.StatusBadRequest, "bad fileSort")
 		return
 	}
 	if err := state.SavePreferences(prefs); err != nil {

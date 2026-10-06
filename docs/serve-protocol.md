@@ -12,15 +12,15 @@ capped at 4 MiB and must be `application/json` (415 otherwise).
 | Route | Auth | Notes |
 | :-- | :-- | :-- |
 | `GET /`, `/assets/*` | public | `index.html` is `no-cache`; hashed assets `immutable`. |
-| `GET /api/meta` | public (minimal) | Always: `{version, mode, tls, authKind, authenticated}`. Authed adds `{roots, styles}`. |
+| `GET /api/meta` | public (minimal) | Always: `{version, mode, tls, authKind, authenticated}`. Authed adds `{roots, styles, defaultBrowse}` (`~/Projects` when jailed, else first root). |
 | `POST /api/login`, `POST /api/logout` | public / session | `{password}` or `{token}`. 204, 401, or 429 with `retryAfter`. |
 | `GET /api/recents`, `POST /api/recents`, `DELETE /api/recents?root=` | session | POST records an open (GETs never mutate). Cap 25. |
-| `GET /api/browse?path=` | session | Directories only, 5000 entries, `isGitRepo` by `lstat(.git)`. |
+| `GET /api/browse?path=` | session | Directories only, 5000 entries, `isGitRepo` by `lstat(.git)`. Dot-directories hidden unless `&hidden=1`. Entries carry `modTime` (unix millis) for sort-by-updated. |
 | `GET /api/tree?root=` | session | `{path, size, tokens, language, score}` with TUI-identical token/score logic. |
 | `GET /api/file?root=&path=&mode=full\|sigs` | session | Redacted. 1 MiB preview cap with `truncated`. |
 | `POST /api/smart-select` | session | `{root, budget}` → `{selections: {path: full\|sigs\|skip}}`. |
 | `POST /api/pack` | session | `{root, selections, budget, style, prompt, redact}` → `{document, tokens, fileCount, redactions, skipped}`. At most 2 concurrent packs (503 otherwise). |
-| `GET/PUT /api/settings` | session | `{defaultStyle, defaultBudget, theme}`; theme validated `[a-z0-9-]{1,32}`. |
+| `GET/PUT /api/settings` | session | `{defaultStyle, defaultBudget, theme, showHidden, fileSort}`; theme validated `[a-z0-9-]{1,32}`, `fileSort` is `name` or `updated`. |
 
 Failures use generic messages and status codes: 403 never reveals whether a
 path exists; denied project opens log only the last two path segments.

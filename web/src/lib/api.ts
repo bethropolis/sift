@@ -17,6 +17,8 @@ export interface ApiMeta {
   mode: 'local' | 'remote';
   tls: boolean;
   roots: string[];
+  /** Preferred folder-browser start dir (~/Projects when jailed, else first root). */
+  defaultBrowse?: string;
   authKind: 'token' | 'password';
   authenticated: boolean;
 }
@@ -32,6 +34,8 @@ export interface BrowseEntry {
   name: string;
   isDir: boolean;
   isGitRepo: boolean;
+  /** Last-modified time, unix millis (0 when unknown). */
+  modTime: number;
 }
 
 export interface BrowseResult {
@@ -85,6 +89,8 @@ export interface SettingsData {
   defaultStyle: string;
   defaultBudget: number;
   theme: string;
+  showHidden: boolean;
+  fileSort: 'name' | 'updated';
 }
 
 // In-memory mock server state
@@ -117,7 +123,15 @@ let mockSettings: SettingsData = {
   defaultStyle: 'xml',
   defaultBudget: 64000,
   theme: 'system',
+  showHidden: false,
+  fileSort: 'name',
 };
+
+// Mock browse entries get plausible staggered mtimes for sort-by-updated UI work.
+function stamp<T extends { name: string }>(entries: T[]): (T & { modTime: number })[] {
+  const base = Date.now();
+  return entries.map((e, i) => ({ ...e, modTime: base - i * 3600_000 }));
+}
 
 // Generate realistic mock files for a Go project (~150 files)
 const mockTreeFiles: TreeFile[] = [
@@ -476,9 +490,11 @@ export const api = {
     mockRecents = mockRecents.filter((r) => r.root !== root);
   },
 
-  async browse(pathQuery: string): Promise<BrowseResult> {
+  async browse(pathQuery: string, hidden = false): Promise<BrowseResult> {
     if (!USE_MOCK) {
-      const res = await fetch(`/api/browse?path=${encodeURIComponent(pathQuery)}`);
+      const res = await fetch(
+        `/api/browse?path=${encodeURIComponent(pathQuery)}${hidden ? '&hidden=1' : ''}`,
+      );
       if (res.status === 401) handle401();
       if (res.status === 403) throw new Error("Couldn't read that folder: outside allowed roots");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -500,14 +516,14 @@ export const api = {
       return {
         path: '/Users/developer/code',
         parent: '/Users/developer',
-        entries: [
+        entries: stamp([
           { name: 'sift', isDir: true, isGitRepo: true },
           { name: 'astral-uv', isDir: true, isGitRepo: true },
           { name: 'conc', isDir: true, isGitRepo: true },
           { name: 'tools', isDir: true, isGitRepo: false },
           { name: 'scratchpad', isDir: true, isGitRepo: false },
           { name: 'notes.md', isDir: false, isGitRepo: false },
-        ],
+        ]),
       };
     }
 
@@ -515,7 +531,7 @@ export const api = {
       return {
         path: '/Users/developer/code/sift',
         parent: '/Users/developer/code',
-        entries: [
+        entries: stamp([
           { name: 'cmd', isDir: true, isGitRepo: false },
           { name: 'pkg', isDir: true, isGitRepo: false },
           { name: 'internal', isDir: true, isGitRepo: false },
@@ -523,7 +539,7 @@ export const api = {
           { name: 'docs', isDir: true, isGitRepo: false },
           { name: 'scripts', isDir: true, isGitRepo: false },
           { name: 'go.mod', isDir: false, isGitRepo: false },
-        ],
+        ]),
       };
     }
 
@@ -531,13 +547,13 @@ export const api = {
     return {
       path: cleanPath,
       parent: cleanPath.split('/').slice(0, -1).join('/') || '/',
-      entries: [
+      entries: stamp([
         { name: 'src', isDir: true, isGitRepo: false },
         { name: 'pkg', isDir: true, isGitRepo: false },
         { name: 'tests', isDir: true, isGitRepo: false },
         { name: '.git', isDir: true, isGitRepo: true },
         { name: 'README.md', isDir: false, isGitRepo: false },
-      ],
+      ]),
     };
   },
 

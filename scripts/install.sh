@@ -369,6 +369,47 @@ if [ -x "$prefix/sift" ]; then
     old_ver=$("$prefix/sift" version 2>/dev/null || true)
 fi
 
+step_begin "building web UI"
+# `sift serve` embeds web/dist/*.gz. Build it when missing so a local
+# install ships a working browser picker; keep going without bun, but say so.
+has_dist=0
+for f in "$repo_dir"/web/dist/*.gz; do
+    [ -e "$f" ] && has_dist=1
+    break
+done
+if [ "$has_dist" -eq 1 ]; then
+    step_ok "cached"
+elif ! have_cmd bun; then
+    step_ok "skipped"
+    warn "bun is not on PATH; skipping the serve web UI"
+    hint "install bun 1.4.2+ and re-run, or run: just web"
+    hint "without it, 'sift serve' exits with the missing-UI message"
+elif [ ! -f "$repo_dir/web/bun.lock" ]; then
+    step_fail "web/bun.lock is missing"
+    hint "this does not look like a complete checkout; re-clone sift"
+    abort
+else
+    web_log=$tmp_dir/webbuild.log
+    set +e
+    (
+        cd "$repo_dir/web" || exit 1
+        bun install --frozen-lockfile && VITE_MOCK=false bun run build
+    ) >"$web_log" 2>&1
+    web_status=$?
+    set -e
+    if [ "$web_status" -ne 0 ]; then
+        step_fail "web build exited $web_status"
+        if [ -s "$web_log" ]; then
+            printf '\n' >&2
+            tail -n 40 "$web_log" >&2
+            printf '\n' >&2
+        fi
+        hint "fix the errors above and re-run (or install bun 1.4.2+)"
+        abort
+    fi
+    step_ok "embedded UI"
+fi
+
 step_begin "building sift"
 # Stamp the checkout's version into the binary so `sift version` reports the
 # tag instead of "dev". Falls back to "dev" when git metadata is missing.

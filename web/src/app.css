@@ -829,6 +829,92 @@ a:focus-visible,
   --status-danger: #f92672;
 }
 
+/* Classic Zinc (Dark) */
+[data-theme="classic-dark"] {
+  --bg: #0b0d12;
+  --surface-alt: #131720;
+  --surface-raised: #181d28;
+  --panel-bg: #10131a;
+  --ink: #f0f3f8;
+  --ink-soft: #8c96a8;
+  --ink-faint: #525a6b;
+  --border: #1f2533;
+  --border-strong: #2c3547;
+  --border-subtle: #161b24;
+  --accent: #d4a359;
+  --accent-hover: #e2b055;
+  --accent-soft: #231e15;
+  --accent-ink: #fbd68c;
+  --logo-bg: #141722;
+  --logo-border: #262e40;
+  --tab-container-bg: #151922;
+  --tab-active-bg: #222938;
+  --tab-active-text: #f0f3f8;
+  --tab-inactive-text: #8c96a8;
+  --code-bg: #090b0e;
+  --code-text: #e2e5ec;
+  --code-dim: #606877;
+  --code-accent: #d4a359;
+  --code-border: #181c24;
+  --code-line-number: #383f4d;
+  --code-gutter-bg: #07080a;
+  --mode-full: #86efac;
+  --mode-full-bg: rgba(134, 239, 172, 0.08);
+  --mode-full-border: rgba(134, 239, 172, 0.2);
+  --mode-sigs: #fbbf24;
+  --mode-sigs-bg: rgba(251, 191, 36, 0.08);
+  --mode-sigs-border: rgba(251, 191, 36, 0.2);
+  --mode-skip: #525a6b;
+  --mode-skip-bg: transparent;
+  --mode-skip-border: transparent;
+  --status-ok: #86efac;
+  --status-warn: #fbbf24;
+  --status-danger: #f87171;
+}
+
+/* Classic Zinc (Light) */
+[data-theme="classic-light"] {
+  --bg: #ffffff;
+  --surface-alt: #f6f8fa;
+  --surface-raised: #fbfcfd;
+  --panel-bg: #ffffff;
+  --ink: #111318;
+  --ink-soft: #5b6371;
+  --ink-faint: #8f97a6;
+  --border: #e2e5eb;
+  --border-strong: #cfd4dc;
+  --border-subtle: #eff2f6;
+  --accent: #b58532;
+  --accent-hover: #9e7225;
+  --accent-soft: #fcf6ec;
+  --accent-ink: #7a5513;
+  --logo-bg: #12141a;
+  --logo-border: #222631;
+  --tab-container-bg: #edf0f5;
+  --tab-active-bg: #ffffff;
+  --tab-active-text: #111318;
+  --tab-inactive-text: #5b6371;
+  --code-bg: #0f1115;
+  --code-text: #e2e5ec;
+  --code-dim: #6c7484;
+  --code-accent: #d4a359;
+  --code-border: #1e222a;
+  --code-line-number: #444b59;
+  --code-gutter-bg: #0b0c10;
+  --mode-full: #257035;
+  --mode-full-bg: #eef7f0;
+  --mode-full-border: #cbe6d0;
+  --mode-sigs: #8f641b;
+  --mode-sigs-bg: #fcf7ed;
+  --mode-sigs-border: #eddcc1;
+  --mode-skip: #8a92a0;
+  --mode-skip-bg: transparent;
+  --mode-skip-border: transparent;
+  --status-ok: #257035;
+  --status-warn: #b58532;
+  --status-danger: #c53030;
+}
+
 /* ==========================================================================
    Responsive Utilities & Layout
    ========================================================================== */

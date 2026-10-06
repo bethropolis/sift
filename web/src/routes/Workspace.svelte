@@ -73,6 +73,9 @@
     loadingTree = true;
     treeError = null;
 
+    // Record the open so recents stay fresh; never blocks the tree.
+    api.recordRecent(root).catch(() => {});
+
     Promise.all([api.getTree(root), api.getRecents()])
       .then(([treeRes, recentsRes]) => {
         if (!alive) return;

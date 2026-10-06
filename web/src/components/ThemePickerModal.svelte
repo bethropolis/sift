@@ -11,10 +11,8 @@
 
   let { isOpen, currentTheme, onSelectTheme, onClose }: Props = $props();
 
-  let highlightedIndex = $state(() => {
-    const idx = THEMES.findIndex((t) => t.id === currentTheme);
-    return idx >= 0 ? idx : 0;
-  });
+  let initialIdx = THEMES.findIndex((t) => t.id === currentTheme);
+  let highlightedIndex = $state(initialIdx >= 0 ? initialIdx : 0);
   let listEl: HTMLDivElement | null = $state(null);
 
   let highlightedTheme = $derived(THEMES[highlightedIndex] || THEMES[0]);

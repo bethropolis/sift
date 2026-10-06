@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, type RecentProject, type BrowseResult, type ApiMeta } from '../lib/api';
-  import { truncateMiddle } from '../lib/format';
+  import { truncateMiddle, formatRelativeTime } from '../lib/format';
   import Icon from '../components/Icon.svelte';
 
   interface Props {
@@ -16,10 +16,15 @@
   let activeView = $state<'recents' | 'browse'>('recents');
   let selectedIndex = $state(0);
 
-  let browsePath = $state('/Users/developer/code');
+  let browsePath = $state('');
   let browseData = $state<BrowseResult | null>(null);
   let browseLoading = $state(false);
   let browseError = $state<string | null>(null);
+  let browseReq = 0;
+
+  // Folder-browser prefs (hidden files, sorting) come from shared settings.
+  let showHidden = $state(false);
+  let fileSort = $state<'name' | 'updated'>('name');
 
   let hoveredRoot = $state<string | null>(null);
   let searchInput: HTMLInputElement | null = $state(null);
@@ -35,18 +40,29 @@
     }
   }
 
-  async function loadBrowse(path: string) {
+  async function loadBrowse(path: string, hidden = showHidden) {
+    // Race guard: rapid clicks must never show a stale directory.
+    const id = ++browseReq;
     try {
       browseLoading = true;
       browseError = null;
-      const res = await api.browse(path);
+      const res = await api.browse(path, hidden);
+      if (id !== browseReq) return;
       browseData = res;
       browsePath = res.path;
     } catch (err) {
+      if (id !== browseReq) return;
       browseError = err instanceof Error ? err.message : "Couldn't read that folder: outside allowed roots";
     } finally {
-      browseLoading = false;
+      if (id === browseReq) browseLoading = false;
     }
+  }
+
+  function defaultStartDir(): string {
+    if (browsePath) return browsePath;
+    if (meta?.defaultBrowse) return meta.defaultBrowse;
+    if (meta?.roots?.[0]) return meta.roots[0];
+    return '';
   }
 
   async function handleRemoveRecent(e: MouseEvent, root: string) {
@@ -85,6 +101,15 @@
       onOpenProject(query);
       return;
     }
+    if (activeView === 'browse') {
+      const target =
+        filteredEntries[Math.min(selectedIndex, Math.max(0, filteredEntries.length - 1))] ||
+        filteredEntries[0];
+      if (target) {
+        loadBrowse(`${browsePath.replace(/\/+$/, '')}/${target.name}`);
+      }
+      return;
+    }
     if (filteredRecents.length > 0) {
       const target = filteredRecents[selectedIndex] || filteredRecents[0];
       onOpenProject(target.root);
@@ -120,8 +145,38 @@
   let pathParts = $derived(browsePath.split('/').filter(Boolean));
   let dirEntries = $derived((browseData?.entries ?? []).filter((entry) => entry.isDir));
 
+  // Search filters the folder browser too; sorting follows the FileSort setting.
+  let filteredEntries = $derived.by(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const list = q ? dirEntries.filter((e) => e.name.toLowerCase().includes(q)) : [...dirEntries];
+    if (fileSort === 'updated') {
+      list.sort((a, b) => (b.modTime || 0) - (a.modTime || 0));
+    } else {
+      list.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return list;
+  });
+
+  let parentName = $derived(
+    browseData?.parent ? browseData.parent.split('/').filter(Boolean).pop() || '/' : '',
+  );
+
   $effect(() => {
     loadRecents();
+    api
+      .getSettings()
+      .then((s) => {
+        showHidden = s.showHidden;
+        fileSort = s.fileSort === 'updated' ? 'updated' : 'name';
+      })
+      .catch(() => {});
+  });
+
+  // Default the browser to ~/Projects (or the first root) once meta arrives,
+  // so it never opens on a nonexistent directory.
+  $effect(() => {
+    if (!browsePath && meta?.defaultBrowse) browsePath = meta.defaultBrowse;
+    else if (!browsePath && meta?.roots?.[0]) browsePath = meta.roots[0];
   });
 </script>
 
@@ -187,7 +242,8 @@
             type="button"
             onclick={() => {
               activeView = 'browse';
-              loadBrowse(browsePath);
+              const start = defaultStartDir();
+              if (start) loadBrowse(start);
             }}
             class="segmented-btn"
             class:active={activeView === 'browse'}
@@ -259,7 +315,7 @@
                     <span class="font-mono loc-path" title={item.root}>{truncateMiddle(item.root, 40)}</span>
                   </div>
 
-                  <div class="c-time"><span class="tabular-nums opened-at">{item.lastOpened}</span></div>
+                  <div class="c-time"><span class="tabular-nums opened-at" title={item.lastOpened}>{formatRelativeTime(item.lastOpened)}</span></div>
 
                   <div class="c-act">
                     <button
@@ -319,8 +375,8 @@
                 <div class="font-mono denied-title">Access Restricted (403)</div>
                 <p class="denied-msg">{browseError}</p>
                 {#if meta?.roots && meta.roots[0]}
-                  <button type="button" onclick={() => loadBrowse(meta.roots[0])} class="btn btn-sm denied-cta">
-                    Return to {meta.roots[0]}
+                  <button type="button" onclick={() => loadBrowse(defaultStartDir())} class="btn btn-sm denied-cta">
+                    Return to {defaultStartDir()}
                   </button>
                 {/if}
               </div>
@@ -337,16 +393,21 @@
                     }}
                     role="button"
                     tabindex="0"
-                    class="entry"
+                    class="entry parent-entry"
+                    title={`Up to ${browseData.parent}`}
                   >
-                    <span class="entry-icon dim"><Icon name="folder" size={14} /></span>
-                    <span class="font-mono">.. (Parent directory)</span>
+                    <span class="up-arrow" aria-hidden="true">↑</span>
+                    <span class="font-mono parent-label">{parentName}</span>
                   </div>
                 {/if}
 
-                {#each dirEntries as entry, index (entry.name)}
+                {#if filteredEntries.length === 0 && searchQuery}
+                  <div class="no-filter-match">No folders match "{searchQuery}"</div>
+                {/if}
+
+                {#each filteredEntries as entry, index (entry.name)}
                   {@const subPath = `${browsePath.replace(/\/+$/, '')}/${entry.name}`}
-                  {@const isLast = index === dirEntries.length - 1}
+                  {@const isLast = index === filteredEntries.length - 1}
                   <div
                     onclick={() => loadBrowse(subPath)}
                     onkeydown={(e) => {
@@ -744,8 +805,27 @@
     font-size: 12px;
     color: var(--ink-soft);
   }
-  .entry:hover {
-    background-color: var(--surface-alt);
+  .parent-entry {
+    gap: 8px;
+  }
+  .up-arrow {
+    color: var(--ink-faint);
+    font-size: 13px;
+    line-height: 1;
+  }
+  .parent-label {
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .no-filter-match {
+    padding: 16px;
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: 11.5px;
+    font-family: var(--font-mono);
   }
   .entry-icon {
     display: flex;

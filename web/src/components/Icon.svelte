@@ -17,7 +17,8 @@
     | 'shield'
     | 'warning'
     | 'palette'
-    | 'sidebar';
+    | 'sidebar'
+    | 'spinner';
 
   interface Props {
     name: IconName;
@@ -141,11 +142,23 @@
     <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
     <line x1="9" y1="3" x2="9" y2="21" />
   </svg>
+{:else if name === 'spinner'}
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" class="icon-spin {className}">
+    <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+  </svg>
 {/if}
 
 <style>
   .icon-inline-middle {
     display: inline-block;
     vertical-align: middle;
+  }
+  .icon-spin {
+    animation: icon-spin 0.9s linear infinite;
+  }
+  @keyframes icon-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

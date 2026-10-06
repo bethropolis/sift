@@ -95,8 +95,9 @@ func TestSanitizePreferences(t *testing.T) {
 		Theme:         "../../etc",
 		DefaultStyle:  "evil",
 		DefaultBudget: -5,
+		FileSort:      "evil",
 	})
-	if p.Theme != "" || p.DefaultStyle != "" || p.DefaultBudget != 0 {
+	if p.Theme != "" || p.DefaultStyle != "" || p.DefaultBudget != 0 || p.FileSort != "" {
 		t.Fatalf("unsanitized: %+v", p)
 	}
 
@@ -104,8 +105,10 @@ func TestSanitizePreferences(t *testing.T) {
 		Theme:         "catppuccin-mocha",
 		DefaultStyle:  "xml",
 		DefaultBudget: 64000,
+		ShowHidden:    true,
+		FileSort:      "updated",
 	})
-	if ok.Theme != "catppuccin-mocha" || ok.DefaultStyle != "xml" || ok.DefaultBudget != 64000 {
+	if ok.Theme != "catppuccin-mocha" || ok.DefaultStyle != "xml" || ok.DefaultBudget != 64000 || !ok.ShowHidden || ok.FileSort != "updated" {
 		t.Fatalf("valid prefs altered: %+v", ok)
 	}
 }

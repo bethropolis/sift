@@ -12,7 +12,13 @@
 
   let { meta, currentTheme, onThemeChange }: Props = $props();
 
-  let settings = $state<SettingsData>({ defaultStyle: 'xml', defaultBudget: 64000, theme: currentTheme });
+  let settings = $state<SettingsData>({
+    defaultStyle: 'xml',
+    defaultBudget: 64000,
+    theme: currentTheme,
+    showHidden: false,
+    fileSort: 'name',
+  });
   let isSaving = $state(false);
   let saveSuccess = $state(false);
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,6 +115,43 @@
             class="input input-mono budget-input"
           />
           <span class="tokens-suffix">tokens</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <span class="card-label" id="browser-label">File Browser</span>
+      <p class="card-desc">How the Projects folder browser lists directories.</p>
+
+      <div class="browser-row">
+        <button
+          type="button"
+          onclick={() => (settings = { ...settings, showHidden: !settings.showHidden })}
+          class="btn btn-sm"
+          class:btn-primary={settings.showHidden}
+          aria-pressed={settings.showHidden}
+          title="Show dot-directories like .config and .cache"
+        >
+          Show hidden files: {settings.showHidden ? 'ON' : 'OFF'}
+        </button>
+
+        <div class="segmented-control sort-seg" role="group" aria-labelledby="browser-label">
+          <button
+            type="button"
+            onclick={() => (settings = { ...settings, fileSort: 'name' })}
+            class="segmented-btn"
+            class:active={settings.fileSort !== 'updated'}
+          >
+            A–Z
+          </button>
+          <button
+            type="button"
+            onclick={() => (settings = { ...settings, fileSort: 'updated' })}
+            class="segmented-btn"
+            class:active={settings.fileSort === 'updated'}
+          >
+            Last updated
+          </button>
         </div>
       </div>
     </section>
@@ -238,6 +281,16 @@
     align-items: center;
     gap: 6px;
     margin-left: 8px;
+  }
+  .browser-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .sort-seg {
+    font-family: var(--font-mono);
   }
   .budget-input {
     width: 90px;
