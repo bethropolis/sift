@@ -268,9 +268,13 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		out = append(out, entry{Name: e.Name(), IsDir: true, IsGitRepo: statErr == nil, ModTime: modTime})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	// Parent stays inside the jail: at an allowed root there is no way up,
+	// so the client hides its parent row instead of offering a dead end.
 	parent := ""
 	if p := filepath.Dir(dir); p != dir {
-		parent = p
+		if _, err := s.jail.Resolve(p); err == nil {
+			parent = p
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": dir, "parent": parent, "entries": out})
 }

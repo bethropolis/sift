@@ -26,7 +26,7 @@
         <div class="browse">
           <div class="crumb-bar">
             <div class="crumbs">
-              <button type="button" onclick={() => loadBrowse('/')} class="crumb">/</button>
+              <button type="button" onclick={() => loadBrowse(meta?.roots?.[0] ?? defaultStartDir(meta))} class="crumb" title="Top of allowed roots">/</button>
               {#each crumbs as part, index (index)}
                 {@const fullSubPath = '/' + crumbs.slice(0, index + 1).join('/')}
                 {@const isLast = index === crumbs.length - 1}
