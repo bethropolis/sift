@@ -17,8 +17,13 @@ for (const entry of readdirSync(dist)) {
   rmSync(join(dist, entry), { recursive: true, force: true });
 }
 
-// 2. Build.
-const build = spawnSync('bunx', ['vite', 'build'], { stdio: 'inherit' });
+// 2. Build. Production builds talk to the real Go server: default
+// VITE_MOCK to 'false' so `just web` and release builds embed the live UI.
+// Explicit VITE_MOCK=true keeps the mock for isolated UI work.
+const build = spawnSync('bunx', ['vite', 'build'], {
+  stdio: 'inherit',
+  env: { ...process.env, VITE_MOCK: process.env.VITE_MOCK ?? 'false' },
+});
 if (build.status !== 0) process.exit(build.status ?? 1);
 
 // 3. Precompress every file at max level. The .gz files are what embed.go

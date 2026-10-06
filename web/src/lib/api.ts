@@ -1,14 +1,14 @@
 /**
- * sift serve API client and mock data layer.
- * The mock stays for UI work: set USE_MOCK to false (or build with
- * VITE_MOCK=false) to talk to the real Go server at /api.
+ * sift serve API client. UI work can use the in-file mock with
+ * VITE_MOCK=true; every real build (`just web`, release, `just web-dev`)
+ * sets VITE_MOCK=false to talk to the Go server at /api.
  */
 
 import { navigate } from './router.svelte';
 
-// Keep the mock behind this flag for UI work. Production builds made by
-// `just web` pass VITE_MOCK=false.
-export const USE_MOCK = import.meta.env.VITE_MOCK !== 'false';
+// Live by default in real builds; only an explicit VITE_MOCK=true (plain
+// `bun run dev` / `bunx vite build`) keeps the mock for isolated UI work.
+export const USE_MOCK = import.meta.env.VITE_MOCK === 'true';
 
 // Server response contracts (final shapes are recorded in docs/serve-protocol.md)
 export interface ApiMeta {

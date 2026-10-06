@@ -74,13 +74,14 @@ delta-patch:
 sig:
   go run {{ pkg }} dump . --mode signatures --style xml
 
-# Build the serve web UI (bun + Vite, gzip-precompressed into web/dist)
+# Build the serve web UI (live API; gzip-precompressed into web/dist).
+# Isolated mock UI work: cd web && VITE_MOCK=true bun run dev
 web:
-  cd web && bun install --frozen-lockfile && bun run build
+  cd web && bun install --frozen-lockfile && VITE_MOCK=false bun run build
 
-# Dev server for the web UI with /api proxied to a local `sift serve`
+# Dev server for the web UI with /api proxied to a local `sift serve` (live)
 web-dev:
-  cd web && bun run dev
+  cd web && VITE_MOCK=false bun run dev
 
 # Check the web UI size budgets (initial JS <60KB gz, total <150KB gz)
 web-budget:

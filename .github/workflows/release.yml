@@ -34,7 +34,7 @@ jobs:
         run: |
           cd web
           bun install --frozen-lockfile
-          bun run build
+          VITE_MOCK=false bun run build
           bun scripts/check-budget.ts
 
       - name: Check frontend supply chain and CSP hygiene
