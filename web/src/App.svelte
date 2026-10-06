@@ -79,25 +79,32 @@
     return () => mq.removeEventListener('change', onChange);
   });
 
+  // Meta + settings refresh. Runs on mount and again after login success:
+  // the mount-time fetch is unauthenticated on the login path, so without
+  // the second call the redirect would keep the OS-guess theme (and stale
+  // meta) instead of the saved one.
+  async function refreshAuth(): Promise<void> {
+    try {
+      const data = await api.getMeta();
+      meta = data;
+      if (!data.authenticated) return;
+      try {
+        const s = await api.getSettings();
+        lastSettings = s;
+        if (s.theme && s.theme !== 'system') theme = s.theme;
+      } catch {
+        // Unreachable server keeps the OS-guess paint.
+      }
+    } catch (err) {
+      console.error('Failed to load server metadata', err);
+    }
+  }
+
   $effect(() => {
     // Settings ride along with an authenticated meta only: fetching them
     // anonymously 401s, and the bounce must never run on the login route
     // where it would wipe a token fragment before auto-submit.
-    api
-      .getMeta()
-      .then((data) => {
-        meta = data;
-        if (data.authenticated) {
-          api
-            .getSettings()
-            .then((s) => {
-              lastSettings = s;
-              if (s.theme && s.theme !== 'system') theme = s.theme;
-            })
-            .catch(() => {});
-        }
-      })
-      .catch((err) => console.error('Failed to load server metadata', err));
+    void refreshAuth();
   });
 
   function handleHashChange() {
@@ -148,7 +155,10 @@
       <Login
         loginToken={routeState.loginToken}
         authKind={meta?.authKind ?? 'password'}
-        onLoginSuccess={() => navigate('/projects')}
+        onLoginSuccess={() => {
+          void refreshAuth();
+          navigate('/projects');
+        }}
       />
     {:else if routeState.route === 'projects'}
       <Projects {meta} onOpenProject={(root) => navigate(`/p/${encodeURIComponent(root)}`)} />
