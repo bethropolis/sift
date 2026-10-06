@@ -26,6 +26,16 @@ import (
 	"github.com/bethropolis/sift/internal/serve/auth"
 	"github.com/bethropolis/sift/internal/serve/jail"
 	"github.com/bethropolis/sift/web"
+	"github.com/fatih/color"
+)
+
+// Serve banner colors via fatih/color: auto-disabled under NO_COLOR,
+// TERM=dumb, or piped output, so no manual checks are needed here.
+var (
+	serveBold = color.New(color.Bold)
+	serveDim  = color.New(color.Faint)
+	serveURL  = color.New(color.FgCyan)
+	serveWarn = color.New(color.FgYellow)
 )
 
 // Server is a configured `sift serve` instance. It holds no per-project
@@ -274,6 +284,13 @@ func (s *Server) Run() error {
 	if s.remote {
 		mode = "remote"
 	}
+	fmt.Fprintf(os.Stderr, "%s %s · %s · %s://%s · %s auth\n",
+		serveBold.Sprint("sift serve"),
+		serveDim.Sprint(s.engineCfg.Version),
+		mode,
+		scheme, addr,
+		s.auth.Kind(),
+	)
 	s.log.Info("sift serve starting",
 		"mode", mode,
 		"addr", addr,
@@ -283,10 +300,14 @@ func (s *Server) Run() error {
 		"version", s.engineCfg.Version,
 	)
 	if fingerprint != "" {
-		fmt.Fprintf(os.Stderr, "sift serve: self-signed TLS fingerprint (SHA-256): %s\n", fingerprint)
+		fmt.Fprintf(os.Stderr, "  %s %s\n",
+			serveWarn.Sprint("tls fingerprint (SHA-256):"),
+			fingerprint)
 	}
 	if !s.remote {
-		fmt.Fprintf(os.Stderr, "sift serve: open %s://%s/#/login?token=%s\n", scheme, addr, s.auth.Token())
+		fmt.Fprintf(os.Stderr, "  %s %s\n",
+			serveDim.Sprint("open →"),
+			serveURL.Sprintf("%s://%s/#/login?token=%s", scheme, addr, s.auth.Token()))
 	}
 
 	if s.cfg.Open {
