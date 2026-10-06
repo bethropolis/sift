@@ -224,9 +224,14 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
   }
   .roots-list {
     color: var(--ink-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
   .panel {
     background-color: var(--panel-bg);
@@ -245,6 +250,25 @@
     justify-content: space-between;
     gap: 12px;
     background-color: var(--surface-raised);
+  }
+  @media (max-width: 640px) {
+    .page {
+      padding: 16px 12px;
+    }
+    .page-inner {
+      gap: 14px;
+    }
+    .action-bar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .search-form {
+      max-width: none;
+    }
+    .action-bar .segmented-control {
+      align-self: flex-start;
+    }
   }
   .search-form {
     position: relative;

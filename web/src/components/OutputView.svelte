@@ -503,10 +503,12 @@
   .doc-scroll {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
     padding: 10px 14px 24px;
   }
   .doc-spacer {

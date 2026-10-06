@@ -251,4 +251,32 @@
   .del-btn:hover {
     color: var(--status-danger);
   }
+  /* Narrow screens drop secondary columns (header shares the classes, so it
+     stays in sync automatically). */
+  @media (max-width: 760px) {
+    .c-branch {
+      display: none;
+    }
+  }
+  @media (max-width: 600px) {
+    .c-loc {
+      display: none;
+    }
+    .c-project {
+      width: auto;
+      flex: 1;
+      min-width: 0;
+    }
+    .row,
+    .col-head {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+  }
+  /* Touch devices have no hover: the delete affordance stays visible. */
+  @media (hover: none) {
+    .del-btn {
+      opacity: 1;
+    }
+  }
 </style>

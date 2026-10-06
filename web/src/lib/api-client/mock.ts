@@ -190,7 +190,6 @@ export const mockTreeFiles: TreeFile[] = [
   { path: 'web/src/components/BudgetMeter.tsx', size: 3800, tokens: 930, language: 'typescript', score: 0.9 },
   { path: 'web/src/components/ProjectSwitcher.tsx', size: 4200, tokens: 1030, language: 'typescript', score: 0.87 },
   { path: 'web/src/components/ShortcutsModal.tsx', size: 3600, tokens: 880, language: 'typescript', score: 0.81 },
-  { path: 'web/src/components/RedactionModal.tsx', size: 2900, tokens: 710, language: 'typescript', score: 0.79 },
   { path: 'web/src/routes/WorkspaceRoute.tsx', size: 10500, tokens: 2570, language: 'typescript', score: 0.97 },
   { path: 'web/src/routes/ProjectsRoute.tsx', size: 8200, tokens: 2010, language: 'typescript', score: 0.93 },
   { path: 'web/src/routes/LoginRoute.tsx', size: 5100, tokens: 1250, language: 'typescript', score: 0.89 },

@@ -180,4 +180,24 @@
     font-size: 12px;
     color: var(--ink-soft);
   }
+  @media (max-width: 640px) {
+    .topbar {
+      padding: 0 8px;
+    }
+    .brand-group {
+      gap: 8px;
+      min-width: 0;
+    }
+    .status-version {
+      display: none;
+    }
+  }
+  @media (max-width: 560px) {
+    .brand-word {
+      display: none;
+    }
+    .theme-name {
+      display: none;
+    }
+  }
 </style>

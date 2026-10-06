@@ -15,8 +15,6 @@
     onBudgetChange: (b: number) => void;
     /** Where the displayed budget came from; `custom` is a session override. */
     budgetSource: 'toml' | 'flag' | 'default' | 'custom';
-    redact: boolean;
-    onRedactToggle: () => void;
     fileCount: number;
   }
 
@@ -30,8 +28,6 @@
     budget,
     onBudgetChange,
     budgetSource,
-    redact,
-    onRedactToggle,
     fileCount,
   }: Props = $props();
 
@@ -110,16 +106,6 @@
         </div>
       </div>
 
-      <button
-        onclick={onRedactToggle}
-        class="btn btn-sm redact-btn"
-        class:off={!redact}
-        title={redact ? 'Secret redaction active (click to disable)' : 'Secrets exposed in output! (click to enable)'}
-      >
-        <Icon name="shield" size={11} />
-        <span>Redact: {redact ? 'ON' : 'OFF'}</span>
-      </button>
-
       <span class="font-mono tabular-nums hide-on-compact file-count">{fileCount} files</span>
     </div>
   </header>
@@ -197,8 +183,8 @@
     align-items: center;
     gap: 3px;
   }
-  /* Smallest screens keep project + redact; the budget stays adjustable
-     in Settings and on wider layouts. */
+  /* Smallest screens keep the project switcher; the budget stays
+     adjustable in Settings and on wider layouts. */
   @media (max-width: 580px) {
     .budget-presets {
       display: none;
@@ -240,18 +226,6 @@
     background-color: var(--accent);
     color: #12141a;
     font-weight: 600;
-  }
-  .redact-btn {
-    padding: 2px 6px;
-    font-size: 10.5px;
-    background-color: var(--surface-raised);
-    color: var(--ink-soft);
-    border-color: var(--border);
-  }
-  .redact-btn.off {
-    background-color: var(--status-danger);
-    color: #fff;
-    border-color: var(--status-danger);
   }
   .file-count {
     font-size: 11px;

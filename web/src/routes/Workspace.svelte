@@ -11,7 +11,6 @@
   import OutputView from '../components/OutputView.svelte';
   import BudgetMeter from '../components/BudgetMeter.svelte';
   import TaskPrompt from '../components/TaskPrompt.svelte';
-  import RedactionModal from '../components/RedactionModal.svelte';
   import Icon from '../components/Icon.svelte';
   import TopBar from './workspace/TopBar.svelte';
   import { formatTokens } from '../lib/format';
@@ -60,8 +59,7 @@
   // resolved value wins: flag > .sift.toml > persisted default > builtin.
   let treeBudgetSource = $state<'toml' | 'flag' | 'default'>('default');
   let budgetOverride = $state<number | null>(null);
-  let redact = $state(true);
-  let showRedactionModal = $state(false);
+  // Secret redaction is always on in the web UI: there is no toggle.
 
   // Recents for project switcher
   let recents = $state<RecentProject[]>([]);
@@ -257,7 +255,7 @@
         budget,
         style: selectedStyle,
         prompt: taskPrompt,
-        redact,
+        redact: true,
       });
     } catch (err) {
       console.error(err);
@@ -278,7 +276,7 @@
         budget,
         style: selectedStyle,
         prompt: taskPrompt,
-        redact,
+        redact: true,
       });
       packResult = res;
       await navigator.clipboard.writeText(res.document);
@@ -312,11 +310,6 @@
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }
-
-  function handleRedactionToggle() {
-    if (redact) showRedactionModal = true;
-    else redact = true;
   }
 
   let filePathsList = $derived(files.map((f) => f.path));
@@ -421,8 +414,6 @@
     {budget}
     onBudgetChange={handleBudgetChange}
     budgetSource={budgetOverride !== null ? 'custom' : treeBudgetSource}
-    {redact}
-    onRedactToggle={handleRedactionToggle}
     fileCount={files.length}
   />
 
@@ -539,15 +530,6 @@
     onFocusFilter={focusFilter}
     hasOutput={!!packResult}
     isCopied={copiedNotification}
-  />
-
-  <RedactionModal
-    isOpen={showRedactionModal}
-    onConfirm={() => {
-      redact = false;
-      showRedactionModal = false;
-    }}
-    onCancel={() => (showRedactionModal = false)}
   />
 </div>
 

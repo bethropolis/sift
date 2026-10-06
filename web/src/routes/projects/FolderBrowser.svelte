@@ -276,10 +276,15 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    flex: 1;
   }
   .dir-name {
     color: var(--ink);
     font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .dir-name.repo {
     font-weight: 600;
@@ -293,5 +298,20 @@
     font-size: 11px;
     padding: 2px 6px;
     color: var(--ink-soft);
+    flex-shrink: 0;
+  }
+  @media (max-width: 480px) {
+    .repo-tag {
+      display: none;
+    }
+    .dir-entry,
+    .entry {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .crumb-bar {
+      padding: 8px 10px;
+      gap: 8px;
+    }
   }
 </style>
