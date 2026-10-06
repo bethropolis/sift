@@ -2,12 +2,14 @@
   interface Props {
     label?: string;
     size?: number;
+    /** Inline mark for buttons: no label, no fill height. */
+    inline?: boolean;
   }
 
-  let { label = 'Loading...', size = 40 }: Props = $props();
+  let { label = 'Loading...', size = 40, inline = false }: Props = $props();
 </script>
 
-<div class="loader" role="status" aria-label={label}>
+{#if inline}
   <svg
     width={size}
     height={size}
@@ -15,15 +17,34 @@
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
     aria-hidden="true"
+    class="loader-mark"
   >
     <rect width="24" height="24" rx="5" fill="var(--logo-bg)" stroke="var(--logo-border)" stroke-width="1" />
     <rect class="bar bar-1" x="4.5" y="8" width="11" height="2.5" rx="1.25" fill="var(--accent)" />
     <rect class="bar bar-2" x="8.5" y="13.5" width="11" height="2.5" rx="1.25" fill="var(--accent)" />
   </svg>
-  <span class="loader-label">{label}</span>
-</div>
+{:else}
+  <div class="loader" role="status" aria-label={label}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <rect width="24" height="24" rx="5" fill="var(--logo-bg)" stroke="var(--logo-border)" stroke-width="1" />
+      <rect class="bar bar-1" x="4.5" y="8" width="11" height="2.5" rx="1.25" fill="var(--accent)" />
+      <rect class="bar bar-2" x="8.5" y="13.5" width="11" height="2.5" rx="1.25" fill="var(--accent)" />
+    </svg>
+    <span class="loader-label">{label}</span>
+  </div>
+{/if}
 
 <style>
+  .loader-mark {
+    flex-shrink: 0;
+  }
   .loader {
     flex: 1;
     display: flex;

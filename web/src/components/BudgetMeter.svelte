@@ -1,6 +1,7 @@
 <script lang="ts">
   import { formatTokens } from '../lib/format';
   import Icon from './Icon.svelte';
+  import Loader from './Loader.svelte';
 
   interface Props {
     selectedCount: number;
@@ -10,6 +11,7 @@
     stylesList: string[];
     onStyleChange: (style: string) => void;
     isGenerating: boolean;
+    isSmartSelecting: boolean;
     onGenerate: () => void;
     onCopy: () => void;
     onDownload: () => void;
@@ -28,6 +30,7 @@
     stylesList,
     onStyleChange,
     isGenerating,
+    isSmartSelecting,
     onGenerate,
     onCopy,
     onDownload,
@@ -97,8 +100,13 @@
       <kbd class="font-mono hint-kbd">/</kbd> filter
     </button>
 
-    <button onclick={onSmartSelect} class="btn btn-sm btn-ghost hint-btn hide-on-compact" title="Smart select (s)">
-      <kbd class="font-mono hint-kbd">s</kbd> smart
+    <button onclick={onSmartSelect} disabled={isSmartSelecting} class="btn btn-sm btn-ghost hint-btn hide-on-compact" title="Smart select (s)">
+      {#if isSmartSelecting}
+        <Loader inline size={12} />
+      {:else}
+        <kbd class="font-mono hint-kbd">s</kbd>
+      {/if}
+      <span>{isSmartSelecting ? 'Selecting...' : 'smart'}</span>
     </button>
 
     <button
@@ -107,7 +115,11 @@
       class="btn btn-sm action-btn"
       title="Generate context document (g)"
     >
-      <Icon name="sparkles" size={11} />
+      {#if isGenerating}
+        <Loader inline size={12} />
+      {:else}
+        <Icon name="sparkles" size={11} />
+      {/if}
       <span>{isGenerating ? 'Packing...' : 'Generate'}</span>
       <kbd class="font-mono action-kbd">g</kbd>
     </button>
