@@ -128,6 +128,15 @@
     collapsedDirs = all;
   }
 
+  // TUI parity: directories start (and reload) fully collapsed. Pre-effect
+  // so the collapse lands in the same flush as the new file list, with no
+  // expanded first frame. Filtering still force-expands matches.
+  $effect.pre(() => {
+    const all: Record<string, boolean> = {};
+    for (const dirPath of dirDescendants.keys()) all[dirPath] = true;
+    collapsedDirs = all;
+  });
+
   // Expose fold actions to the workspace keybinds (E/C, TUI parity).
   $effect(() => {
     treeActions = { expandAll, collapseAll };
@@ -276,6 +285,7 @@
                   class="dir-check"
                   class:all={row.selectedState === 'all'}
                   class:partial={row.selectedState === 'partial'}
+                  class:sigs={row.allSigs}
                   title={`Folder selection (click to cycle full → sigs → skip)`}
                 >
                   {#if row.selectedState === 'all'}
@@ -392,6 +402,22 @@
     overflow-y: auto;
     overflow-x: hidden;
     position: relative;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  .tree-list::-webkit-scrollbar {
+    width: 10px;
+  }
+  .tree-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .tree-list::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+    border-radius: 6px;
+    border: 3px solid var(--bg);
+  }
+  .tree-list::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ink-faint);
   }
   .no-match {
     padding: 24px;
@@ -493,6 +519,14 @@
   }
   .dir-check.partial {
     background-color: var(--surface-alt);
+  }
+  /* All-sigs directory: hollow sigs-tinted box instead of the solid accent. */
+  .dir-check.sigs {
+    background-color: transparent;
+    border-color: var(--mode-sigs);
+  }
+  .dir-check.sigs .check-full {
+    background-color: var(--mode-sigs);
   }
   .check-full {
     width: 6px;

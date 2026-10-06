@@ -38,6 +38,7 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
       const filePaths = descendants.get(node.path) || [];
       let dirTokens = 0;
       let selectedCount = 0;
+      let sigsCount = 0;
       let matchesQuery = false;
 
       for (const p of filePaths) {
@@ -49,6 +50,7 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
             dirTokens += tokenVal;
             selectedCount++;
           }
+          if (mode === 'sigs') sigsCount++;
         }
         if (query && p.toLowerCase().includes(query)) matchesQuery = true;
       }
@@ -67,6 +69,7 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
         aggregateTokens: dirTokens,
         selectedState,
         isExpanded,
+        allSigs: selectedState === 'all' && sigsCount === totalFiles,
       });
 
       if (isExpanded) for (const child of node.children) traverse(child);
@@ -82,6 +85,7 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
         aggregateTokens: fileTokens,
         selectedState: mode === 'skip' ? 'none' : 'all',
         isExpanded: false,
+        allSigs: false,
       });
     }
   };

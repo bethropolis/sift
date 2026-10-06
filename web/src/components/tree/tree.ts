@@ -27,6 +27,8 @@ export interface FlatRow {
   aggregateTokens: number;
   selectedState: RowSelectionState;
   isExpanded: boolean;
+  /** Directory only: every descendant file is in sigs mode. */
+  allSigs: boolean;
 }
 
 /** Build the directory hierarchy from a flat file list (sorted by path). */
@@ -62,6 +64,14 @@ export function buildTree(files: TreeFile[]): TreeNode {
       depth: parts.length - 1,
     });
   }
+  // Directories first, alphabetical within each kind (every level).
+  const sortKids = (node: TreeNode): void => {
+    node.children.sort(
+      (a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name),
+    );
+    for (const child of node.children) if (child.isDir) sortKids(child);
+  };
+  sortKids(root);
   return root;
 }
 
