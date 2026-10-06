@@ -23,19 +23,8 @@
   let saveSuccess = $state(false);
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const SHORTCUT_LIST = [
-    { key: 'j / k or ↓ / ↑', desc: 'Move tree item focus' },
-    { key: 'Space', desc: 'Toggle selection (Full / Skip)' },
-    { key: 'f', desc: 'Cycle mode (Full → Sigs → Skip)' },
-    { key: 'b', desc: 'Toggle sidebar (collapse/expand)' },
-    { key: 't', desc: 'Open Color Theme picker' },
-    { key: '/', desc: 'Focus file filter' },
-    { key: 's', desc: 'Run smart select based on git relevance and budget' },
-    { key: 'g', desc: 'Generate context document' },
-    { key: 'y', desc: 'Generate and copy to clipboard' },
-    { key: '?', desc: 'Open shortcuts overlay modal' },
-    { key: 'Esc', desc: 'Close overlay / blur inputs' },
-  ];
+  // The keyboard reference lives in the `?` shortcuts overlay; it is not
+  // duplicated here so the page fits typical viewports without scrolling.
 
   $effect(() => {
     api.getSettings().then((data) => {
@@ -194,33 +183,17 @@
       {/if}
     </div>
   </form>
-
-  <section class="card shortcuts-card">
-    <div class="shortcuts-head">
-      <h2 class="font-mono shortcuts-title">Keyboard Shortcuts Reference</h2>
-      <p class="shortcuts-sub">All terminal keybindings are supported in the browser picker.</p>
-    </div>
-
-    <div class="shortcuts-body">
-      {#each SHORTCUT_LIST as item (item.key)}
-        <div class="shortcut-row">
-          <span class="shortcut-desc">{item.desc}</span>
-          <kbd class="font-mono shortcut-key">{item.key}</kbd>
-        </div>
-      {/each}
-    </div>
-  </section>
 </div>
 
 <style>
   .settings-page {
     flex: 1;
     overflow-y: auto;
-    padding: 24px 32px;
+    padding: 20px 32px;
     background-color: var(--bg);
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 20px;
     max-width: 720px;
     margin: 0 auto;
     width: 100%;
@@ -238,7 +211,7 @@
   .settings-form {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
   }
   .card {
     background-color: var(--surface-raised);
@@ -333,47 +306,5 @@
     gap: 6px;
     font-size: 12px;
     color: var(--status-ok);
-  }
-  .shortcuts-card {
-    margin-top: 12px;
-    overflow: hidden;
-    padding: 0;
-    gap: 0;
-  }
-  .shortcuts-head {
-    padding: 12px 20px;
-    border-bottom: 1px solid var(--border);
-  }
-  .shortcuts-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink);
-  }
-  .shortcuts-sub {
-    font-size: 12px;
-    color: var(--ink-soft);
-    margin-top: 2px;
-  }
-  .shortcuts-body {
-    padding: 8px 20px 16px;
-  }
-  .shortcut-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 12px;
-  }
-  .shortcut-desc {
-    color: var(--ink);
-  }
-  .shortcut-key {
-    background-color: var(--surface-alt);
-    border: 1px solid var(--border-strong);
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    color: var(--ink);
   }
 </style>
