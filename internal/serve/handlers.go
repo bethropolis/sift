@@ -23,6 +23,11 @@ import (
 // browseCap bounds directory listings.
 const browseCap = 5000
 
+// defaultWebBudget is the token budget the web client displays and sends
+// when nothing else sets one (no flag, no .sift.toml, no global file, no
+// persisted server default). It matches the workspace's initial value.
+const defaultWebBudget = 64000
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -327,7 +332,33 @@ func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
 			Score:    f.RankScore,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"root": root, "files": out})
+	// The budget rides along so the client displays and sends the resolved
+	// value instead of a hardcoded guess (see resolveBudget).
+	budget, source := s.resolveBudget(root, cfg)
+	writeJSON(w, http.StatusOK, map[string]any{"root": root, "files": out, "budget": budget, "budgetSource": source})
+}
+
+// resolveBudget reports the token budget the web client should display and
+// send back with pack/smart-select. Precedence: serve flag > project
+// .sift.toml > global file > persisted server default > builtin. The
+// .sift.toml wins over the persisted default so per-project files stay
+// authoritative; an explicit request budget still overrides everything
+// downstream. resolveBudget never fails: unreadable preferences fall back
+// to the builtin.
+func (s *Server) resolveBudget(root string, cfg *config.Config) (budget int, source string) {
+	if _, ok := s.cfg.EngineFlagOverrides["budget"]; ok && cfg.Budget != 0 {
+		return cfg.Budget, "flag"
+	}
+	if b, err := config.LocalBudget(filepath.Join(root, ".sift.toml")); err == nil && b != 0 {
+		return b, "toml"
+	}
+	if cfg.Budget != 0 {
+		return cfg.Budget, "default"
+	}
+	if prefs, err := state.LoadPreferences(); err == nil && prefs.DefaultBudget != 0 {
+		return prefs.DefaultBudget, "default"
+	}
+	return defaultWebBudget, "default"
 }
 
 // handleFile returns a redacted, capped preview with a truncation flag.
@@ -598,7 +629,7 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"defaultStyle":  firstNonEmpty(prefs.DefaultStyle, "xml"),
-		"defaultBudget": firstNonZero(prefs.DefaultBudget, 64000),
+		"defaultBudget": firstNonZero(prefs.DefaultBudget, defaultWebBudget),
 		"theme":         firstNonEmpty(state.EffectiveTheme(prefs), "system"),
 		"showHidden":    prefs.ShowHidden,
 		"fileSort":      firstNonEmpty(prefs.FileSort, "name"),

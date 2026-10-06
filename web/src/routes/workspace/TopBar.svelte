@@ -13,6 +13,8 @@
     onOpenThemePicker?: () => void;
     budget: number;
     onBudgetChange: (b: number) => void;
+    /** Where the displayed budget came from; `custom` is a session override. */
+    budgetSource: 'toml' | 'flag' | 'default' | 'custom';
     redact: boolean;
     onRedactToggle: () => void;
     fileCount: number;
@@ -27,6 +29,7 @@
     onOpenThemePicker,
     budget,
     onBudgetChange,
+    budgetSource,
     redact,
     onRedactToggle,
     fileCount,
@@ -86,6 +89,14 @@
     <div class="topbar-right">
       <div class="budget-presets">
         <span class="hide-on-compact budget-label">budget:</span>
+        {#if budgetSource === 'toml'}
+          <span
+            class="font-mono toml-pill"
+            title="From this project's .sift.toml — presets override it for this session only"
+          >
+            .sift.toml
+          </span>
+        {/if}
         <div class="preset-group">
           {#each budgetPresets as b (b)}
             <button
@@ -190,6 +201,14 @@
     font-size: 10.5px;
     color: var(--ink-faint);
     font-family: var(--font-mono);
+  }
+  .toml-pill {
+    font-size: 9.5px;
+    color: var(--ink-soft);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 1px 5px;
+    white-space: nowrap;
   }
   .preset-group {
     display: inline-flex;

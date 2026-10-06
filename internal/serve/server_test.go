@@ -615,6 +615,88 @@ func TestPerProjectConfigIsolation(t *testing.T) {
 	}
 }
 
+// TestTreeBudgetPrecedence pins the web budget chain: serve flag >
+// project .sift.toml > persisted server default > builtin. The .sift.toml
+// always beats the persisted default, and the tree response tells the
+// client which source won so the UI can display and echo the resolved value.
+func TestTreeBudgetPrecedence(t *testing.T) {
+	srv, root := testServer(t)
+	cookies := loginCookies(t, srv)
+
+	orig, err := state.LoadPreferences()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := state.SavePreferences(orig); err != nil {
+			t.Fatal(err)
+		}
+	})
+	setPrefsBudget := func(budget int) {
+		t.Helper()
+		prefs, err := state.LoadPreferences()
+		if err != nil {
+			t.Fatal(err)
+		}
+		prefs.DefaultBudget = budget
+		if err := state.SavePreferences(state.SanitizePreferences(prefs)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setPrefsBudget(0)
+	writeToml := func(body string) {
+		t.Helper()
+		if body == "" {
+			_ = os.Remove(filepath.Join(root, ".sift.toml"))
+			return
+		}
+		if err := os.WriteFile(filepath.Join(root, ".sift.toml"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	treeBudget := func() (int, string) {
+		t.Helper()
+		rec := do(srv, "GET", "/api/tree?root="+root, nil, cookies)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("tree = %d", rec.Code)
+		}
+		var decoded struct {
+			Budget       int    `json:"budget"`
+			BudgetSource string `json:"budgetSource"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		return decoded.Budget, decoded.BudgetSource
+	}
+
+	// Nothing set anywhere: builtin.
+	writeToml("")
+	if b, src := treeBudget(); b != 64000 || src != "default" {
+		t.Fatalf("builtin = %d/%s, want 64000/default", b, src)
+	}
+	// Persisted server default applies when the project has no .sift.toml.
+	setPrefsBudget(32000)
+	if b, src := treeBudget(); b != 32000 || src != "default" {
+		t.Fatalf("persisted = %d/%s, want 32000/default", b, src)
+	}
+	// The project's .sift.toml beats the persisted default.
+	writeToml("[sift]\nbudget = 777\n")
+	if b, src := treeBudget(); b != 777 || src != "toml" {
+		t.Fatalf("toml = %d/%s, want 777/toml", b, src)
+	}
+	// Explicit operator flag beats the project file (CLI precedence).
+	srv.cfg.EngineFlagOverrides = map[string]string{"budget": "5000"}
+	if b, src := treeBudget(); b != 5000 || src != "flag" {
+		t.Fatalf("flag = %d/%s, want 5000/flag", b, src)
+	}
+	srv.cfg.EngineFlagOverrides = nil
+	// Back to toml once the flag is gone.
+	if b, src := treeBudget(); b != 777 || src != "toml" {
+		t.Fatalf("toml again = %d/%s, want 777/toml", b, src)
+	}
+}
+
 // TestPackSkippedIsArray guards the output-tab crash: an empty skip list
 // must encode as [] not null.
 func TestPackSkippedIsArray(t *testing.T) {

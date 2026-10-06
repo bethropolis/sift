@@ -78,7 +78,11 @@
 
     <section class="card">
       <label class="card-label" for="budget-input">Default Token Budget</label>
-      <p class="card-desc">Initial target budget in tokens for fresh workspace sessions.</p>
+      <p class="card-desc">
+        Initial target budget in tokens for fresh workspace sessions. Projects with
+        <code class="font-mono">budget</code> in their
+        <code class="font-mono">.sift.toml</code> use that instead.
+      </p>
 
       <div class="budget-row">
         {#each budgetPresets as b (b)}

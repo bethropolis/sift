@@ -50,6 +50,10 @@ export interface TreeFile {
 export interface TreeResult {
   root: string;
   files: TreeFile[];
+  /** Resolved token budget (flag > .sift.toml > persisted default > builtin). */
+  budget: number;
+  /** Where `budget` came from; `toml` means the project's .sift.toml won. */
+  budgetSource: 'toml' | 'flag' | 'default';
 }
 
 export interface FileContentResult {

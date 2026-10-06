@@ -310,6 +310,21 @@ func WithLocalConfig(path string) ResolveOption {
 	return func(o *resolveOpts) { o.localPath = path; o.localSet = true }
 }
 
+// LocalBudget reports the [sift].budget set in the local .sift.toml at
+// path. A missing file reads as zero (no budget); a malformed file errors.
+// Serve uses this to tell the web client which budget wins without
+// re-running the full resolution.
+func LocalBudget(path string) (int, error) {
+	cf, err := readConfigFile(path)
+	if err != nil {
+		return 0, err
+	}
+	if cf.Sift == nil {
+		return 0, nil
+	}
+	return cf.Sift.Budget, nil
+}
+
 // localConfigPathFor returns the local .sift.toml path, preferring RootDir
 // when the caller scans a directory other than cwd (e.g. `sift dump /path`).
 func localConfigPathFor(c *Config) string {

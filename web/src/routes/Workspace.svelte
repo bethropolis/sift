@@ -55,6 +55,11 @@
   // Top/footer configuration
   let selectedStyle = $state('xml');
   let budget = $state(64000);
+  // Where the displayed budget came from. A preset pick sets a session-only
+  // override (still sent with pack/smart-select); otherwise the server's
+  // resolved value wins: flag > .sift.toml > persisted default > builtin.
+  let treeBudgetSource = $state<'toml' | 'flag' | 'default'>('default');
+  let budgetOverride = $state<number | null>(null);
   let redact = $state(true);
   let showRedactionModal = $state(false);
 
@@ -76,6 +81,9 @@
     let alive = true;
     loadingTree = true;
     treeError = null;
+    // A new project starts from the server's resolved budget, not the last
+    // session's override.
+    budgetOverride = null;
 
     // Record the open so recents stay fresh; never blocks the tree.
     api.recordRecent(root).catch(() => {});
@@ -85,6 +93,12 @@
         if (!alive) return;
         files = treeRes.files;
         recents = recentsRes;
+        // Adopt the resolved budget unless the user already picked a preset
+        // while the tree was loading (their explicit pick wins).
+        if (budgetOverride === null) {
+          budget = treeRes.budget;
+          treeBudgetSource = treeRes.budgetSource;
+        }
 
         const initial: Record<string, FileSelectionMode> = {};
         for (const file of treeRes.files) {
@@ -187,6 +201,21 @@
       console.error(err);
     } finally {
       isSmartSelecting = false;
+    }
+  }
+
+  // A preset pick is a session-only override (still sent with requests).
+  // It also becomes the persisted server default so it sticks for projects
+  // without their own budget — unless a .sift.toml (or serve flag) sets one,
+  // which stays authoritative and keeps the pick session-local.
+  function handleBudgetChange(b: number) {
+    budgetOverride = b;
+    budget = b;
+    if (treeBudgetSource === 'default') {
+      void api
+        .getSettings()
+        .then((s) => api.saveSettings({ ...s, defaultBudget: b }))
+        .catch(() => {});
     }
   }
 
@@ -386,7 +415,8 @@
     {onNavigate}
     {onOpenThemePicker}
     {budget}
-    onBudgetChange={(b) => (budget = b)}
+    onBudgetChange={handleBudgetChange}
+    budgetSource={budgetOverride !== null ? 'custom' : treeBudgetSource}
     {redact}
     onRedactToggle={handleRedactionToggle}
     fileCount={files.length}

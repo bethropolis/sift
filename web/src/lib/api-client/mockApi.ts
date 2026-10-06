@@ -171,6 +171,8 @@ export async function getTree(root: string): Promise<TreeResult> {
   return {
     root,
     files: mockTreeFiles,
+    budget: 64000,
+    budgetSource: 'default',
   };
 }
 
