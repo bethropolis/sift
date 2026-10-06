@@ -15,9 +15,10 @@ export function loginError(message: string, retryAfter?: number): LoginError {
   return err;
 }
 
-/** Bounce to the login route on 401. Never returns. */
+/** Bounce to the login route on 401. Never returns. Stays put when
+ * already on the login route so a token fragment is never wiped. */
 export function handle401(): never {
-  navigate('/login');
+  if (!window.location.hash.startsWith('#/login')) navigate('/login');
   throw new Error('401 Unauthorized: please log in');
 }
 

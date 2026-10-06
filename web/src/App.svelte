@@ -1,7 +1,6 @@
 <script lang="ts">
   import { api, type ApiMeta } from './lib/api';
   import { parseHash, navigate, type RouteState } from './lib/router.svelte';
-  import { DEFAULT_THEME_ID } from './lib/themes';
   import GlobalNav from './components/GlobalNav.svelte';
   import ShortcutsModal from './components/ShortcutsModal.svelte';
   import ThemePickerModal from './components/ThemePickerModal.svelte';
@@ -41,22 +40,23 @@
   });
 
   $effect(() => {
+    // Settings ride along with an authenticated meta only: fetching them
+    // anonymously 401s, and the bounce must never run on the login route
+    // where it would wipe a token fragment before auto-submit.
     api
       .getMeta()
       .then((data) => {
         meta = data;
+        if (data.authenticated) {
+          api
+            .getSettings()
+            .then((s) => {
+              if (s.theme && s.theme !== 'system') theme = s.theme;
+            })
+            .catch(() => {});
+        }
       })
       .catch((err) => console.error('Failed to load server metadata', err));
-    // Concurrent with meta: the stored theme applies once, with no
-    // intermediate default. Unreachable server keeps the OS-follow paint.
-    api
-      .getSettings()
-      .then((s) => {
-        if (s.theme && s.theme !== 'system') theme = s.theme;
-      })
-      .catch(() => {
-        theme = DEFAULT_THEME_ID;
-      });
   });
 
   function handleHashChange() {
