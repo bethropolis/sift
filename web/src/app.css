@@ -244,6 +244,34 @@ a:focus-visible,
   border-color: var(--border-strong);
 }
 
+/* Styleable selects where supported (base-select): the picker and options
+   follow the theme; browsers without support ignore these rules and render
+   the native control. Markup stays a plain <select> either way. */
+.select,
+.select::picker(select) {
+  appearance: base-select;
+}
+.select::picker(select) {
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  padding: 4px;
+  color: var(--ink);
+}
+.select option {
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.select option:hover {
+  background-color: var(--surface-alt);
+}
+.select option:checked {
+  background-color: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
 .input-mono, .textarea-mono, .select-mono {
   font-family: var(--font-mono);
   font-size: 11px;
