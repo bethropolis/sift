@@ -56,13 +56,12 @@
   </div>
 
   <div class="topbar-right">
-    <div class="status-pill">
-      <span class="status-dot" class:remote={isRemote}></span>
-      <span>{isRemote ? 'Remote' : 'Local'}</span>
+    <span class="status-line" title={isRemote ? 'Connected to a remote sift server' : 'Local sift server'}>
+      <span class:remote={isRemote}>{isRemote ? 'Remote' : 'Local'}</span>
       {#if meta?.version}
-        <span class="status-version">({meta.version})</span>
+        <span class="status-version">· {meta.version}</span>
       {/if}
-    </div>
+    </span>
 
     <button
       onclick={onOpenThemePicker}
@@ -134,26 +133,19 @@
     align-items: center;
     gap: 10px;
   }
-  .status-pill {
+  .status-line {
     display: inline-flex;
     align-items: center;
     gap: 5px;
     font-size: 11px;
     font-family: var(--font-mono);
     color: var(--ink-soft);
-    padding: 2px 8px;
-    border-radius: 12px;
-    background-color: var(--surface-alt);
-    border: 1px solid var(--border);
+    padding: 2px 4px;
+    white-space: nowrap;
   }
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: var(--status-ok);
-  }
-  .status-dot.remote {
-    background-color: var(--accent);
+  .status-line .remote {
+    color: var(--accent);
+    font-weight: 600;
   }
   .status-version {
     color: var(--ink-faint);
