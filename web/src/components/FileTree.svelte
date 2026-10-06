@@ -10,7 +10,7 @@
   import type { TreeFile } from '../lib/api';
   import { formatTokens } from '../lib/format';
   import { cycleMode, type FileSelectionMode } from '../lib/selection';
-  import { splitHighlight } from '../lib/filter';
+  import { parsePattern, splitHighlight } from '../lib/filter';
   import { buildTree, collectDescendants } from './tree/tree';
   import { flattenRows, ROW_HEIGHT, windowRows } from './tree/rows';
   import Icon from './Icon.svelte';
@@ -168,6 +168,13 @@
 
   // Matched (non-dir) rows while filtering, for the `n/m` counter.
   let matchCount = $derived(flatRows.filter((r) => !r.isDir).length);
+  // Invalid regex/glob degrades to fuzzy (see pattern.ts); say so instead of
+  // showing a count for a pattern that isn't applying.
+  let patternInvalid = $derived.by(() => {
+    const q = filterQuery.trim();
+    if (!q) return false;
+    return parsePattern(q)?.valid === false;
+  });
   let isFiltering = $derived(filterQuery.trim() !== '');
   // Batch menu scope: just the filtered files while filtering (matches are
   // force-expanded, so all of them are in the rows); everything otherwise —
@@ -214,12 +221,17 @@
         value={filterQuery}
         oninput={(e) => onFilterChange(e.currentTarget.value)}
         onkeydown={handleFilterKey}
-        placeholder="Filter files (/)..."
+        placeholder="Filter (fuzzy, *glob, /re/)..."
+        title="Fuzzy by default · *glob ?one [abc] · /regex/ or re: · ext:go,ts · !negate · Enter jumps to first match"
         class="input input-mono filter-input"
         class:has-query={!!filterQuery}
       />
       {#if filterQuery}
-        <span class="font-mono tabular-nums match-count">{matchCount}/{files.length}</span>
+        {#if patternInvalid}
+          <span class="font-mono pattern-warn" title="Invalid pattern — matching as plain text">⚠</span>
+        {:else}
+          <span class="font-mono tabular-nums match-count">{matchCount}/{files.length}</span>
+        {/if}
         <button onclick={clearFilter} title="Clear filter (Esc)" class="filter-clear">✕</button>
       {/if}
     </div>
@@ -427,6 +439,13 @@
     color: var(--ink-faint);
     pointer-events: none;
     white-space: nowrap;
+  }
+  .pattern-warn {
+    position: absolute;
+    right: 22px;
+    font-size: 10px;
+    color: var(--status-warn);
+    pointer-events: none;
   }
   .row-name .hl {
     background-color: rgba(128, 128, 128, 0.3);

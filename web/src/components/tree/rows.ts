@@ -8,7 +8,7 @@
 
 import { modeTokens } from '../../lib/selection';
 import type { FileSelectionMode } from '../../lib/selection';
-import { fuzzyMatch, nameMatchIndices } from '../../lib/filter';
+import { matchPattern, nameMatchIndices, parsePattern } from '../../lib/filter';
 import type { FlatRow, TreeNode } from './tree';
 
 export const ROW_HEIGHT = 24;
@@ -27,6 +27,8 @@ export interface FlattenOptions {
 export function flattenRows(opts: FlattenOptions): FlatRow[] {
   const { root, descendants, fileByPath, selections, collapsedDirs } = opts;
   const query = opts.filterQuery.trim();
+  // Parsed once per query: every row reuses the compiled pattern.
+  const pat = query ? parsePattern(query) : null;
   const rows: FlatRow[] = [];
 
   const traverse = (node: TreeNode) => {
@@ -53,11 +55,11 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
           }
           if (mode === 'sigs') sigsCount++;
         }
-        if (query && !matchesQuery && fuzzyMatch(p, query)) matchesQuery = true;
+        if (pat && !matchesQuery && matchPattern(p, pat).hit) matchesQuery = true;
       }
 
-      const selfHit = query ? fuzzyMatch(node.path, query) : null;
-      if (query && !matchesQuery && !selfHit) return;
+      const selfHit = pat ? matchPattern(node.path, pat) : null;
+      if (pat && !matchesQuery && !selfHit?.hit) return;
 
       const totalFiles = filePaths.length;
       const selectedState = selectedCount === 0 ? 'none' : selectedCount === totalFiles ? 'all' : 'partial';
@@ -72,13 +74,13 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
         selectedState,
         isExpanded,
         allSigs: selectedState === 'all' && sigsCount === totalFiles,
-        match: selfHit ? nameMatchIndices(node.path, node.name, selfHit.indices) : null,
+        match: selfHit?.hit && selfHit.indices ? nameMatchIndices(node.path, node.name, selfHit.indices) : null,
       });
 
       if (isExpanded) for (const child of node.children) traverse(child);
     } else {
-      const hit = query ? fuzzyMatch(node.path, query) : null;
-      if (query && !hit) return;
+      const hit = pat ? matchPattern(node.path, pat) : null;
+      if (pat && !hit?.hit) return;
       const mode = selections[node.path] || 'full';
       const fileTokens = modeTokens(node.file?.tokens || 0, mode);
       rows.push({
@@ -90,7 +92,7 @@ export function flattenRows(opts: FlattenOptions): FlatRow[] {
         selectedState: mode === 'skip' ? 'none' : 'all',
         isExpanded: false,
         allSigs: false,
-        match: hit ? nameMatchIndices(node.path, node.name, hit.indices) : null,
+        match: hit?.hit && hit.indices ? nameMatchIndices(node.path, node.name, hit.indices) : null,
       });
     }
   };
