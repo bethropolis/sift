@@ -109,7 +109,10 @@ func New(cfg *Config, engineCfg *config.Config, log *slog.Logger) (*Server, erro
 		launchTokens: newLaunchTokens(),
 		done:         make(chan struct{}),
 	}
-	s.appCtl = newAppController(s.shutdown, nil)
+	s.appCtl = newAppController(func(reason string) {
+		s.log.Info(reason)
+		s.shutdown()
+	}, nil)
 	s.remote = s.isRemoteBind()
 	s.tls = cfg.TLSCert != "" || cfg.TLSSelfSigned
 	s.hosts = s.buildHostSet()
@@ -437,6 +440,7 @@ func (s *Server) startAppWindow(scheme, addr string) {
 		s.appLaunched = !s.cfg.KeepAlive
 		fmt.Fprintf(os.Stderr, "  %s %s\n", serveDim.Sprint("app →"), serveURL.Sprint(u.Scheme+"://"+u.Host+"/"))
 		if s.appLaunched {
+			fmt.Fprintf(os.Stderr, "  %s\n", serveDim.Sprint("closing the window stops the server"))
 			s.appCtl.arm()
 		}
 		return

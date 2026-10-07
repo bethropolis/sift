@@ -64,7 +64,7 @@ func TestControllerReconnectCancelsGrace(t *testing.T) {
 	timers := newFakeTimers()
 	var shuts int
 	var mu sync.Mutex
-	c := newAppController(func() { mu.Lock(); shuts++; mu.Unlock() }, timers.after)
+	c := newAppController(func(string) { mu.Lock(); shuts++; mu.Unlock() }, timers.after)
 	c.arm()
 
 	c.addConn()
@@ -85,7 +85,7 @@ func TestControllerGraceExpiryShutsDownOnce(t *testing.T) {
 	timers := newFakeTimers()
 	var shuts int
 	var mu sync.Mutex
-	c := newAppController(func() { mu.Lock(); shuts++; mu.Unlock() }, timers.after)
+	c := newAppController(func(string) { mu.Lock(); shuts++; mu.Unlock() }, timers.after)
 	c.arm()
 
 	c.addConn()
@@ -106,7 +106,7 @@ func TestControllerWatchdogOnlyWhenUnseen(t *testing.T) {
 	timers := newFakeTimers()
 	var shuts int
 	var mu sync.Mutex
-	c := newAppController(func() { mu.Lock(); shuts++; mu.Unlock() }, timers.after)
+	c := newAppController(func(string) { mu.Lock(); shuts++; mu.Unlock() }, timers.after)
 
 	c.arm()
 	timers.fire() // nothing reported in yet
@@ -119,7 +119,7 @@ func TestControllerWatchdogOnlyWhenUnseen(t *testing.T) {
 
 	// A second controller whose window reported in must not arm.
 	timers2 := newFakeTimers()
-	c2 := newAppController(func() { mu.Lock(); shuts++; mu.Unlock() }, timers2.after)
+	c2 := newAppController(func(string) { mu.Lock(); shuts++; mu.Unlock() }, timers2.after)
 	c2.markAlive()
 	c2.arm()
 	if timers2.armed() != 0 {
@@ -133,11 +133,42 @@ func TestControllerWatchdogOnlyWhenUnseen(t *testing.T) {
 	}
 }
 
+func TestControllerShutdownReasons(t *testing.T) {
+	// A closed window and a never-seen window must report distinct reasons,
+	// or a silent exit is indistinguishable from a crash.
+	timers := newFakeTimers()
+	var reasons []string
+	var mu sync.Mutex
+	collect := func(r string) { mu.Lock(); reasons = append(reasons, r); mu.Unlock() }
+
+	grace := newAppController(collect, timers.after)
+	grace.arm()
+	grace.addConn()
+	grace.dropConn()
+	timers.fire()
+
+	watch := newAppController(collect, timers.after)
+	watch.arm()
+	timers.fire()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reasons) != 2 {
+		t.Fatalf("shutdown reasons = %v, want 2", reasons)
+	}
+	if reasons[0] != shutdownWindowClosed {
+		t.Fatalf("grace reason = %q, want %q", reasons[0], shutdownWindowClosed)
+	}
+	if reasons[1] != shutdownWindowNeverSeen {
+		t.Fatalf("watchdog reason = %q, want %q", reasons[1], shutdownWindowNeverSeen)
+	}
+}
+
 func TestControllerCloseCancelsTimers(t *testing.T) {
 	timers := newFakeTimers()
 	var shuts int
 	var mu sync.Mutex
-	c := newAppController(func() { mu.Lock(); shuts++; mu.Unlock() }, timers.after)
+	c := newAppController(func(string) { mu.Lock(); shuts++; mu.Unlock() }, timers.after)
 	c.addConn()
 	c.dropConn()
 	c.close()
@@ -150,7 +181,7 @@ func TestAppControllerDefaultTimerIsUsable(t *testing.T) {
 	// Guards against the injected-afterFunc regression where the real timer
 	// was only created when stopped.
 	var fired bool
-	c := newAppController(func() { fired = true }, nil)
+	c := newAppController(func(string) { fired = true }, nil)
 	c.addConn()
 	c.dropConn()
 	// appShutdownGrace is 15s, so assert the constructor picked the real

@@ -26,6 +26,14 @@ const appShutdownGrace = 15 * time.Second
 // back to the password screen still keeps the server up).
 const appLaunchWatchdog = 90 * time.Second
 
+// Shutdown reasons logged when the app controller stops the server. These
+// are the only shutdown paths that would otherwise exit silently, which
+// makes a closed window indistinguishable from a crash.
+const (
+	shutdownWindowClosed    = "app window closed, shutting down"
+	shutdownWindowNeverSeen = "app window never connected, shutting down"
+)
+
 // appController tracks the app window's connection count and owns the two
 // shutdown deadlines. All state is behind one mutex; the clock and timer are
 // injected so tests never sleep.
@@ -42,11 +50,11 @@ type appController struct {
 	seen      bool
 	stopFn    func() bool
 	stopWatch func() bool
-	shutdown  func()
+	shutdown  func(reason string)
 	afterFunc func(time.Duration, func()) func() bool
 }
 
-func newAppController(shutdown func(), afterFunc func(time.Duration, func()) func() bool) *appController {
+func newAppController(shutdown func(reason string), afterFunc func(time.Duration, func()) func() bool) *appController {
 	if afterFunc == nil {
 		afterFunc = func(d time.Duration, f func()) func() bool {
 			return time.AfterFunc(d, f).Stop
@@ -102,7 +110,7 @@ func (c *appController) dropConn() {
 		idle := c.conns == 0
 		c.mu.Unlock()
 		if idle && c.shutdown != nil {
-			c.shutdown()
+			c.shutdown(shutdownWindowClosed)
 		}
 	})
 }
@@ -129,7 +137,7 @@ func (c *appController) arm() {
 		seen := c.seen
 		c.mu.Unlock()
 		if !seen && c.shutdown != nil {
-			c.shutdown()
+			c.shutdown(shutdownWindowNeverSeen)
 		}
 	})
 }
