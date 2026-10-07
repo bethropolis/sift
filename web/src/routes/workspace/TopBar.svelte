@@ -77,11 +77,11 @@
       {#if onOpenThemePicker}
         <button
           onclick={onOpenThemePicker}
-          class="btn btn-sm btn-ghost hide-on-compact theme-link"
+          class="btn btn-sm btn-ghost theme-link"
           title="Change Color Theme (t)"
         >
           <Icon name="palette" size={12} />
-          <span>Theme</span>
+          <span class="hide-on-compact">Theme</span>
         </button>
       {/if}
     </div>

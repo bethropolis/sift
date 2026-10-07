@@ -1,20 +1,29 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import type { MenuItem } from '../lib/contextmenu';
+  import { toast } from '../lib/toast.svelte';
 
   interface Props {
     x: number;
     y: number;
     items: MenuItem[];
+    /** Element that spawned the menu; focus returns here on Esc/activate. */
+    opener: HTMLElement | null;
     onClose: () => void;
   }
 
-  let { x, y, items, onClose }: Props = $props();
+  let { x, y, items, opener, onClose }: Props = $props();
   let container: HTMLDivElement | null = $state(null);
   let pos = $state({ left: x, top: y });
 
-  // Clamp into the viewport once measured; keyboard-opened menus arrive at
-  // 0,0 and land top-left, which is also handled here.
+  function focusables(): HTMLButtonElement[] {
+    if (!container) return [];
+    return [...container.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+  }
+
+  // Clamp into the viewport once measured, then park focus on the first
+  // item so arrows/Enter work immediately (mouse users never see a ring:
+  // programmatic focus from a mouse gesture skips :focus-visible).
   $effect(() => {
     void tick().then(() => {
       if (!container) return;
@@ -22,19 +31,66 @@
         left: Math.max(8, Math.min(x, window.innerWidth - container.offsetWidth - 8)),
         top: Math.max(8, Math.min(y, window.innerHeight - container.offsetHeight - 8)),
       };
+      focusables()[0]?.focus();
     });
   });
 
+  function dismiss(restoreFocus: boolean) {
+    if (restoreFocus) opener?.focus();
+    onClose();
+  }
+
+  // A rejected action (typically clipboard permission denied) surfaces as a
+  // toast instead of a silent unhandled rejection.
+  async function runItem(item: MenuItem) {
+    try {
+      await item.run();
+    } catch {
+      toast({
+        id: 'menu-action',
+        kind: 'error',
+        message: `${item.label} didn’t work — the browser may have blocked clipboard access.`,
+      });
+    }
+  }
+
   function handleWindowMouse(e: MouseEvent) {
-    if (container && !container.contains(e.target as Node)) onClose();
+    if (container && !container.contains(e.target as Node)) dismiss(false);
   }
 
   function handleWindowKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') onClose();
+    if (e.key === 'Escape') dismiss(true);
+  }
+
+  function handleMenuKey(e: KeyboardEvent) {
+    const btns = focusables();
+    const i = btns.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      (btns[i + 1] ?? btns[0])?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      (btns[i - 1] ?? btns[btns.length - 1])?.focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      btns[0]?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      btns[btns.length - 1]?.focus();
+    } else if (e.key === 'Tab') {
+      // Let focus travel on; the menu has served its purpose.
+      dismiss(false);
+    }
   }
 </script>
 
-<svelte:window onmousedown={handleWindowMouse} onkeydown={handleWindowKey} />
+<svelte:window
+  onmousedown={handleWindowMouse}
+  onkeydown={handleWindowKey}
+  onwheel={() => dismiss(false)}
+  ontouchmove={() => dismiss(false)}
+  onresize={() => dismiss(false)}
+/>
 
 <div
   bind:this={container}
@@ -43,19 +99,22 @@
   class="ctx-menu"
   style:left={`${pos.left}px`}
   style:top={`${pos.top}px`}
+  onkeydown={handleMenuKey}
 >
   {#each items as item (item.id)}
     <button
       role="menuitem"
       disabled={item.disabled}
       onclick={() => {
-        onClose();
-        void item.run();
+        dismiss(true);
+        void runItem(item);
       }}
       class="ctx-item"
     >
       <span>{item.label}</span>
-      <kbd class="font-mono ctx-hint">{item.hint}</kbd>
+      {#if item.hint}
+        <kbd class="font-mono ctx-hint">{item.hint}</kbd>
+      {/if}
     </button>
   {/each}
 </div>

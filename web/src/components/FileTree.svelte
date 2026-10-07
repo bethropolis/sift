@@ -34,6 +34,8 @@
     treeActions?: TreeFoldActions | null;
     /** Visible file order (filter- and collapse-aware) for keyboard nav. */
     visibleFilePaths?: string[];
+    /** Right-click on a row: parent builds file-aware menu items. */
+    onRowContextMenu?: (e: MouseEvent, path: string, isDir: boolean) => void;
   }
 
   // Re-exported via bind:filterInput so parents can focus the filter box.
@@ -52,6 +54,7 @@
     filterInput = $bindable(null),
     treeActions = $bindable(null),
     visibleFilePaths = $bindable([]),
+    onRowContextMenu,
   }: Props = $props();
 
   let collapsedDirs = $state<Record<string, boolean>>({});
@@ -308,6 +311,7 @@
                 if (row.isDir) toggleDirectory(node.path);
                 else onFocusFile(node.path);
               }}
+              oncontextmenu={(e) => onRowContextMenu?.(e, node.path, row.isDir)}
               onkeydown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();

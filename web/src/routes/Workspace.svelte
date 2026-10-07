@@ -13,8 +13,11 @@
   import TaskPrompt from '../components/TaskPrompt.svelte';
   import Icon from '../components/Icon.svelte';
   import TopBar from './workspace/TopBar.svelte';
-  import { formatTokens } from '../lib/format';
+  import { formatBytes, formatTokens } from '../lib/format';
   import { cycleMode, isIncluded, modeTokens, toggleMode, type FileSelectionMode } from '../lib/selection';
+  import type { MenuItem } from '../lib/contextmenu';
+  import { openCtxMenu } from '../lib/ctxmenu.svelte';
+  import { toast } from '../lib/toast.svelte';
   import { isEditingTarget, isPlainKey } from '../lib/keyboard';
   import { getUIPrefs, setUIPrefs } from '../lib/persist';
 
@@ -181,6 +184,9 @@
 
   function handleFocusFile(path: string) {
     focusedPath = path;
+    // A picked file belongs in the preview: following it there beats staring
+    // at a stale output document.
+    if (activeTab !== 'preview') activeTab = 'preview';
   }
 
   function handleModeChange(path: string, mode: FileSelectionMode) {
@@ -195,6 +201,97 @@
     const updated = { ...selections };
     for (const p of paths) updated[p] = mode;
     selections = updated;
+  }
+
+  // Right-click on an explorer row: file-aware items through the shared menu.
+  // preventDefault also keeps the App-level fallback from firing its own.
+  function handleRowContextMenu(e: MouseEvent, path: string, isDir: boolean) {
+    e.preventDefault();
+    const opener = e.target instanceof HTMLElement ? e.target : null;
+    const items: MenuItem[] = [];
+    if (!isDir) {
+      items.push({
+        id: 'open',
+        label: 'Open preview',
+        hint: 'Enter',
+        disabled: false,
+        run: () => {
+          handleFocusFile(path);
+        },
+      });
+    }
+    const fullPath = `${projectRoot.replace(/\/+$/, '')}/${path}`;
+    if (isDir) {
+      const under = files.filter((f) => f.path.startsWith(path + '/')).map((f) => f.path);
+      const anyIn = under.some((p) => (selections[p] || 'full') !== 'skip');
+      items.push(
+        anyIn
+          ? {
+              id: 'exclude-dir',
+              label: 'Exclude folder',
+              hint: '',
+              disabled: under.length === 0,
+              run: () => {
+                handleBatchModeChange(under, 'skip');
+              },
+            }
+          : {
+              id: 'include-dir',
+              label: 'Include folder',
+              hint: '',
+              disabled: under.length === 0,
+              run: () => {
+                handleBatchModeChange(under, 'full');
+              },
+            },
+      );
+    } else {
+      const mode = selections[path] || 'full';
+      // Explicit results instead of "skip → full": name what the file
+      // becomes and leave out the mode it already has.
+      const setTo = (id: string, label: string, to: FileSelectionMode, hint = ''): MenuItem => ({
+        id,
+        label,
+        hint,
+        disabled: false,
+        run: () => {
+          handleModeChange(path, to);
+        },
+      });
+      if (mode === 'full') {
+        items.push(setTo('to-sigs', 'Signatures only', 'sigs', 'M'));
+        items.push(setTo('to-skip', 'Exclude from output', 'skip', 'Space'));
+      } else if (mode === 'sigs') {
+        items.push(setTo('to-full', 'Include full file', 'full'));
+        items.push(setTo('to-skip', 'Exclude from output', 'skip', 'Space'));
+      } else {
+        items.push(setTo('to-full', 'Include as full file', 'full', 'Space'));
+        items.push(setTo('to-sigs', 'Include as signatures only', 'sigs'));
+      }
+    }
+    const copyPath = (text: string): (() => Promise<void>) => async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast({ id: 'copy-path', kind: 'success', message: 'Path copied', duration: 1800 });
+      } catch {
+        toast({ id: 'copy-path', kind: 'error', message: 'Couldn’t copy the path' });
+      }
+    };
+    items.push({
+      id: 'copy-full',
+      label: 'Copy full path',
+      hint: '',
+      disabled: false,
+      run: copyPath(fullPath),
+    });
+    items.push({
+      id: 'copy-rel',
+      label: 'Copy relative path',
+      hint: '',
+      disabled: false,
+      run: copyPath(path),
+    });
+    openCtxMenu(e.clientX, e.clientY, items, opener);
   }
 
   async function handleSmartSelect() {
@@ -286,10 +383,21 @@
         redact: true,
       });
       packResult = res;
-      await navigator.clipboard.writeText(res.document);
-      copiedNotification = true;
-      if (copyTimer) clearTimeout(copyTimer);
-      copyTimer = setTimeout(() => (copiedNotification = false), 2000);
+      try {
+        await navigator.clipboard.writeText(res.document);
+        copiedNotification = true;
+        if (copyTimer) clearTimeout(copyTimer);
+        copyTimer = setTimeout(() => (copiedNotification = false), 2000);
+      } catch (err) {
+        // The pack itself succeeded; only the clipboard write failed. Say so,
+        // and point at the output they can still copy or save.
+        console.error(err);
+        toast({
+          id: 'copy-failed',
+          kind: 'error',
+          message: 'Couldn’t copy to the clipboard — the output is ready in the Output tab.',
+        });
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -310,13 +418,22 @@
 
     const blob = new Blob([packResult.document], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
+    const filename = `${safeName}-context.${ext}`;
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${safeName}-context.${ext}`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    // An anchor click cannot report whether the browser actually saved the
+    // file (and --app windows show no download shelf), so say what we did:
+    // started the download, with the size — never "saved".
+    toast({
+      id: 'download',
+      kind: 'success',
+      message: `Downloading ${filename} · ${formatBytes(blob.size)}`,
+    });
   }
 
   // Persist layout prefs (pure view state: sidebar, tab, format, last
@@ -465,6 +582,7 @@
             bind:filterInput={filterEl}
             bind:visibleFilePaths={visiblePaths}
             bind:treeActions
+            onRowContextMenu={handleRowContextMenu}
           />
         {/if}
       </div>

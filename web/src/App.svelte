@@ -1,12 +1,14 @@
 <script lang="ts">
   import { api, type ApiMeta, type SettingsData } from './lib/api';
   import { parseHash, navigate, type RouteState } from './lib/router.svelte';
-  import { buildContextMenuItems, type MenuItem } from './lib/contextmenu';
+  import { buildContextMenuItems } from './lib/contextmenu';
+  import { closeCtxMenu, ctxMenuState, openCtxMenu } from './lib/ctxmenu.svelte';
 import { applyFavicon } from './lib/favicon';
 import { applyMeta, appState, exchangeLaunchToken, startHeartbeat } from './lib/appmode.svelte';
 import { clearHashQuery } from './lib/router.svelte';
   import GlobalNav from './components/GlobalNav.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
+  import ToastHost from './components/ToastHost.svelte';
   import ShortcutsModal from './components/ShortcutsModal.svelte';
   import ThemePickerModal from './components/ThemePickerModal.svelte';
   import Login from './routes/Login.svelte';
@@ -24,9 +26,6 @@ import { clearHashQuery } from './lib/router.svelte';
   // Settings float as a modal so opening them never navigates away from the
   // workspace (and its in-progress selection).
   let showSettings = $state(false);
-  // App-window context menu (replaces the native right-click menu).
-  // Null means closed.
-  let ctxMenu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
   // Guard so a re-render never re-exchanges a spent launch token.
   let tokenAttempted = $state(false);
   // True only while a launch token is being exchanged. Routes stay unmounted
@@ -165,7 +164,7 @@ import { clearHashQuery } from './lib/router.svelte';
 
   function handleHashChange() {
     routeState = parseHash(window.location.hash);
-    ctxMenu = null;
+    closeCtxMenu();
   }
 
   function handleGlobalKey(e: KeyboardEvent) {
@@ -196,10 +195,10 @@ import { clearHashQuery } from './lib/router.svelte';
     }
   }
 
-  // Global custom right-click menu: fields get editing verbs, selections
-  // get Copy, plain content gets Back/Forward/Reload. The builder always
-  // returns something, so the native menu never appears.
+  // Global custom right-click menu. A surface with its own items
+  // preventDefaults first (see the explorer), which we honor here.
   function handleContextMenu(e: MouseEvent) {
+    if (e.defaultPrevented) return;
     const items = buildContextMenuItems(e.target);
     e.preventDefault();
     let x = e.clientX;
@@ -210,7 +209,7 @@ import { clearHashQuery } from './lib/router.svelte';
       x = r.left + r.width / 2;
       y = r.bottom;
     }
-    ctxMenu = { x, y, items };
+    openCtxMenu(x, y, items, e.target instanceof HTMLElement ? e.target : null);
   }
 
 </script>
@@ -291,9 +290,12 @@ import { clearHashQuery } from './lib/router.svelte';
     {/if}
   {/if}
 
-  {#if ctxMenu}
-    <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxMenu.items} onClose={() => (ctxMenu = null)} />
+  {#if ctxMenuState.current}
+    {@const menu = ctxMenuState.current}
+    <ContextMenu x={menu.x} y={menu.y} items={menu.items} opener={menu.opener} onClose={closeCtxMenu} />
   {/if}
+
+  <ToastHost />
 
   <ShortcutsModal isOpen={showShortcuts} onClose={() => (showShortcuts = false)} />
 
