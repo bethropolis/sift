@@ -70,6 +70,10 @@ path exists; denied project opens log only the last two path segments.
   `DENY` framing, `same-origin` COOP/CORP, HSTS on TLS.
 - **Limits:** 5s header / 30s read timeouts, 16 KiB headers, request-context
   cancellation into scan and render.
+- **Re-attach (loopback only):** on a bind conflict with `--open`/`--app`, the
+  new process probes `GET /api/meta` (public version facts, no credentials)
+  and, only for a matching sift shape, opens the plain base URL. It never
+  learns the existing token, mints no launch token, and arms no shutdown.
 
 ## Filesystem jail
 

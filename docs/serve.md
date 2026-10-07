@@ -50,6 +50,11 @@ SIFT_APP_BROWSER=/usr/bin/chromium sift serve --app   # explicit browser
   a warning and the printed URL.
 - **Loopback only:** `--app` refuses a non-loopback `--listen`, since it would
   hand an auto-login token to a network-reachable listener.
+- **Re-attach:** if the port is already held by a live sift server (loopback
+  only), `--open`/`--app` open a window on that server instead of failing —
+  no new server, no new port. The window gets the plain URL (no auto-login;
+  use the token from the original terminal), and closing it never stops a
+  server it didn't start. Anything else on the port keeps the hard bind error.
 
 The window keeps the server alive with a single long-lived connection; the
 server sends nothing on a timer, so an idle app window costs no work. After a

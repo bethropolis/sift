@@ -320,7 +320,13 @@ func (s *Server) Run() error {
 
 	ln, err := net.Listen("tcp", s.cfg.Listen)
 	if err != nil {
-		return fmt.Errorf("listen %s: %w", s.cfg.Listen, err)
+		// --open/--app against a live sift server re-attaches a window to
+		// it instead of failing; anything else keeps the bind error (with a
+		// pointer when the occupant proves to be sift).
+		if s.maybeAttach(err) {
+			return nil
+		}
+		return bindHint(s.cfg.Listen, err)
 	}
 
 	tlsConfig, fingerprint, err := s.tlsConfig()
