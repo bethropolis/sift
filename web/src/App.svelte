@@ -1,10 +1,12 @@
 <script lang="ts">
   import { api, type ApiMeta, type SettingsData } from './lib/api';
   import { parseHash, navigate, type RouteState } from './lib/router.svelte';
+  import { buildContextMenuItems, type MenuItem } from './lib/contextmenu';
 import { applyFavicon } from './lib/favicon';
 import { applyMeta, appState, exchangeLaunchToken, startHeartbeat } from './lib/appmode.svelte';
 import { clearHashQuery } from './lib/router.svelte';
   import GlobalNav from './components/GlobalNav.svelte';
+  import ContextMenu from './components/ContextMenu.svelte';
   import ShortcutsModal from './components/ShortcutsModal.svelte';
   import ThemePickerModal from './components/ThemePickerModal.svelte';
   import Login from './routes/Login.svelte';
@@ -22,6 +24,9 @@ import { clearHashQuery } from './lib/router.svelte';
   // Settings float as a modal so opening them never navigates away from the
   // workspace (and its in-progress selection).
   let showSettings = $state(false);
+  // App-window context menu (replaces the native right-click menu, app
+  // sessions only). Null means closed / native behavior.
+  let ctxMenu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
   // Guard so a re-render never re-exchanges a spent launch token.
   let tokenAttempted = $state(false);
   // True only while a launch token is being exchanged. Routes stay unmounted
@@ -160,6 +165,7 @@ import { clearHashQuery } from './lib/router.svelte';
 
   function handleHashChange() {
     routeState = parseHash(window.location.hash);
+    ctxMenu = null;
   }
 
   function handleGlobalKey(e: KeyboardEvent) {
@@ -190,9 +196,28 @@ import { clearHashQuery } from './lib/router.svelte';
     }
   }
 
+  // App-mode right-click menu. Regular tabs return early and keep the
+  // native menu; with nothing custom to offer (plain content, no selection)
+  // the native menu stays too, so right-click never dead-ends.
+  function handleContextMenu(e: MouseEvent) {
+    if (meta?.app !== true) return;
+    const items = buildContextMenuItems(e.target);
+    if (items.length === 0) return;
+    e.preventDefault();
+    let x = e.clientX;
+    let y = e.clientY;
+    // Keyboard-opened menus arrive at 0,0: anchor on the focused element.
+    if (x === 0 && y === 0 && e.target instanceof HTMLElement) {
+      const r = e.target.getBoundingClientRect();
+      x = r.left + r.width / 2;
+      y = r.bottom;
+    }
+    ctxMenu = { x, y, items };
+  }
+
 </script>
 
-<svelte:window onhashchange={handleHashChange} onkeydown={handleGlobalKey} />
+<svelte:window onhashchange={handleHashChange} onkeydown={handleGlobalKey} oncontextmenu={handleContextMenu} />
 
 <div class="app-container">
   {#if appState.stopped}
@@ -266,6 +291,10 @@ import { clearHashQuery } from './lib/router.svelte';
         <span class="font-mono">Loading settings...</span>
       </div>
     {/if}
+  {/if}
+
+  {#if ctxMenu}
+    <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxMenu.items} onClose={() => (ctxMenu = null)} />
   {/if}
 
   <ShortcutsModal isOpen={showShortcuts} onClose={() => (showShortcuts = false)} />

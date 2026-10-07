@@ -31,7 +31,7 @@
 <header class="topbar">
   <div class="brand-group">
     <button onclick={() => onNavigate('/projects')} class="brand-btn" title="sift serve home">
-      <Icon name="logo" size={20} />
+      <Icon name="logo" size={18} />
       <span class="font-mono brand-word">sift</span>
     </button>
 
@@ -131,7 +131,7 @@
     cursor: pointer;
   }
   .brand-word {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: -0.02em;
     color: var(--ink);

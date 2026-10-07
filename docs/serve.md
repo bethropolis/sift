@@ -50,6 +50,9 @@ SIFT_APP_BROWSER=/usr/bin/chromium sift serve --app   # explicit browser
   a warning and the printed URL.
 - **Loopback only:** `--app` refuses a non-loopback `--listen`, since it would
   hand an auto-login token to a network-reachable listener.
+- **Right-click menu:** app windows replace the native context menu with a
+  minimal one (Cut/Copy/Paste/Select All in fields, Copy for selections).
+  Regular browser tabs keep their native menus.
 - **Re-attach:** if the port is already held by a live sift server (loopback
   only), `--open`/`--app` open a window on that server instead of failing —
   no new server, no new port. The window gets the plain URL (no auto-login;
