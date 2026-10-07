@@ -59,6 +59,12 @@ export function navigate(path: string) {
 
 /** Remove the token fragment after login so it never lingers in the URL. */
 export function clearHashQuery() {
-  const hashPath = window.location.hash.split('?')[0];
-  history.replaceState(null, '', hashPath === '#launch' ? '#/projects' : hashPath || '#/projects');
+  const h = window.location.hash;
+  // A launch URL keeps no path: land on projects rather than re-parsing it.
+  if (h === '#launch' || h.startsWith('#launch=')) {
+    history.replaceState(null, '', '#/projects');
+    return;
+  }
+  const hashPath = h.split('?')[0];
+  history.replaceState(null, '', hashPath || '#/projects');
 }

@@ -24,7 +24,13 @@ import { clearHashQuery } from './lib/router.svelte';
   // True only while a launch token is being exchanged. Routes stay unmounted
   // until it settles, so nothing can 401 its way to the login screen while the
   // session is still being created.
-  let launchPending = $state(false);
+  //
+  // This MUST be true on the first render when booting with a token. Effects
+  // (including the exchange below) run after first paint, and child effects
+  // run before parent ones, so initializing to false would mount Projects and
+  // fire an authenticated request before the session exists — deterministically
+  // landing on "Missing login token" despite a successful exchange.
+  let launchPending = $state(routeState.launchToken !== null);
 
   // Lazy-load Settings to keep the initial bundle small. Resolved inside an
   // effect, never during render (render-phase $state writes throw).
@@ -105,10 +111,12 @@ import { clearHashQuery } from './lib/router.svelte';
     const token = routeState.launchToken;
     if (!token || tokenAttempted) return;
     tokenAttempted = true;
-    launchPending = true;
     void (async () => {
       const ok = await exchangeLaunchToken(token);
+      // Resync: replaceState fires no hashchange, so the launch token would
+      // otherwise linger in route state forever.
       clearHashQuery();
+      routeState = parseHash(window.location.hash);
       await refreshAuth();
       // A spent or expired token leaves the user on the normal login screen
       // rather than a route that would only 401.
