@@ -65,10 +65,11 @@
   </svg>
 {:else if name === 'git'}
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={className}>
-    <circle cx="18" cy="18" r="3" />
-    <circle cx="6" cy="6" r="3" />
-    <path d="M18 6a9 9 0 0 1-9 9" />
-    <path d="M6 9v12" />
+    <circle cx="6" cy="6" r="2.75" />
+    <circle cx="6" cy="18" r="2.75" />
+    <circle cx="18" cy="6" r="2.75" />
+    <path d="M6 8.75v6.5" />
+    <path d="M15.25 6H12.5A6.5 6.5 0 0 0 6 12.5" />
   </svg>
 {:else if name === 'file'}
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class={className}>

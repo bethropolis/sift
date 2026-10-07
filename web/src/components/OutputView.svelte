@@ -7,6 +7,7 @@
     sectionLineRange,
     windowLines,
   } from '../lib/output';
+  import { getUIPrefs, setUIPrefs } from '../lib/persist';
   import Icon from './Icon.svelte';
   import Loader from './Loader.svelte';
 
@@ -23,7 +24,8 @@
   let copiedSection = $state<string | null>(null);
   let copyError = $state<string | null>(null);
   let showSkipped = $state(false);
-  let outlineOpen = $state(true);
+  // The file outline stays closed once collapsed (view state, persisted).
+  let outlineOpen = $state(getUIPrefs().outlineOpen);
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
   let containerEl: HTMLDivElement | null = $state(null);
   let scrollTop = $state(0);
@@ -58,6 +60,10 @@
     copied = false;
     copiedSection = null;
     copyError = null;
+  });
+
+  $effect(() => {
+    setUIPrefs({ outlineOpen });
   });
 
   // Document lines + UTF-8 byte starts (server sections are byte offsets).

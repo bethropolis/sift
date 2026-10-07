@@ -16,6 +16,7 @@
   import { formatTokens } from '../lib/format';
   import { cycleMode, isIncluded, modeTokens, toggleMode, type FileSelectionMode } from '../lib/selection';
   import { isEditingTarget, isPlainKey } from '../lib/keyboard';
+  import { getUIPrefs, setUIPrefs } from '../lib/persist';
 
   interface Props {
     projectRoot: string;
@@ -45,14 +46,17 @@
 
   // Pack & Document state
   let taskPrompt = $state('');
-  let activeTab = $state<'preview' | 'output'>('preview');
+  // Layout prefs (sidebar, tab) survive reloads; see lib/persist.ts.
+  let uiPrefs = getUIPrefs();
+  let activeTab = $state<'preview' | 'output'>(uiPrefs.tab);
   let packResult = $state<PackResult | null>(null);
   let isGenerating = $state(false);
   let isSmartSelecting = $state(false);
   let copiedNotification = $state(false);
 
-  // Top/footer configuration
-  let selectedStyle = $state('xml');
+  // Top/footer configuration. The format choice persists: the server default
+  // seeds it, the user's own pick is kept (see lib/persist.ts).
+  let selectedStyle = $state(uiPrefs.style);
   let budget = $state(64000);
   // Where the displayed budget came from. A preset pick sets a session-only
   // override (still sent with pack/smart-select); otherwise the server's
@@ -65,7 +69,7 @@
   let recents = $state<RecentProject[]>([]);
 
   // Responsive sidebar state
-  let sidebarOpen = $state(true);
+  let sidebarOpen = $state(uiPrefs.sidebarOpen);
   let windowWidth = $state(typeof window !== 'undefined' ? window.innerWidth : 1200);
   let isCompact = $derived(windowWidth < 900);
 
@@ -311,6 +315,12 @@
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
+
+  // Persist layout prefs (pure view state: sidebar, tab, format, last
+  // project — see lib/persist.ts). No server data is cached here.
+  $effect(() => {
+    setUIPrefs({ sidebarOpen, tab: activeTab, style: selectedStyle, lastProject: projectRoot });
+  });
 
   let filePathsList = $derived(files.map((f) => f.path));
   // Keyboard nav follows the visible tree order (filter- and

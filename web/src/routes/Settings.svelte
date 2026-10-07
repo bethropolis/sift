@@ -305,6 +305,19 @@
     gap: 12px;
     padding-bottom: 4px;
   }
+  /* Mobile: the save action must stay reachable without scrolling to the
+     very bottom of a long form. */
+  @media (max-width: 899px) {
+    .save-row {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      margin: 0 -16px -20px;
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+      background-color: var(--bg);
+      border-top: 1px solid var(--border);
+    }
+  }
   .save-btn {
     padding: 8px 18px;
   }
@@ -319,7 +332,6 @@
   @media (min-width: 900px) and (min-height: 560px) {
     .settings-page {
       max-width: 960px;
-      overflow: hidden;
     }
     .settings-form {
       display: grid;

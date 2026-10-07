@@ -41,7 +41,11 @@ jobs:
         run: |
           cd web
           test -f bun.lock || (echo "web/bun.lock missing" && exit 1)
-          grep -rn "localStorage\|sessionStorage\|{@html\|innerHTML\|eval(\|new Function\|setInterval" src --include="*.svelte" --include="*.ts" && exit 1 || true
+          # Storage access is confined to src/lib/persist.ts (UI layout prefs,
+          # namespaced + validated); it must not leak into components.
+          grep -rn "localStorage\|sessionStorage" src --include="*.svelte" && exit 1 || true
+          test "$(grep -rln 'localStorage\|sessionStorage' src --include='*.ts' | grep -v '^src/lib/persist.ts$' | wc -l)" = "0"
+          grep -rn "{@html\|innerHTML\|eval(\|new Function\|setInterval" src --include="*.svelte" --include="*.ts" && exit 1 || true
           grep -rn 'style="' src --include="*.svelte" && exit 1 || true
           echo "frontend hygiene OK"
 

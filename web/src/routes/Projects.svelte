@@ -2,6 +2,7 @@
   import { type ApiMeta } from '../lib/api';
   import Icon from '../components/Icon.svelte';
   import { isPlainKey } from '../lib/keyboard';
+  import { getUIPrefs } from '../lib/persist';
   import {
     filterEntries,
     filterRecents,
@@ -22,6 +23,9 @@
   let { meta, onOpenProject }: Props = $props();
 
   let searchInput: HTMLInputElement | null = $state(null);
+  // Last opened project, so a reload can jump straight back into the
+  // workspace (view state only — see lib/persist.ts).
+  let lastProject = $state(getUIPrefs().lastProject);
 
   let filteredRecents = $derived(filterRecents());
   let filteredEntries = $derived(filterEntries());
@@ -86,6 +90,7 @@
   $effect(() => {
     loadRecents();
     loadBrowsePrefs();
+    lastProject = getUIPrefs().lastProject;
   });
 
   // Default the browser to ~/Projects (or the first root) once meta arrives,
@@ -105,13 +110,20 @@
       <div class="subtitle-row">
         <p class="subtitle">Open a Git repository or directory to scan, rank, and pack context.</p>
 
-        {#if meta?.roots && meta.roots.length > 0}
-          <div class="roots-meta">
-            <span>Allowed roots:</span>
-            <span class="roots-list">{meta.roots.join(' · ')}</span>
-          </div>
+        {#if lastProject}
+          <button type="button" onclick={() => onOpenProject(lastProject)} class="btn btn-sm btn-primary resume-btn">
+            <Icon name="chevron-right" size={12} />
+            <span>Resume {lastProject.split('/').filter(Boolean).pop()}</span>
+          </button>
         {/if}
       </div>
+
+      {#if meta?.roots && meta.roots.length > 0}
+        <div class="roots-meta">
+          <span>Allowed roots:</span>
+          <span class="roots-list">{meta.roots.join(' · ')}</span>
+        </div>
+      {/if}
     </div>
 
     <div class="panel">
@@ -232,6 +244,14 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+  }
+  .resume-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
   }
   .panel {
     background-color: var(--panel-bg);
