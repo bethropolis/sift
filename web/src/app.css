@@ -158,6 +158,12 @@ body {
   font-family: var(--font-mono);
 }
 
+/* Text selection follows the theme accent instead of a fixed blue, so it
+   stays readable on both paper and sunken editors. */
+::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }

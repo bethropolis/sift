@@ -1,12 +1,9 @@
 /**
- * Minimal custom context menu for `--app` windows. The caller gates this to
- * app sessions; regular browser tabs keep their native menus.
- *
- * Verbs are deliberately few: editing commands inside text fields, Copy for
- * a document selection, and nothing anywhere else (the caller leaves the
- * native menu alone when there is nothing custom to offer). Paste goes
- * through the async clipboard API, so the browser shows its one-time
- * permission grant instead of failing silently.
+ * Custom context menu for the sift UI: editing commands inside text fields,
+ * Copy for a document selection, and window navigation (Back / Forward /
+ * Reload) on plain content, so every right-click resolves to something.
+ * Paste goes through the async clipboard API, so the browser shows its
+ * one-time permission grant instead of failing silently.
  */
 
 export interface MenuItem {
@@ -62,8 +59,8 @@ async function writeText(text: string): Promise<void> {
 }
 
 /**
- * Build the menu for a right-click target. Returns an empty list when there
- * is nothing custom to offer (caller keeps the native menu in that case).
+ * Build the menu for a right-click target. Always returns at least the
+ * window-navigation items, so every right-click resolves to something.
  */
 export function buildContextMenuItems(target: EventTarget | null): MenuItem[] {
   const el = target instanceof HTMLElement ? target : null;
@@ -126,5 +123,29 @@ export function buildContextMenuItems(target: EventTarget | null): MenuItem[] {
       },
     ];
   }
-  return [];
+  // Plain content: window navigation, the useful remainder of the native
+  // menu in a chromeless window (and harmless redundancy in a tab).
+  return [
+    {
+      id: 'back',
+      label: 'Back',
+      hint: 'Alt+←',
+      disabled: false,
+      run: () => history.back(),
+    },
+    {
+      id: 'forward',
+      label: 'Forward',
+      hint: 'Alt+→',
+      disabled: false,
+      run: () => history.forward(),
+    },
+    {
+      id: 'reload',
+      label: 'Reload',
+      hint: 'Ctrl+R',
+      disabled: false,
+      run: () => location.reload(),
+    },
+  ];
 }

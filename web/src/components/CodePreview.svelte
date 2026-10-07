@@ -306,9 +306,6 @@
     font-variant-ligatures: none;
     color: var(--code-text);
   }
-  .code ::selection {
-    background: rgba(125, 211, 252, 0.28);
-  }
   .code-line {
     min-height: 1.6em;
     white-space: pre;

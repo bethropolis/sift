@@ -24,8 +24,8 @@ import { clearHashQuery } from './lib/router.svelte';
   // Settings float as a modal so opening them never navigates away from the
   // workspace (and its in-progress selection).
   let showSettings = $state(false);
-  // App-window context menu (replaces the native right-click menu, app
-  // sessions only). Null means closed / native behavior.
+  // App-window context menu (replaces the native right-click menu).
+  // Null means closed.
   let ctxMenu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
   // Guard so a re-render never re-exchanges a spent launch token.
   let tokenAttempted = $state(false);
@@ -196,13 +196,11 @@ import { clearHashQuery } from './lib/router.svelte';
     }
   }
 
-  // App-mode right-click menu. Regular tabs return early and keep the
-  // native menu; with nothing custom to offer (plain content, no selection)
-  // the native menu stays too, so right-click never dead-ends.
+  // Global custom right-click menu: fields get editing verbs, selections
+  // get Copy, plain content gets Back/Forward/Reload. The builder always
+  // returns something, so the native menu never appears.
   function handleContextMenu(e: MouseEvent) {
-    if (meta?.app !== true) return;
     const items = buildContextMenuItems(e.target);
-    if (items.length === 0) return;
     e.preventDefault();
     let x = e.clientX;
     let y = e.clientY;
