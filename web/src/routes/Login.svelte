@@ -16,6 +16,10 @@
   let countdown = $state(0);
   let isLoading = $state(false);
   let tokenAttempted = $state(false);
+  // Manual entry for token mode without a fragment token: attaching to an
+  // already-running server opens the plain URL, so the user pastes the token
+  // from that server's own terminal.
+  let manualToken = $state('');
   let isLocked = $derived(countdown > 0);
 
   // Lockout countdown. A chained one-shot timer is used instead of a repeating
@@ -31,10 +35,11 @@
   });
 
   // Token mode: submit the fragment token automatically, then clear it.
+  // Without one (e.g. attached to an already-running server), the manual
+  // form below takes over instead of dead-ending.
   $effect(() => {
     if (authKind !== 'token' || tokenAttempted) return;
     if (!loginToken) {
-      error = 'Missing login token. Reopen the URL printed by `sift serve --open`, or logged at startup.';
       tokenAttempted = true;
       return;
     }
@@ -74,6 +79,31 @@
       }
     }
   }
+
+  async function handleTokenSubmit(e: SubmitEvent) {
+    e.preventDefault();
+    const token = manualToken.trim();
+    if (countdown > 0 || isLoading || !token) return;
+
+    error = null;
+    isLoading = true;
+
+    try {
+      await api.loginWithToken(token);
+      isLoading = false;
+      clearHashQuery();
+      onLoginSuccess();
+    } catch (err) {
+      isLoading = false;
+      const retryAfter = (err as { retryAfter?: number }).retryAfter;
+      if (retryAfter) {
+        countdown = retryAfter;
+        error = `Too many attempts, try again in ${retryAfter}s`;
+      } else {
+        error = err instanceof Error ? err.message : 'Login failed';
+      }
+    }
+  }
 </script>
 
 <div class="login-page">
@@ -86,8 +116,45 @@
       </div>
     </div>
 
-    {#if authKind === 'token' && !error}
+    {#if authKind === 'token' && loginToken && (!tokenAttempted || isLoading) && !error}
       <p class="info-copy">Verifying your session token...</p>
+    {/if}
+
+    {#if authKind === 'token' && tokenAttempted && !isLoading}
+      <p class="info-copy">
+        {#if loginToken}
+          That token didn't work — paste a fresh one from the terminal where
+          <code class="font-mono info-code">sift serve</code> started.
+        {:else}
+          This server is already running in another terminal — paste its login
+          token to unlock. Find it on that terminal's
+          <code class="font-mono info-code">open →</code> line.
+        {/if}
+      </p>
+      <form onsubmit={handleTokenSubmit} class="login-form">
+        <div class="field">
+          <label for="sift-token" class="field-label">Session token</label>
+          <input
+            id="sift-token"
+            type="password"
+            bind:value={manualToken}
+            disabled={isLocked || isLoading}
+            placeholder={isLocked ? `Locked (${countdown}s)` : 'Paste login token'}
+            autofocus
+            autocomplete="off"
+            spellcheck={false}
+            class="input input-mono password-input"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={isLocked || isLoading || !manualToken.trim()}
+          class="btn btn-primary submit-btn"
+        >
+          {isLoading ? 'Verifying...' : isLocked ? `Locked (${countdown}s)` : 'Unlock Picker'}
+        </button>
+      </form>
     {/if}
 
     {#if authKind === 'password'}

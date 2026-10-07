@@ -29,7 +29,7 @@ import { clearHashQuery } from './lib/router.svelte';
   // (including the exchange below) run after first paint, and child effects
   // run before parent ones, so initializing to false would mount Projects and
   // fire an authenticated request before the session exists — deterministically
-  // landing on "Missing login token" despite a successful exchange.
+  // landing on the login screen despite a successful exchange.
   let launchPending = $state(routeState.launchToken !== null);
 
   // Lazy-load Settings to keep the initial bundle small. Resolved inside an
