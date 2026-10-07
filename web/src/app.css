@@ -33,14 +33,15 @@
   --tab-active-text: #111318;
   --tab-inactive-text: #5b6371;
 
-  /* Code surfaces (calm dark for optimal readability) */
-  --code-bg: #0f1115;
-  --code-text: #e2e5ec;
-  --code-dim: #6c7484;
-  --code-accent: #d4a359;
-  --code-border: #1e222a;
-  --code-line-number: #444b59;
-  --code-gutter-bg: #0b0c10;
+  /* Code surfaces follow the theme: dark themes get a sunken dark
+     editor, light themes a paper editor (syn tokens are tuned per bg). */
+  --code-bg: #ffffff;
+  --code-text: #111318;
+  --code-dim: #5b6371;
+  --code-accent: #b58532;
+  --code-border: #e2e5eb;
+  --code-line-number: #8f97a6;
+  --code-gutter-bg: #f6f8fa;
 
   /* Preview syntax tokens (server spans; defaults = classic-light). */
   --syn-kw: #111318;
@@ -602,13 +603,13 @@ a:focus-visible,
   --tab-active-bg: #fbf1c7;
   --tab-active-text: #282828;
   --tab-inactive-text: #504945;
-  --code-bg: #1d2021;
-  --code-text: #ebdbb2;
-  --code-dim: #7c6f64;
-  --code-accent: #fabd2f;
-  --code-border: #3c3836;
-  --code-line-number: #504945;
-  --code-gutter-bg: #141516;
+  --code-bg: #fbf1c7;
+  --code-text: #282828;
+  --code-dim: #504945;
+  --code-accent: #d65d0e;
+  --code-border: #d5c4a1;
+  --code-line-number: #928374;
+  --code-gutter-bg: #f2e5bc;
   --mode-full: #79740e;
   --mode-full-bg: rgba(121, 116, 14, 0.1);
   --mode-full-border: rgba(121, 116, 14, 0.25);
@@ -807,13 +808,13 @@ a:focus-visible,
   --tab-active-bg: #ffffff;
   --tab-active-text: #1f2328;
   --tab-inactive-text: #656d76;
-  --code-bg: #0d1117;
-  --code-text: #e6edf3;
-  --code-dim: #8d96a0;
-  --code-accent: #58a6ff;
-  --code-border: #30363d;
-  --code-line-number: #484f58;
-  --code-gutter-bg: #090d13;
+  --code-bg: #ffffff;
+  --code-text: #1f2328;
+  --code-dim: #656d76;
+  --code-accent: #0969da;
+  --code-border: #d0d7de;
+  --code-line-number: #8c959f;
+  --code-gutter-bg: #f6f8fa;
   --mode-full: #1a7f37;
   --mode-full-bg: rgba(26, 127, 55, 0.1);
   --mode-full-border: rgba(26, 127, 55, 0.25);
@@ -932,13 +933,13 @@ a:focus-visible,
   --tab-active-bg: #ffffff;
   --tab-active-text: #111318;
   --tab-inactive-text: #5b6371;
-  --code-bg: #0f1115;
-  --code-text: #e2e5ec;
-  --code-dim: #6c7484;
-  --code-accent: #d4a359;
-  --code-border: #1e222a;
-  --code-line-number: #444b59;
-  --code-gutter-bg: #0b0c10;
+  --code-bg: #ffffff;
+  --code-text: #111318;
+  --code-dim: #5b6371;
+  --code-accent: #b58532;
+  --code-border: #e2e5eb;
+  --code-line-number: #8f97a6;
+  --code-gutter-bg: #f6f8fa;
   --mode-full: #257035;
   --mode-full-bg: #eef7f0;
   --mode-full-border: #cbe6d0;
