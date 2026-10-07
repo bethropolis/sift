@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type ApiMeta, type SettingsData } from './lib/api';
   import { parseHash, navigate, type RouteState } from './lib/router.svelte';
+import { applyFavicon } from './lib/favicon';
   import GlobalNav from './components/GlobalNav.svelte';
   import ShortcutsModal from './components/ShortcutsModal.svelte';
   import ThemePickerModal from './components/ThemePickerModal.svelte';
@@ -61,12 +62,18 @@
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-color-scheme: dark)').matches;
     document.documentElement.setAttribute('data-theme', dark ? 'classic-dark' : 'classic-light');
+    applyFavicon(document.documentElement.getAttribute('data-theme') ?? 'classic-dark');
   }
 
-  // Apply the theme via data-theme on <html>.
+  // Apply the theme via data-theme on <html> and retint the favicon. In system
+// mode applySystemTheme() resolves the concrete theme and does both.
   $effect(() => {
-    if (theme) document.documentElement.setAttribute('data-theme', theme);
-    else applySystemTheme();
+    if (theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      applyFavicon(theme);
+    } else {
+      applySystemTheme();
+    }
   });
 
   // Follow OS changes while in system mode.
