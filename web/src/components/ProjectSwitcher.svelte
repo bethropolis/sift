@@ -207,11 +207,7 @@
     border-bottom: 1px solid var(--border);
   }
   .head-count {
-    color: var(--ink-soft);
-    background-color: var(--surface-alt);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0 6px;
+    color: var(--ink-faint);
     font-size: 10px;
   }
   .dropdown-list {
@@ -278,12 +274,8 @@
     white-space: nowrap;
   }
   .recent-branch {
-    font-size: 9.5px;
-    color: var(--accent-ink);
-    background-color: var(--surface-alt);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0 6px;
+    font-size: 10px;
+    color: var(--ink-faint);
     white-space: nowrap;
     flex-shrink: 0;
   }

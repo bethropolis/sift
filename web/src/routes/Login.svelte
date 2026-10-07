@@ -2,6 +2,7 @@
   import { api } from '../lib/api';
   import { clearHashQuery } from '../lib/router.svelte';
   import Icon from '../components/Icon.svelte';
+  import LoaderMark from '../components/LoaderMark.svelte';
 
   interface Props {
     loginToken: string | null;
@@ -109,7 +110,7 @@
 <div class="login-page">
   <div class="login-card anim-page">
     <div class="brand-row">
-      <Icon name="logo" size={24} />
+      <Icon name="logo" size={30} />
       <div>
         <h1 class="font-mono brand-title">sift serve</h1>
         <p class="brand-sub">Developer session authentication</p>
@@ -117,7 +118,10 @@
     </div>
 
     {#if authKind === 'token' && loginToken && (!tokenAttempted || isLoading) && !error}
-      <p class="info-copy">Verifying your session token...</p>
+      <div class="verifying">
+        <LoaderMark size={16} />
+        <span class="font-mono">Verifying your session token...</span>
+      </div>
     {/if}
 
     {#if authKind === 'token' && tokenAttempted && !isLoading}
@@ -192,42 +196,90 @@
         </button>
       </form>
     {/if}
+
+    {#if authKind === 'token'}
+      <p class="assure">
+        <Icon name="lock" size={11} />
+        <span>Runs on this machine — nothing leaves localhost.</span>
+      </p>
+    {/if}
   </div>
 </div>
 
 <style>
   .login-page {
+    position: relative;
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
     background-color: var(--bg);
+    overflow: hidden;
+  }
+  /* Ambient accent glow: barely-there depth behind the card. */
+  .login-page::before {
+    content: '';
+    position: absolute;
+    top: -15%;
+    left: 50%;
+    width: min(560px, 90vw);
+    height: 320px;
+    transform: translateX(-50%);
+    background: radial-gradient(
+      ellipse at center,
+      color-mix(in srgb, var(--accent) 13%, transparent),
+      transparent 70%
+    );
+    pointer-events: none;
   }
   .login-card {
+    position: relative;
     width: 100%;
-    max-width: 380px;
+    max-width: 400px;
     background-color: var(--surface-raised);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
-    padding: 28px 24px;
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.05),
+      0 12px 40px rgba(0, 0, 0, 0.12);
+    padding: 32px 28px 24px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 18px;
+  }
+  /* Accent hairline across the top edge. */
+  .login-card::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 28px;
+    right: 28px;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
   }
   .brand-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
   }
   .brand-title {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 600;
+    letter-spacing: -0.02em;
     color: var(--ink);
   }
   .brand-sub {
-    font-size: 11px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 1px;
+  }
+  .verifying {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
     color: var(--ink-soft);
   }
   .info-copy {
@@ -265,11 +317,21 @@
   }
   .password-input {
     width: 100%;
-    height: 34px;
+    height: 38px;
+    font-size: 13px;
   }
   .submit-btn {
     width: 100%;
-    height: 34px;
+    height: 38px;
     font-size: 13px;
+  }
+  .assure {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--ink-faint);
+    padding-top: 2px;
   }
 </style>
