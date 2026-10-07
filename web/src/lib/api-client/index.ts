@@ -21,7 +21,6 @@ import {
   loginWithToken as liveLoginWithToken,
   logout as liveLogout,
   pack as livePack,
-  quitApp as liveQuitApp,
   recordRecent as liveRecordRecent,
   saveSettings as liveSaveSettings,
   smartSelect as liveSmartSelect,
@@ -39,7 +38,6 @@ import {
   loginWithToken as mockLoginWithToken,
   logout as mockLogout,
   pack as mockPack,
-  quitApp as mockQuitApp,
   recordRecent as mockRecordRecent,
   saveSettings as mockSaveSettings,
   smartSelect as mockSmartSelect,
@@ -80,8 +78,6 @@ export const api = {
   saveSettings: pick(liveSaveSettings, mockSaveSettings),
   /** App-mode auto-login (sift serve --app). */
   launchSession: pick(liveLaunchSession, mockLaunchSession),
-  /** App-mode shutdown. */
-  quitApp: pick(liveQuitApp, mockQuitApp),
 };
 
 // Re-export contracts so callers keep importing from '../lib/api'.

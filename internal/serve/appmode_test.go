@@ -224,32 +224,6 @@ func TestSessionLaunchRequiresJSONBody(t *testing.T) {
 	}
 }
 
-func TestAppQuitRefusals(t *testing.T) {
-	srv, _ := testServer(t)
-	normal := loginCookies(t, srv)
-
-	// A non-app session may not quit.
-	rec := doHeader(srv, "POST", "/api/app/quit", map[string]string{}, normal, map[string]string{launchRequestHeader: "1"})
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("non-app quit = %d, want 403", rec.Code)
-	}
-
-	// An app session without the custom header may not quit.
-	appTok, _ := srv.launchTokens.mint(true)
-	rec = do(srv, "POST", "/api/session/launch", map[string]any{"token": appTok}, nil)
-	appCookies := rec.Result().Cookies()
-	rec = doHeader(srv, "POST", "/api/app/quit", map[string]string{}, appCookies, nil)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("missing header quit = %d, want 403", rec.Code)
-	}
-
-	// With both, it is accepted.
-	rec = doHeader(srv, "POST", "/api/app/quit", map[string]string{}, appCookies, map[string]string{launchRequestHeader: "1"})
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("app quit = %d, want 202", rec.Code)
-	}
-}
-
 func TestAppHeartbeatRequiresAppLaunch(t *testing.T) {
 	srv, _ := testServer(t)
 	cookies := loginCookies(t, srv)

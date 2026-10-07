@@ -147,15 +147,4 @@ export async function launchSession(token: string): Promise<{ app: boolean }> {
     return res.json();
 }
 
-/**
- * Stop the server. The custom header is required server-side so a cross-site
- * request cannot trigger it (same-origin, so no CORS preflight is involved).
- */
-export async function quitApp(): Promise<void> {
-    const res = await fetch('/api/app/quit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Sift-Request': '1' },
-      body: '{}',
-    });
-    if (!res.ok && res.status !== 401) throw new Error(`HTTP ${res.status}`);
-}
+

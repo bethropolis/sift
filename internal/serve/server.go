@@ -139,7 +139,6 @@ func (s *Server) routes() []route {
 		// the token itself is the credential, and loopback-only via --app.
 		{"POST", "/api/session/launch", true},
 		{"GET", "/api/app/heartbeat", false},
-		{"POST", "/api/app/quit", false},
 	}
 }
 
@@ -169,7 +168,6 @@ func (s *Server) registerRoutes() {
 	// App-mode endpoints.
 	mux.Handle("POST /api/session/launch", s.apiChain(http.HandlerFunc(s.handleSessionLaunch), true))
 	mux.Handle("GET /api/app/heartbeat", s.apiChain(http.HandlerFunc(s.handleAppHeartbeat), false))
-	mux.Handle("POST /api/app/quit", s.apiChain(http.HandlerFunc(s.handleAppQuit), false))
 
 	s.mux = mux
 }

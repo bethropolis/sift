@@ -418,11 +418,6 @@ export async function launchSession(_token: string): Promise<{ app: boolean }> {
   return { app: false };
 }
 
-/** Quit is inert in the mock. */
-export async function quitApp(): Promise<void> {
-  await delay(20);
-}
-
 export async function getSettings(): Promise<SettingsData> {
   await delay(25);
   return { ...mockSettings };

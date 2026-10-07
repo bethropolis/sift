@@ -3,22 +3,11 @@ package serve
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/bethropolis/sift/internal/serve/auth"
 )
 
 func itoa(n int) string { return strconv.Itoa(n) }
-
-// appQuitGrace lets the 202 response reach the browser before the listener
-// goes away.
-const appQuitGrace = 50 * time.Millisecond
-
-// launchRequestHeader must be present on app-control POSTs. Same-origin
-// fetch with a custom header is not preflighted, and the header makes a
-// cross-site trigger (which cannot set it without a successful CORS
-// preflight, and this server never answers one) impossible.
-const launchRequestHeader = "X-Sift-Request"
 
 // handleSessionLaunch exchanges a one-time launch token for a normal session,
 // so an app window logs itself in without the password ever touching a
@@ -69,28 +58,4 @@ func (s *Server) handleAppHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appAliveStream(r, w, s.appCtl, s.done)
-}
-
-// handleAppQuit stops the server and, with it, the window. Requires an app
-// session, the custom request header, and the origin checks apiChain already
-// applies, so no other client can trigger it.
-func (s *Server) handleAppQuit(w http.ResponseWriter, r *http.Request) {
-	ok, app, _ := s.auth.SessionState(r)
-	if !ok || !app {
-		writeAPIError(w, http.StatusForbidden, "not an app session")
-		return
-	}
-	if r.Header.Get(launchRequestHeader) != "1" {
-		writeAPIError(w, http.StatusForbidden, "missing request header")
-		return
-	}
-	w.WriteHeader(http.StatusAccepted)
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-	s.log.Info("app quit requested")
-	go func() {
-		time.Sleep(appQuitGrace)
-		s.shutdown()
-	}()
 }

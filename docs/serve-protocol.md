@@ -23,7 +23,6 @@ capped at 4 MiB and must be `application/json` (415 otherwise).
 | `GET/PUT /api/settings` | session | `{defaultStyle, defaultBudget, theme, showHidden, fileSort}`; theme validated `[a-z0-9-]{1,32}` (`system` follows the OS), `fileSort` is `name` or `updated`. The theme id is shared with the TUI (mirrored to the legacy field), so changing it in either frontend changes it in both. `defaultBudget` seeds fresh workspaces (see Budget). |
 | `POST /api/session/launch` | public (token is the credential) | `{token}` → `{app}`. `--app` auto-login: one-time, 60s TTL, loopback-only. Shares the login lockout. Any failure is the same generic `401`. |
 | `GET /api/app/heartbeat` | session | SSE liveness stream, app mode only (`404` otherwise). No server-side ticker; the handler blocks until the client leaves or the server starts shutting down. |
-| `POST /api/app/quit` | app session | Requires `X-Sift-Request: 1` plus the usual Origin/Host checks; `202` then shutdown. |
 
 ## Budget
 

@@ -47,13 +47,22 @@ export async function exchangeLaunchToken(token: string): Promise<boolean> {
  */
 export function startHeartbeat(): void {
   let attempts = 0;
+  let wasOpen = false;
   const MAX_ATTEMPTS = 5;
 
   const connect = () => {
     const source = new EventSource('/api/app/heartbeat');
     source.onopen = () => {
       attempts = 0;
+      wasOpen = true;
       appState.reconnecting = false;
+    };
+    const giveUp = (ended: boolean) => {
+      appState.reconnecting = false;
+      // The stream lived and then died: the server is gone while the window
+      // is still open, so show the ended screen. A stream that never opened
+      // is just app mode being off — stay quiet.
+      if (ended && wasOpen) appState.stopped = true;
     };
     source.onerror = () => {
       source.close();
@@ -61,12 +70,12 @@ export function startHeartbeat(): void {
       // is gone. Retrying would spam the console and show a misleading
       // "reconnecting" banner, so give up and clear the notice.
       if (source.status === 401 || source.status === 404) {
-        appState.reconnecting = false;
+        giveUp(false);
         return;
       }
       // A closed port fails instantly, so a few quick retries settle it.
       if (attempts++ >= MAX_ATTEMPTS) {
-        appState.reconnecting = false;
+        giveUp(true);
         return;
       }
       appState.reconnecting = true;
@@ -74,19 +83,4 @@ export function startHeartbeat(): void {
     };
   };
   connect();
-}
-
-/**
- * Stop the server and show the ended state. Chromium refuses window.close()
- * for windows it did not open from script, which --app windows never are, so
- * the stopped screen is the normal path and closing is opportunistic.
- */
-export async function quitApp(): Promise<void> {
-  try {
-    await api.quitApp();
-  } catch {
-    // Server already gone: nothing to stop.
-  }
-  appState.stopped = true;
-  setTimeout(() => window.close(), 300);
 }

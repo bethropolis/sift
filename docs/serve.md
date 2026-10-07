@@ -43,11 +43,10 @@ SIFT_APP_BROWSER=/usr/bin/chromium sift serve --app   # explicit browser
 - **Auto-login:** the window receives a one-time token in the URL fragment
   (`#launch=…`) and exchanges it for a normal session. The token is single-use
   and expires after 60s; it is never written to logs.
-- **Quit:** app windows show a **Quit** button that stops the server too.
-  Closing the window with its native button has the same effect after ~15s.
+- **Shutdown:** closing the window stops the server after ~15s.
 - **`--keep-alive`** disables that shutdown, leaving a plain server behind.
 - **Fallbacks, none fatal:** no Chromium found → your default browser (still
-  auto-logged in, but no Quit button and no auto-shutdown); no display (SSH) →
+  auto-logged in, but no auto-shutdown); no display (SSH) →
   a warning and the printed URL.
 - **Loopback only:** `--app` refuses a non-loopback `--listen`, since it would
   hand an auto-login token to a network-reachable listener.
