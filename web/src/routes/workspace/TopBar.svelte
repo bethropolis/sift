@@ -232,7 +232,11 @@
     cursor: pointer;
     transition:
       background-color 60ms ease,
-      color 60ms ease;
+      color 60ms ease,
+      transform 80ms ease;
+  }
+  .preset-btn:active {
+    transform: scale(0.94);
   }
   .preset-btn.active {
     background-color: var(--accent);

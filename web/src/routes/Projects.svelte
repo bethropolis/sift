@@ -103,7 +103,7 @@
 
 <svelte:window onkeydown={handleWindowKey} />
 
-<div class="page">
+<div class="page anim-page">
   <div class="page-inner">
     <div class="title-block">
       <h1 class="font-mono page-title">Projects</h1>

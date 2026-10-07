@@ -203,6 +203,7 @@
     justify-content: center;
     z-index: 100;
     padding: 16px;
+    animation: fade-in 120ms ease-out;
   }
   .panel {
     width: 100%;
@@ -215,6 +216,7 @@
     display: flex;
     flex-direction: column;
     max-height: 90vh;
+    animation: pop-in 130ms ease-out;
   }
   .panel-head {
     padding: 10px 14px;

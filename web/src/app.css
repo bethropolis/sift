@@ -190,7 +190,10 @@ a:focus-visible,
   background-color: var(--surface-raised);
   color: var(--ink);
   cursor: pointer;
-  transition: background-color 70ms ease, border-color 70ms ease;
+  transition:
+    background-color 70ms ease,
+    border-color 70ms ease,
+    transform 80ms ease;
 }
 
 .btn:hover:not(:disabled) {
@@ -200,6 +203,7 @@ a:focus-visible,
 
 .btn:active:not(:disabled) {
   background-color: var(--border);
+  transform: scale(0.97);
 }
 
 .btn:disabled {
@@ -347,13 +351,20 @@ a:focus-visible,
   border-radius: 3px;
   cursor: pointer;
   line-height: 1;
-  transition: background-color 70ms ease, color 70ms ease;
+  transition:
+    background-color 70ms ease,
+    color 70ms ease,
+    transform 80ms ease;
 }
 
 .segmented-btn.active {
   background-color: var(--tab-active-bg);
   color: var(--tab-active-text);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.segmented-btn:active {
+  transform: scale(0.96);
 }
 
 /* Layout containers */
@@ -1083,6 +1094,63 @@ a:focus-visible,
   --syn-typ: #111318;
   --syn-fn: #b58532;
   --syn-var: #b58532;
+}
+
+/* ==========================================================================
+   Motion & loading primitives (subtle by design; the reduced-motion guard
+   at the top collapses every animation below to ~instant).
+   ========================================================================== */
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.98);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Route-level entrance: applied to components that mount on navigation. */
+.anim-page {
+  animation: page-in 150ms ease-out;
+}
+
+/* Floating surfaces: modal panels, popovers. */
+.anim-pop {
+  animation: pop-in 130ms ease-out;
+}
+
+/* Content-shaped loading placeholder. Size it with width/height utilities. */
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--surface-alt) 25%,
+    var(--border-subtle) 50%,
+    var(--surface-alt) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
 }
 
 /* ==========================================================================

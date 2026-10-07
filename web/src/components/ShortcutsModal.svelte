@@ -60,11 +60,13 @@
     position: fixed;
     inset: 0;
     background-color: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 9999;
     padding: 16px;
+    animation: fade-in 120ms ease-out;
   }
   .panel {
     width: 100%;
@@ -79,6 +81,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+    animation: pop-in 130ms ease-out;
   }
   .panel-head {
     display: flex;

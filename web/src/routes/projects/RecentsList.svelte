@@ -20,7 +20,11 @@
 
         <div class="recents">
           {#if projects.loadingRecents}
-            <div class="loading-pad">Loading recent projects...</div>
+            <div class="loading-pad" role="status" aria-label="Loading recent projects">
+              {#each [96, 89, 93, 84, 90] as w, i (i)}
+                <div class="skeleton skel-row" style:width={`${w}%`}></div>
+              {/each}
+            </div>
           {:else if filteredRecents.length === 0}
             <div class="empty-state">
               <Icon name="sieve-empty" size={48} />
@@ -105,11 +109,13 @@
     flex-direction: column;
   }
   .loading-pad {
-    padding: 42px 16px;
-    text-align: center;
-    color: var(--ink-faint);
-    font-size: 12px;
-    font-family: var(--font-mono);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+  }
+  .skel-row {
+    height: 15px;
   }
   .empty-state {
     display: flex;

@@ -107,7 +107,7 @@
 </script>
 
 <div class="login-page">
-  <div class="login-card">
+  <div class="login-card anim-page">
     <div class="brand-row">
       <Icon name="logo" size={24} />
       <div>

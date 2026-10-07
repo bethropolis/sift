@@ -421,7 +421,7 @@
 
 <svelte:window onkeydown={handleWindowKey} onresize={() => (windowWidth = window.innerWidth)} />
 
-<div class="workspace">
+<div class="workspace anim-page">
   <TopBar
     {sidebarOpen}
     onToggleSidebar={() => (sidebarOpen = !sidebarOpen)}
@@ -440,7 +440,11 @@
     {#if sidebarOpen}
       <div class="sidebar" class:compact={isCompact}>
         {#if loadingTree}
-          <div class="pane-status">Scanning repository...</div>
+          <div class="pane-scan" role="status" aria-label="Scanning repository">
+            {#each [96, 82, 88, 70, 92, 78] as w, i (i)}
+              <div class="skeleton skel-line" style:width={`${w}%`} style:margin-left={`${(i % 3) * 12}px`}></div>
+            {/each}
+          </div>
         {:else if treeError}
           <div class="pane-error">{treeError}</div>
         {:else}
@@ -585,14 +589,15 @@
     max-width: 100%;
     border-right: none;
   }
-  .pane-status {
+  .pane-scan {
     flex: 1;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--ink-faint);
-    font-size: 11px;
-    font-family: var(--font-mono);
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 12px;
+  }
+  .skel-line {
+    height: 12px;
   }
   .pane-error {
     flex: 1;
