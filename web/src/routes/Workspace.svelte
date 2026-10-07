@@ -24,11 +24,12 @@
     onNavigate: (path: string) => void;
     onOpenShortcuts: () => void;
     onOpenThemePicker?: () => void;
+    onOpenSettings: () => void;
     /** Reports the open project name for the window title (app mode). */
     onProjectTitle?: (name: string) => void;
   }
 
-  let { projectRoot, meta, onNavigate, onOpenShortcuts, onOpenThemePicker, onProjectTitle }: Props = $props();
+  let { projectRoot, meta, onNavigate, onOpenShortcuts, onOpenThemePicker, onOpenSettings, onProjectTitle }: Props = $props();
 
   // Tree & file state
   let files = $state<TreeFile[]>([]);
@@ -428,6 +429,7 @@
     {recents}
     {onNavigate}
     {onOpenThemePicker}
+    {onOpenSettings}
     {budget}
     onBudgetChange={handleBudgetChange}
     budgetSource={budgetOverride !== null ? 'custom' : treeBudgetSource}

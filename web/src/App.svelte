@@ -19,6 +19,9 @@ import { clearHashQuery } from './lib/router.svelte';
   let theme = $state<string | null>(null);
   let showShortcuts = $state(false);
   let showThemePicker = $state(false);
+  // Settings float as a modal so opening them never navigates away from the
+  // workspace (and its in-progress selection).
+  let showSettings = $state(false);
   // Guard so a re-render never re-exchanges a spent launch token.
   let tokenAttempted = $state(false);
   // True only while a launch token is being exchanged. Routes stay unmounted
@@ -32,14 +35,14 @@ import { clearHashQuery } from './lib/router.svelte';
   // landing on the login screen despite a successful exchange.
   let launchPending = $state(routeState.launchToken !== null);
 
-  // Lazy-load Settings to keep the initial bundle small. Resolved inside an
-  // effect, never during render (render-phase $state writes throw).
-  let settingsComponent = $state<Component | null>(null);
+  // Lazy-load the settings modal to keep the initial bundle small. Resolved
+  // inside an effect, never during render (render-phase $state writes throw).
+  let settingsModal = $state<Component | null>(null);
 
   $effect(() => {
-    if (routeState.route === 'settings' && !settingsComponent) {
-      import('./routes/Settings.svelte').then((m) => {
-        settingsComponent = m.default;
+    if (showSettings && !settingsModal) {
+      import('./components/SettingsModal.svelte').then((m) => {
+        settingsModal = m.default;
       });
     }
   });
@@ -180,6 +183,11 @@ import { clearHashQuery } from './lib/router.svelte';
       e.preventDefault();
       showThemePicker = !showThemePicker;
     }
+
+    if (e.key === ',' && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      showSettings = !showSettings;
+    }
   }
 
 </script>
@@ -201,10 +209,10 @@ import { clearHashQuery } from './lib/router.svelte';
   {#if routeState.route !== 'login' && routeState.route !== 'workspace'}
     <GlobalNav
       {meta}
-      currentRoute={routeState.route}
       currentTheme={theme ?? 'system'}
       onOpenThemePicker={() => (showThemePicker = true)}
       onOpenShortcuts={() => (showShortcuts = true)}
+      onOpenSettings={() => (showSettings = true)}
       onNavigate={navigate}
     />
   {/if}
@@ -238,17 +246,27 @@ import { clearHashQuery } from './lib/router.svelte';
         onNavigate={navigate}
         onOpenShortcuts={() => (showShortcuts = true)}
         onOpenThemePicker={() => (showThemePicker = true)}
+        onOpenSettings={() => (showSettings = true)}
         onProjectTitle={(name) => (document.title = name ? `sift: ${name}` : 'sift')}
       />
-    {:else if routeState.route === 'settings'}
-      {#if settingsComponent}
-        {@const SettingsComp = settingsComponent}
-        <SettingsComp {meta} currentTheme={theme ?? 'system'} onThemeChange={setTheme} />
-      {:else}
-        <div class="settings-fallback">Loading settings...</div>
-      {/if}
     {/if}
   </main>
+
+  {#if showSettings}
+    {#if settingsModal}
+      {@const SettingsModalComp = settingsModal}
+      <SettingsModalComp
+        {meta}
+        currentTheme={theme ?? 'system'}
+        onThemeChange={setTheme}
+        onClose={() => (showSettings = false)}
+      />
+    {:else}
+      <div role="dialog" aria-label="Settings" class="modal-loading">
+        <span class="font-mono">Loading settings...</span>
+      </div>
+    {/if}
+  {/if}
 
   <ShortcutsModal isOpen={showShortcuts} onClose={() => (showShortcuts = false)} />
 
@@ -268,6 +286,17 @@ import { clearHashQuery } from './lib/router.svelte';
     align-items: center;
     justify-content: center;
     font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  .modal-loading {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
     font-size: 12px;
     color: var(--ink-faint);
   }

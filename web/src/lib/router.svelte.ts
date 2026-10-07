@@ -1,6 +1,6 @@
 // Hash router state shared across the app. Hash routing (no history mode)
 // means the Go server needs no SPA fallback and subpath proxies keep working.
-export type RouteType = 'login' | 'projects' | 'workspace' | 'settings';
+export type RouteType = 'login' | 'projects' | 'workspace';
 
 export interface RouteState {
   path: string;
@@ -36,8 +36,10 @@ export function parseHash(hash: string): RouteState {
   if (!clean || clean === 'projects') {
     return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken };
   }
+  // Former settings page: settings now float as a modal, so a stale
+  // bookmark lands on projects instead of a dead route.
   if (clean === 'settings') {
-    return { path: '/settings', route: 'settings', projectRoot: null, loginToken: null, launchToken };
+    return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken };
   }
   if (clean.startsWith('p/')) {
     const rawRoot = clean.slice(2);

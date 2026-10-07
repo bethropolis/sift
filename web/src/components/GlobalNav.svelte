@@ -5,14 +5,14 @@
 
   interface Props {
     meta: ApiMeta | null;
-    currentRoute: string;
     currentTheme: string;
     onOpenThemePicker: () => void;
     onOpenShortcuts: () => void;
+    onOpenSettings: () => void;
     onNavigate: (path: string) => void;
   }
 
-  let { meta, currentRoute, currentTheme, onOpenThemePicker, onOpenShortcuts, onNavigate }: Props = $props();
+  let { meta, currentTheme, onOpenThemePicker, onOpenShortcuts, onOpenSettings, onNavigate }: Props = $props();
 
   let isRemote = $derived(meta?.mode === 'remote');
   let isTlsUnencrypted = $derived(isRemote && meta?.tls === false);
@@ -35,23 +35,8 @@
       <span class="font-mono brand-word">sift</span>
     </button>
 
-    <nav class="segmented-control">
-      <button
-        type="button"
-        onclick={() => onNavigate('/projects')}
-        class="segmented-btn"
-        class:active={currentRoute === 'projects'}
-      >
-        Projects
-      </button>
-      <button
-        type="button"
-        onclick={() => onNavigate('/settings')}
-        class="segmented-btn"
-        class:active={currentRoute === 'settings'}
-      >
-        Settings
-      </button>
+    <nav class="page-label" aria-label="Current page">
+      <span class="font-mono page-name">Projects</span>
     </nav>
   </div>
 
@@ -62,6 +47,15 @@
         <span class="status-version hide-on-compact">· {meta.version}</span>
       {/if}
     </span>
+
+    <button
+      onclick={onOpenSettings}
+      class="btn btn-sm btn-ghost settings-btn"
+      title="Settings (,)"
+      aria-label="Open settings"
+    >
+      <Icon name="gear" size={13} />
+    </button>
 
     <button
       onclick={onOpenThemePicker}
@@ -111,6 +105,20 @@
     display: flex;
     align-items: center;
     gap: 16px;
+  }
+  .page-label {
+    display: flex;
+    align-items: center;
+  }
+  .page-name {
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .settings-btn {
+    padding: 3px 7px;
+    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
   }
   .brand-btn {
     padding: 2px 6px;

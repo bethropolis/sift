@@ -11,6 +11,7 @@
     recents: RecentProject[];
     onNavigate: (path: string) => void;
     onOpenThemePicker?: () => void;
+    onOpenSettings: () => void;
     budget: number;
     onBudgetChange: (b: number) => void;
     /** Where the displayed budget came from; `custom` is a session override. */
@@ -25,6 +26,7 @@
     recents,
     onNavigate,
     onOpenThemePicker,
+    onOpenSettings,
     budget,
     onBudgetChange,
     budgetSource,
@@ -62,12 +64,14 @@
 
       <span class="hide-on-compact sep">|</span>
 
-      <button onclick={() => onNavigate('/projects')} class="btn btn-sm btn-ghost hide-on-compact nav-link">
-        Projects
-      </button>
-
-      <button onclick={() => onNavigate('/settings')} class="btn btn-sm btn-ghost hide-on-compact nav-link">
-        Settings
+      <button
+        onclick={onOpenSettings}
+        class="btn btn-sm btn-ghost settings-btn"
+        title="Settings (,)"
+        aria-label="Open settings"
+      >
+        <Icon name="gear" size={12} />
+        <span class="hide-on-compact">Settings</span>
       </button>
 
       {#if onOpenThemePicker}
@@ -163,6 +167,14 @@
     padding: 2px 5px;
     font-size: 11px;
     color: var(--ink-soft);
+  }
+  .settings-btn {
+    padding: 2px 5px;
+    font-size: 11px;
+    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
   .theme-link {
     padding: 2px 5px;

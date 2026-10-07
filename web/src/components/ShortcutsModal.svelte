@@ -17,6 +17,7 @@
     { key: 'Esc', desc: 'Close / blur' },
     { key: 'b', desc: 'Sidebar' },
     { key: 't', desc: 'Theme picker' },
+    { key: ',', desc: 'Settings' },
     { key: 's', desc: 'Smart select' },
     { key: 'g', desc: 'Generate' },
     { key: 'y', desc: 'Generate + copy' },
