@@ -21,6 +21,10 @@ import { clearHashQuery } from './lib/router.svelte';
   let showThemePicker = $state(false);
   // Guard so a re-render never re-exchanges a spent launch token.
   let tokenAttempted = $state(false);
+  // True only while a launch token is being exchanged. Routes stay unmounted
+  // until it settles, so nothing can 401 its way to the login screen while the
+  // session is still being created.
+  let launchPending = $state(false);
 
   // Lazy-load Settings to keep the initial bundle small. Resolved inside an
   // effect, never during render (render-phase $state writes throw).
@@ -101,10 +105,15 @@ import { clearHashQuery } from './lib/router.svelte';
     const token = routeState.launchToken;
     if (!token || tokenAttempted) return;
     tokenAttempted = true;
+    launchPending = true;
     void (async () => {
       const ok = await exchangeLaunchToken(token);
       clearHashQuery();
       await refreshAuth();
+      // A spent or expired token leaves the user on the normal login screen
+      // rather than a route that would only 401.
+      if (!ok && routeState.route !== 'login') navigate('/login');
+      launchPending = false;
       if (ok) startHeartbeat();
     })();
   });
@@ -131,6 +140,10 @@ import { clearHashQuery } from './lib/router.svelte';
     // Settings ride along with an authenticated meta only: fetching them
     // anonymously 401s, and the bounce must never run on the login route
     // where it would wipe a token fragment before auto-submit.
+    //
+    // With a launch token, refreshAuth runs from the handshake instead, after
+    // the session exists; racing it here would cache a stale "not signed in".
+    if (routeState.launchToken) return;
     void refreshAuth();
   });
 
@@ -193,7 +206,13 @@ import { clearHashQuery } from './lib/router.svelte';
   {/if}
 
   <main class="app-main">
-    {#if routeState.route === 'login'}
+    {#if launchPending}
+      <!-- The launch token is still being exchanged. Mounting a route here
+           would fire authenticated calls that 401 before the session exists,
+           and the 401 handler would bounce the window to the login screen
+           mid-handshake. -->
+      <div class="settings-fallback">Starting sift…</div>
+    {:else if routeState.route === 'login'}
       <Login
         loginToken={routeState.loginToken}
         authKind={meta?.authKind ?? 'password'}
