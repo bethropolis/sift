@@ -141,23 +141,40 @@ func hmacSHA256(key, msg []byte) []byte {
 	return mac.Sum(nil)
 }
 
-// MintCookie issues a stateless signed session cookie:
-// v1.<expiry>.<nonce>.<HMAC>. Restarting the server invalidates all
-// sessions because the key is per-process.
+// Session cookies carry an explicit app-mode flag:
+// v1.<expiry>.<app>.<nonce>.<HMAC>, where app is "1" for a session created by
+// `sift serve --app` and "0" otherwise. The claim lives inside the signed body,
+// so the server stays stateless (no session table). It needs its own field
+// rather than a nonce prefix because the cookie body is dot-delimited and a
+// base64url nonce already contains dashes and underscores.
+
+// MintCookie issues a stateless signed session cookie.
+// Restarting the server invalidates all sessions because the key is
+// per-process.
 func (a *Auth) MintCookie() *http.Cookie {
-	return a.mintCookieAt(time.Now().Add(SessionLifetime))
+	return a.MintSessionCookie(false)
 }
 
-func (a *Auth) mintCookieAt(expiry time.Time) *http.Cookie {
+// MintSessionCookie issues a session cookie, marking it as an app-mode
+// session when app is true.
+func (a *Auth) MintSessionCookie(app bool) *http.Cookie {
+	return a.mintCookieAt(time.Now().Add(SessionLifetime), app)
+}
+
+func (a *Auth) mintCookieAt(expiry time.Time, app bool) *http.Cookie {
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		panic("auth: no randomness: " + err.Error())
 	}
-	return a.cookieFor(expiry, base64.RawURLEncoding.EncodeToString(nonce[:]))
+	flag := "0"
+	if app {
+		flag = "1"
+	}
+	return a.cookieFor(expiry, flag, base64.RawURLEncoding.EncodeToString(nonce[:]))
 }
 
-func (a *Auth) cookieFor(expiry time.Time, nonce string) *http.Cookie {
-	body := cookieVersion + "." + strconv.FormatInt(expiry.Unix(), 10) + "." + nonce
+func (a *Auth) cookieFor(expiry time.Time, appFlag, nonce string) *http.Cookie {
+	body := cookieVersion + "." + strconv.FormatInt(expiry.Unix(), 10) + "." + appFlag + "." + nonce
 	sig := base64.RawURLEncoding.EncodeToString(hmacSHA256(a.key[:], []byte(body)))
 	return &http.Cookie{
 		Name:     CookieName,
@@ -172,33 +189,41 @@ func (a *Auth) cookieFor(expiry time.Time, nonce string) *http.Cookie {
 // ValidSession reports whether r carries a live session cookie, and whether
 // the cookie should be re-issued (less than half the lifetime remains).
 func (a *Auth) ValidSession(r *http.Request) (ok, reissue bool) {
+	ok, _, reissue = a.SessionState(r)
+	return ok, reissue
+}
+
+// SessionState reports whether r carries a live session cookie, whether that
+// session was created by an app-mode launch, and whether the cookie should be
+// re-issued. The app flag is authenticated: it is part of the signed body.
+func (a *Auth) SessionState(r *http.Request) (ok, app, reissue bool) {
 	c, err := r.Cookie(CookieName)
 	if err != nil {
-		return false, false
+		return false, false, false
 	}
 	parts := strings.Split(c.Value, ".")
-	if len(parts) != 4 || parts[0] != cookieVersion {
-		return false, false
+	if len(parts) != 5 || parts[0] != cookieVersion {
+		return false, false, false
 	}
-	body := strings.Join(parts[:3], ".")
-	sig, err := base64.RawURLEncoding.DecodeString(parts[3])
+	body := strings.Join(parts[:4], ".")
+	sig, err := base64.RawURLEncoding.DecodeString(parts[4])
 	if err != nil {
-		return false, false
+		return false, false, false
 	}
 	want := hmacSHA256(a.key[:], []byte(body))
 	if subtle.ConstantTimeCompare(sig, want) != 1 {
-		return false, false
+		return false, false, false
 	}
 	expiryUnix, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return false, false
+		return false, false, false
 	}
 	expiry := time.Unix(expiryUnix, 0)
 	now := time.Now()
 	if now.After(expiry) {
-		return false, false
+		return false, false, false
 	}
-	return true, expiry.Sub(now) < SessionLifetime/2
+	return true, parts[2] == "1", expiry.Sub(now) < SessionLifetime/2
 }
 
 // SecureCookie marks the session cookie Secure for TLS/proxied responses.

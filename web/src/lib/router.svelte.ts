@@ -8,10 +8,21 @@ export interface RouteState {
   projectRoot: string | null;
   /** Raw login token from #/login?token= (fragment-only, never sent). */
   loginToken: string | null;
+  /** One-time app-mode launch token from #launch= (fragment-only, never sent). */
+  launchToken: string | null;
 }
 
 export function parseHash(hash: string): RouteState {
-  const [hashPath, query] = hash.split('?');
+  // #launch=<token> arrives as a bare fragment (no '#/' path), so it is peeled
+  // off before path parsing and the app resolves it into a session.
+  let rest = hash;
+  let launchToken: string | null = null;
+  const bare = /^(?:#|\/?)launch=([^&]+)(?:&(.*))?$/.exec(rest);
+  if (bare) {
+    launchToken = bare[1];
+    rest = bare[2] ? `#/${bare[2]}` : '';
+  }
+  const [hashPath, query] = rest.split('?');
   const clean = hashPath.replace(/^#\/?/, '').replace(/^\//, '');
   if (clean === 'login') {
     let loginToken: string | null = null;
@@ -20,23 +31,23 @@ export function parseHash(hash: string): RouteState {
     } catch {
       loginToken = null;
     }
-    return { path: '/login', route: 'login', projectRoot: null, loginToken };
+    return { path: '/login', route: 'login', projectRoot: null, loginToken, launchToken };
   }
   if (!clean || clean === 'projects') {
-    return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null };
+    return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken };
   }
   if (clean === 'settings') {
-    return { path: '/settings', route: 'settings', projectRoot: null, loginToken: null };
+    return { path: '/settings', route: 'settings', projectRoot: null, loginToken: null, launchToken };
   }
   if (clean.startsWith('p/')) {
     const rawRoot = clean.slice(2);
     try {
-      return { path: `/p/${rawRoot}`, route: 'workspace', projectRoot: decodeURIComponent(rawRoot), loginToken: null };
+      return { path: `/p/${rawRoot}`, route: 'workspace', projectRoot: decodeURIComponent(rawRoot), loginToken: null, launchToken };
     } catch {
-      return { path: `/p/${rawRoot}`, route: 'workspace', projectRoot: rawRoot, loginToken: null };
+      return { path: `/p/${rawRoot}`, route: 'workspace', projectRoot: rawRoot, loginToken: null, launchToken };
     }
   }
-  return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null };
+  return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken };
 }
 
 export function navigate(path: string) {
@@ -49,5 +60,5 @@ export function navigate(path: string) {
 /** Remove the token fragment after login so it never lingers in the URL. */
 export function clearHashQuery() {
   const hashPath = window.location.hash.split('?')[0];
-  history.replaceState(null, '', hashPath || '#/projects');
+  history.replaceState(null, '', hashPath === '#launch' ? '#/projects' : hashPath || '#/projects');
 }

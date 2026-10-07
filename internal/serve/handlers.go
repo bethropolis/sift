@@ -99,9 +99,13 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		meta["mode"] = "remote"
 	}
 	if authed {
+		_, app, _ := s.auth.SessionState(r)
 		meta["roots"] = s.jail.Roots()
 		meta["styles"] = []string{"xml", "markdown", "plain"}
 		meta["defaultBrowse"] = s.defaultBrowse()
+		// app is read from the signed session, not a URL hint, so it survives
+		// reloads. Drives the Quit button and the liveness stream.
+		meta["app"] = app
 	}
 	writeJSON(w, http.StatusOK, meta)
 }

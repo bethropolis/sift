@@ -9,5 +9,8 @@
 //     containment and a credential-directory denylist;
 //   - redaction defaults on and covers previews and output;
 //   - no CORS, strict security headers, Host/Origin/fetch-metadata checks;
-//   - idle means zero: no tickers, watchers, caches, or polling.
+//   - idle means zero: no tickers, watchers, caches, or polling. The only
+//     exception is --app, where a client-held liveness connection decides when
+//     the server may exit; it is armed solely by a real app launch and carries
+//     no server-side heartbeat.
 package serve

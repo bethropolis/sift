@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ApiMeta } from '../lib/api';
   import { getThemeById } from '../lib/themes';
+  import { quitApp } from '../lib/appmode.svelte';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -19,6 +20,13 @@
   let themeInfo: { name: string } = $derived(
     currentTheme === 'system' ? { name: 'System' } : getThemeById(currentTheme),
   );
+  // Quit stops the server, then the window goes with it.
+  async function onQuit() {
+    await quitApp();
+  }
+  // Only meaningful in a chromeless app window, where quitting should also
+  // stop the server rather than leave it running behind a closed window.
+  let isApp = $derived(meta?.app === true);
 </script>
 
 {#if isTlsUnencrypted}
@@ -73,6 +81,13 @@
       <span class="theme-name">{themeInfo.name}</span>
       <kbd class="font-mono hide-on-compact theme-kbd">t</kbd>
     </button>
+
+    {#if isApp}
+      <button onclick={onQuit} class="btn btn-sm btn-ghost quit-btn" title="Stop sift and close this window">
+        <Icon name="power" size={12} />
+        <span>Quit</span>
+      </button>
+    {/if}
 
     <button
       onclick={onOpenShortcuts}
@@ -173,6 +188,13 @@
   .theme-kbd {
     font-size: 9px;
     opacity: 0.6;
+  }
+  .quit-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--status-danger);
+    border-color: var(--border);
   }
   .shortcuts-btn {
     padding: 3px 8px;

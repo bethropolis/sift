@@ -16,6 +16,8 @@ export interface ApiMeta {
   defaultBrowse?: string;
   authKind: 'token' | 'password';
   authenticated: boolean;
+  /** Session came from `sift serve --app`; drives Quit + the liveness stream. */
+  app?: boolean;
 }
 
 export interface RecentProject {

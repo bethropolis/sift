@@ -412,6 +412,17 @@ export async function pack(payload: PackPayload): Promise<PackResult> {
   };
 }
 
+/** App-mode auto-login is inert in the mock: no server to log into. */
+export async function launchSession(_token: string): Promise<{ app: boolean }> {
+  await delay(40);
+  return { app: false };
+}
+
+/** Quit is inert in the mock. */
+export async function quitApp(): Promise<void> {
+  await delay(20);
+}
+
 export async function getSettings(): Promise<SettingsData> {
   await delay(25);
   return { ...mockSettings };

@@ -2,6 +2,8 @@
   import { api, type ApiMeta, type SettingsData } from './lib/api';
   import { parseHash, navigate, type RouteState } from './lib/router.svelte';
 import { applyFavicon } from './lib/favicon';
+import { applyMeta, appState, exchangeLaunchToken, startHeartbeat } from './lib/appmode.svelte';
+import { clearHashQuery } from './lib/router.svelte';
   import GlobalNav from './components/GlobalNav.svelte';
   import ShortcutsModal from './components/ShortcutsModal.svelte';
   import ThemePickerModal from './components/ThemePickerModal.svelte';
@@ -17,6 +19,8 @@ import { applyFavicon } from './lib/favicon';
   let theme = $state<string | null>(null);
   let showShortcuts = $state(false);
   let showThemePicker = $state(false);
+  // Guard so a re-render never re-exchanges a spent launch token.
+  let tokenAttempted = $state(false);
 
   // Lazy-load Settings to keep the initial bundle small. Resolved inside an
   // effect, never during render (render-phase $state writes throw).
@@ -90,10 +94,26 @@ import { applyFavicon } from './lib/favicon';
   // the mount-time fetch is unauthenticated on the login path, so without
   // the second call the redirect would keep the OS-guess theme (and stale
   // meta) instead of the saved one.
+  // App-mode auto-login. The launch token lives in the URL fragment, so it is
+  // exchanged over POST and then stripped from the URL. A failure (expired or
+  // already used) is not an error: the user falls through to the login screen.
+  $effect(() => {
+    const token = routeState.launchToken;
+    if (!token || tokenAttempted) return;
+    tokenAttempted = true;
+    void (async () => {
+      const ok = await exchangeLaunchToken(token);
+      clearHashQuery();
+      await refreshAuth();
+      if (ok) startHeartbeat();
+    })();
+  });
+
   async function refreshAuth(): Promise<void> {
     try {
       const data = await api.getMeta();
       meta = data;
+      applyMeta(data);
       if (!data.authenticated) return;
       try {
         const s = await api.getSettings();
@@ -146,6 +166,17 @@ import { applyFavicon } from './lib/favicon';
 <svelte:window onhashchange={handleHashChange} onkeydown={handleGlobalKey} />
 
 <div class="app-container">
+  {#if appState.stopped}
+    <!-- The server is gone. Never leave a live-looking UI pointed at a dead
+         listener; window.close() is usually refused for --app windows, so
+         this screen is the normal end state. -->
+    <div class="stopped">
+      <div class="stopped-card">
+        <span class="font-mono stopped-title">sift has stopped.</span>
+        <span class="stopped-sub">You can close this window.</span>
+      </div>
+    </div>
+  {:else}
   {#if routeState.route !== 'login' && routeState.route !== 'workspace'}
     <GlobalNav
       {meta}
@@ -155,6 +186,10 @@ import { applyFavicon } from './lib/favicon';
       onOpenShortcuts={() => (showShortcuts = true)}
       onNavigate={navigate}
     />
+  {/if}
+
+  {#if appState.reconnecting}
+    <div role="status" class="reconnect-banner">Disconnected, retrying…</div>
   {/if}
 
   <main class="app-main">
@@ -176,6 +211,7 @@ import { applyFavicon } from './lib/favicon';
         onNavigate={navigate}
         onOpenShortcuts={() => (showShortcuts = true)}
         onOpenThemePicker={() => (showThemePicker = true)}
+        onProjectTitle={(name) => (document.title = name ? `sift: ${name}` : 'sift')}
       />
     {:else if routeState.route === 'settings'}
       {#if settingsComponent}
@@ -195,6 +231,7 @@ import { applyFavicon } from './lib/favicon';
     onSelectTheme={setTheme}
     onClose={() => (showThemePicker = false)}
   />
+  {/if}
 </div>
 
 <style>
@@ -204,6 +241,37 @@ import { applyFavicon } from './lib/favicon';
     align-items: center;
     justify-content: center;
     font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  .reconnect-banner {
+    padding: 4px 16px;
+    font-size: 11.5px;
+    text-align: center;
+    color: var(--status-warn);
+    background-color: rgba(128, 128, 128, 0.12);
+    border-bottom: 1px solid var(--border);
+  }
+  .stopped {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg);
+  }
+  .stopped-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+    padding: 24px;
+  }
+  .stopped-title {
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .stopped-sub {
     font-size: 12px;
     color: var(--ink-faint);
   }

@@ -9,6 +9,7 @@ context document.
 ```bash
 sift serve                        # http://127.0.0.1:7777, token printed on stderr
 sift serve --open                 # also open the browser
+sift serve --app                  # chromeless app window; server exits with it
 sift serve --root ~/code          # restrict browsable projects
 sift serve --idle-timeout 30m     # exit after 30 minutes without requests
 ```
@@ -23,6 +24,38 @@ per-process key, so restarting the server logs everyone out.
 
 Recents, default style/budget, and the theme are shared with the TUI through
 `~/.config/sift/` — set them in either surface.
+
+## App mode
+
+`sift serve --app` opens the UI in a chromeless browser window (Chromium's
+`--app` mode) instead of a tab, logs it in automatically, and stops the server
+when that window goes away — so a desktop app never lingers as a headless
+daemon.
+
+```bash
+sift serve --app                    # app window; server exits with the window
+sift serve --app --keep-alive       # keep serving after the window closes
+SIFT_APP_BROWSER=/usr/bin/chromium sift serve --app   # explicit browser
+```
+
+- **Browsers:** Chromium family only (Chrome, Chromium, Edge, Brave). Firefox
+  and Safari have no app mode and take the fallback path.
+- **Auto-login:** the window receives a one-time token in the URL fragment
+  (`#launch=…`) and exchanges it for a normal session. The token is single-use
+  and expires after 60s; it is never written to logs.
+- **Quit:** app windows show a **Quit** button that stops the server too.
+  Closing the window with its native button has the same effect after ~15s.
+- **`--keep-alive`** disables that shutdown, leaving a plain server behind.
+- **Fallbacks, none fatal:** no Chromium found → your default browser (still
+  auto-logged in, but no Quit button and no auto-shutdown); no display (SSH) →
+  a warning and the printed URL.
+- **Loopback only:** `--app` refuses a non-loopback `--listen`, since it would
+  hand an auto-login token to a network-reachable listener.
+
+The window keeps the server alive with a single long-lived connection; the
+server sends nothing on a timer, so an idle app window costs no work. After a
+laptop sleep the UI shows a brief "reconnecting" banner and retries by itself,
+or the ended screen if the server is really gone.
 
 ## Remote use
 

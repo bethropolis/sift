@@ -63,6 +63,29 @@ func do(srv *Server, method, target string, body any, cookies []*http.Cookie) *h
 	return rec
 }
 
+// doHeader is do plus extra request headers (used for the app-control header).
+func doHeader(srv *Server, method, target string, body any, cookies []*http.Cookie, headers map[string]string) *httptest.ResponseRecorder {
+	var reader io.Reader
+	if body != nil {
+		data, _ := json.Marshal(body)
+		reader = bytes.NewReader(data)
+	}
+	req := httptest.NewRequest(method, target, reader)
+	req.Host = "127.0.0.1:7777"
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	srv.mux.ServeHTTP(rec, req)
+	return rec
+}
+
 func loginCookies(t *testing.T, srv *Server) []*http.Cookie {
 	t.Helper()
 	rec := do(srv, "POST", "/api/login", map[string]string{"token": srv.auth.Token()}, nil)
@@ -75,12 +98,14 @@ func loginCookies(t *testing.T, srv *Server) []*http.Cookie {
 }
 
 // TestPublicRouteSet asserts the public set is exactly static assets,
-// GET /api/meta, and POST /api/login; everything else 401s without a session.
+// GET /api/meta, POST /api/login, and POST /api/session/launch (whose body
+// token is the credential); everything else 401s without a session.
 func TestPublicRouteSet(t *testing.T) {
 	srv, _ := testServer(t)
 
 	public := map[string]bool{
 		"GET /": true, "GET /api/meta": true, "POST /api/login": true,
+		"POST /api/session/launch": true,
 	}
 	// /assets/* is public when the file exists; the test build embeds the
 	// real UI, so probe one known asset instead of enumerating.

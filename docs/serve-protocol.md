@@ -21,6 +21,9 @@ capped at 4 MiB and must be `application/json` (415 otherwise).
 | `POST /api/smart-select` | session | `{root, budget}` → `{selections: {path: full\|sigs\|skip}}`. |
 | `POST /api/pack` | session | `{root, selections, budget, style, prompt, redact}` → `{document, tokens, fileCount, redactions, skipped, sections}`. At most 2 concurrent packs (503 otherwise. `sections` is always an array of `{path, tokens, start, end}` byte ranges into `document` (XML/Markdown/Plain) for outline navigation; empty when no files are kept. |
 | `GET/PUT /api/settings` | session | `{defaultStyle, defaultBudget, theme, showHidden, fileSort}`; theme validated `[a-z0-9-]{1,32}` (`system` follows the OS), `fileSort` is `name` or `updated`. The theme id is shared with the TUI (mirrored to the legacy field), so changing it in either frontend changes it in both. `defaultBudget` seeds fresh workspaces (see Budget). |
+| `POST /api/session/launch` | public (token is the credential) | `{token}` → `{app}`. `--app` auto-login: one-time, 60s TTL, loopback-only. Shares the login lockout. Any failure is the same generic `401`. |
+| `GET /api/app/heartbeat` | session | SSE liveness stream, app mode only (`404` otherwise). No server-side ticker; the handler blocks until the client leaves or the server starts shutting down. |
+| `POST /api/app/quit` | app session | Requires `X-Sift-Request: 1` plus the usual Origin/Host checks; `202` then shutdown. |
 
 ## Budget
 
@@ -44,9 +47,10 @@ path exists; denied project opens log only the last two path segments.
 - **Password:** compared as `HMAC-SHA256(key, candidate)` vs
   `HMAC-SHA256(key, password)` with `subtle.ConstantTimeCompare`. Never
   persisted; restart-safe because there is nothing to persist.
-- **Session cookie:** `v1.<expiry>.<nonce>.<HMAC>`, per-process key, 12h
-  lifetime, re-issued under half-life. `HttpOnly; SameSite=Strict; Path=/`,
-  `Secure` on TLS (or trusted-proxy https).
+- **Session cookie:** `v1.<expiry>.<app>.<nonce>.<HMAC>`, per-process key, 12h
+  lifetime, re-issued under half-life. `app` is `1` for a session created by a
+  `--app` launch token, so app mode survives reloads without server state.
+  `HttpOnly; SameSite=Strict; Path=/`, `Secure` on TLS (or trusted-proxy https).
 - **Throttling:** exponential per-IP backoff (first failure answers 401, the
   next waits) plus a global rate cap; 429 carries `retryAfter`. Pruned lazily.
 - **Public set:** static assets, `GET /api/meta` (minimal), `POST /api/login`.

@@ -38,6 +38,8 @@ func registerServeFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&serveCfg.InsecureHTTP, "insecure-http", false, "Remote without TLS (loud warning)")
 	fs.DurationVar(&serveCfg.IdleTimeout, "idle-timeout", 0, "Exit after no requests for this long (e.g. '30m')")
 	fs.BoolVar(&serveCfg.Open, "open", false, "Open the browser (local only)")
+	fs.BoolVar(&serveCfg.App, "app", false, "Open the UI in a chromeless app window and stop the server with it (local only)")
+	fs.BoolVar(&serveCfg.KeepAlive, "keep-alive", false, "With --app, keep serving after the window closes")
 }
 
 // serveCmd starts the browser-frontend server: an embedded Svelte SPA backed
@@ -49,7 +51,12 @@ var serveCmd = &cobra.Command{
 
 Local use stays loopback-only with a generated token; opening the printed
 URL logs in automatically. Remote use requires --allow-remote plus a
-password, explicit roots and hosts, and exactly one TLS story.`,
+password, explicit roots and hosts, and exactly one TLS story.
+
+With --app the UI opens in a chromeless Chromium window, logs itself in with
+a short-lived one-time token, and the server exits when that window closes
+(use --keep-alive to keep it running). Falls back to a normal browser tab,
+then to the printed URL.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Snapshot explicitly-passed flags before profile resolution: each
 		// request re-applies them over the target project's own .sift.toml

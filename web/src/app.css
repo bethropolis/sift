@@ -359,7 +359,12 @@ a:focus-visible,
 .app-container {
   display: flex;
   flex-direction: column;
+  /* dvh tracks the real visible height, which matters in a chromeless app
+     window with no browser chrome and on mobile with dynamic toolbars. */
   height: 100vh;
+  height: 100dvh;
+  /* App windows should not rubber-band or chain-scroll into the page. */
+  overscroll-behavior: none;
   width: 100vw;
   background-color: var(--bg);
 }

@@ -29,6 +29,11 @@ type Config struct {
 	InsecureHTTP    bool
 	IdleTimeout     time.Duration
 	Open            bool
+	// App launches the UI in a chromeless browser window and, unless
+	// KeepAlive is set, stops the server when that window goes away.
+	App bool
+	// KeepAlive suppresses the app-window shutdown (only meaningful with App).
+	KeepAlive bool
 	// EngineFlagOverrides carries operator-passed engine flags (name → value)
 	// recorded before profile resolution. Each request re-applies them over
 	// the target project's own .sift.toml, so CLI flag precedence holds
@@ -57,6 +62,14 @@ func (c *Config) Validate() (*auth.Auth, error) {
 
 	if c.Open && remote {
 		return nil, fmt.Errorf("--open is local-only; refusing non-loopback bind %q", c.Listen)
+	}
+	if c.App && remote {
+		// An app window carries an auto-login token and stops the server when
+		// it closes; neither belongs on a listener other machines can reach.
+		return nil, fmt.Errorf("--app is local-only; refusing non-loopback bind %q", c.Listen)
+	}
+	if c.KeepAlive && !c.App {
+		return nil, fmt.Errorf("--keep-alive only applies to --app")
 	}
 	if port == "0" && !remote {
 		// Explicit :0 is honored (never a silent fallback); nothing to do.

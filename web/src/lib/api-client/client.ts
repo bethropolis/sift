@@ -132,3 +132,30 @@ export async function saveSettings(settings: SettingsData): Promise<void> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return;
 }
+
+/**
+ * Exchange a one-time app-mode launch token for a session cookie. The token
+ * travels in the URL fragment, so it is submitted once here and then cleared.
+ */
+export async function launchSession(token: string): Promise<{ app: boolean }> {
+    const res = await fetch('/api/session/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+/**
+ * Stop the server. The custom header is required server-side so a cross-site
+ * request cannot trigger it (same-origin, so no CORS preflight is involved).
+ */
+export async function quitApp(): Promise<void> {
+    const res = await fetch('/api/app/quit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Sift-Request': '1' },
+      body: '{}',
+    });
+    if (!res.ok && res.status !== 401) throw new Error(`HTTP ${res.status}`);
+}

@@ -24,9 +24,11 @@
     onNavigate: (path: string) => void;
     onOpenShortcuts: () => void;
     onOpenThemePicker?: () => void;
+    /** Reports the open project name for the window title (app mode). */
+    onProjectTitle?: (name: string) => void;
   }
 
-  let { projectRoot, meta, onNavigate, onOpenShortcuts, onOpenThemePicker }: Props = $props();
+  let { projectRoot, meta, onNavigate, onOpenShortcuts, onOpenThemePicker, onProjectTitle }: Props = $props();
 
   // Tree & file state
   let files = $state<TreeFile[]>([]);
@@ -329,6 +331,11 @@
   let navList = $derived(sidebarOpen && visiblePaths.length > 0 ? visiblePaths : filePathsList);
   let stylesList = $derived(meta?.styles || ['xml', 'markdown', 'plain']);
   let projectName = $derived(projectRoot.split('/').filter(Boolean).pop() || 'project');
+
+  // App windows show this in their titlebar; the browser tab keeps its own.
+  $effect(() => {
+    onProjectTitle?.(projectName);
+  });
 
   function focusFilter() {
     if (!sidebarOpen) sidebarOpen = true;

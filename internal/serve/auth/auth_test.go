@@ -61,14 +61,14 @@ func TestCookieRoundTrip(t *testing.T) {
 func TestCookieExpiryAndReissue(t *testing.T) {
 	a, _ := NewToken("x")
 
-	expired := a.mintCookieAt(time.Now().Add(-time.Minute))
+	expired := a.mintCookieAt(time.Now().Add(-time.Minute), false)
 	r := httptest.NewRequest("GET", "/", nil)
 	r.AddCookie(expired)
 	if ok, _ := a.ValidSession(r); ok {
 		t.Fatal("expired cookie accepted")
 	}
 
-	old := a.mintCookieAt(time.Now().Add(time.Hour)) // < half of 12h
+	old := a.mintCookieAt(time.Now().Add(time.Hour), false) // < half of 12h
 	r2 := httptest.NewRequest("GET", "/", nil)
 	r2.AddCookie(old)
 	if ok, reissue := a.ValidSession(r2); !ok || !reissue {

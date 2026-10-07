@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -62,6 +63,18 @@ type Server struct {
 
 	idleMu    sync.Mutex
 	idleTimer *time.Timer
+
+	// App mode. launchTokens backs auto-login for the launched window; appCtl
+	// owns the window-liveness shutdown. done is closed at the start of every
+	// shutdown so long-lived handlers (the heartbeat stream) unwind before
+	// Shutdown waits on them.
+	launchTokens *launchTokens
+	appCtl       *appController
+	done         chan struct{}
+	shutdownOnce sync.Once
+	// appLaunched records that a chromeless window actually started, so the
+	// liveness shutdown only arms after a real launch.
+	appLaunched bool
 }
 
 // route describes one registered route for the enumeration test.
@@ -86,14 +99,17 @@ func New(cfg *Config, engineCfg *config.Config, log *slog.Logger) (*Server, erro
 		log = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 	s := &Server{
-		cfg:         cfg,
-		engineCfg:   engineCfg,
-		auth:        a,
-		jail:        j,
-		log:         log,
-		packSem:     make(chan struct{}, 2),
-		syntaxCache: highlight.NewSyntaxCache(),
+		cfg:          cfg,
+		engineCfg:    engineCfg,
+		auth:         a,
+		jail:         j,
+		log:          log,
+		packSem:      make(chan struct{}, 2),
+		syntaxCache:  highlight.NewSyntaxCache(),
+		launchTokens: newLaunchTokens(),
+		done:         make(chan struct{}),
 	}
+	s.appCtl = newAppController(s.shutdown, nil)
 	s.remote = s.isRemoteBind()
 	s.tls = cfg.TLSCert != "" || cfg.TLSSelfSigned
 	s.hosts = s.buildHostSet()
@@ -119,6 +135,11 @@ func (s *Server) routes() []route {
 		{"POST", "/api/pack", false},
 		{"GET", "/api/settings", false},
 		{"PUT", "/api/settings", false},
+		// Auto-login for the launched window. Public like /api/login because
+		// the token itself is the credential, and loopback-only via --app.
+		{"POST", "/api/session/launch", true},
+		{"GET", "/api/app/heartbeat", false},
+		{"POST", "/api/app/quit", false},
 	}
 }
 
@@ -144,6 +165,11 @@ func (s *Server) registerRoutes() {
 	mux.Handle("POST /api/pack", s.apiChain(http.HandlerFunc(s.handlePack), false))
 	mux.Handle("GET /api/settings", s.apiChain(http.HandlerFunc(s.handleSettingsGet), false))
 	mux.Handle("PUT /api/settings", s.apiChain(http.HandlerFunc(s.handleSettingsPut), false))
+
+	// App-mode endpoints.
+	mux.Handle("POST /api/session/launch", s.apiChain(http.HandlerFunc(s.handleSessionLaunch), true))
+	mux.Handle("GET /api/app/heartbeat", s.apiChain(http.HandlerFunc(s.handleAppHeartbeat), false))
+	mux.Handle("POST /api/app/quit", s.apiChain(http.HandlerFunc(s.handleAppQuit), false))
 
 	s.mux = mux
 }
@@ -258,12 +284,31 @@ func (s *Server) idleReset(next http.Handler) http.Handler {
 	})
 }
 
-// shutdown gracefully stops the server with a 5s deadline, cancelling
-// in-flight work via request contexts.
+// shutdown gracefully stops the server. It is safe to call from several
+// places at once (signal, idle timeout, app window quit or window-closed):
+// the first call wins and later ones are no-ops.
+//
+// Long-lived handlers are released before Shutdown runs. http.Server.Shutdown
+// waits for active connections to go idle and does NOT cancel request
+// contexts, so an open heartbeat stream would otherwise hold shutdown open
+// for the full deadline. Closing done first makes those handlers return.
 func (s *Server) shutdown() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_ = s.httpSrv.Shutdown(ctx)
+	s.shutdownOnce.Do(func() {
+		close(s.done)
+		if s.appCtl != nil {
+			s.appCtl.close()
+		}
+		if s.httpSrv == nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.httpSrv.Shutdown(ctx); err != nil {
+			// Deadline hit (or already closed): force the listener down so the
+			// process can exit instead of hanging on a stuck connection.
+			_ = s.httpSrv.Close()
+		}
+	})
 }
 
 // Run binds (refusing to start on any misconfiguration), prints the startup
@@ -333,9 +378,13 @@ func (s *Server) Run() error {
 			fingerprint)
 	}
 	if !s.remote {
-		fmt.Fprintf(os.Stderr, "  %s %s\n",
-			serveDim.Sprint("open →"),
-			serveURL.Sprintf("%s://%s/#/login?token=%s", scheme, addr, s.auth.Token()))
+		// App mode prints its own (token-free) line; the startup token URL
+		// would be noise there and is deliberately not shown.
+		if !s.cfg.App {
+			fmt.Fprintf(os.Stderr, "  %s %s\n",
+				serveDim.Sprint("open →"),
+				serveURL.Sprintf("%s://%s/#/login?token=%s", scheme, addr, s.auth.Token()))
+		}
 	} else {
 		// Remote logins are password-only, so print plain URLs: one per
 		// usable LAN address, ready to type into a phone browser.
@@ -350,7 +399,9 @@ func (s *Server) Run() error {
 		}
 	}
 
-	if s.cfg.Open {
+	if s.cfg.App {
+		s.startAppWindow(scheme, addr)
+	} else if s.cfg.Open {
 		openBrowser(scheme + "://" + addr + "/#/login?token=" + s.auth.Token())
 	}
 
@@ -359,6 +410,45 @@ func (s *Server) Run() error {
 		return s.serveWithSignals(tlsLn)
 	}
 	return s.serveWithSignals(ln)
+}
+
+// startAppWindow mints a one-time launch token and opens the UI in a chromeless
+// window, degrading in steps: app window, then the default browser with
+// auto-login, then the printed URL. Launch problems are warnings, never fatal.
+func (s *Server) startAppWindow(scheme, addr string) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = "127.0.0.1"
+		port = "7777"
+	}
+	token, err := s.launchTokens.mint(true)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s %s\n", serveWarn.Sprint("app mode:"), "cannot mint launch token; open the URL above")
+		return
+	}
+	u := url.URL{Scheme: scheme, Host: net.JoinHostPort(host, port), Path: "/", Fragment: "launch=" + token}
+
+	launched, reason := s.launchApp(u.String())
+	if launched {
+		s.appLaunched = !s.cfg.KeepAlive
+		fmt.Fprintf(os.Stderr, "  %s %s\n", serveDim.Sprint("app →"), serveURL.Sprint(u.Scheme+"://"+u.Host+"/"))
+		if s.appLaunched {
+			s.appCtl.arm()
+		}
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "  %s %s\n", serveWarn.Sprint("app mode:"), reason)
+	// Fallback: a normal browser tab, still auto-logged in, but without the
+	// Quit button or the window-liveness shutdown.
+	if fallback, ferr := s.launchTokens.mint(false); ferr == nil {
+		fu := url.URL{Scheme: scheme, Host: u.Host, Path: "/", Fragment: "launch=" + fallback}
+		openBrowser(fu.String())
+		fmt.Fprintf(os.Stderr, "  %s %s\n", serveDim.Sprint("open →"), serveURL.Sprint(fu.Scheme+"://"+fu.Host+"/"))
+		return
+	}
+	// Last resort: the token could not be minted, so the user logs in by hand.
+	openBrowser(u.Scheme + "://" + u.Host + "/")
 }
 
 func (s *Server) serveWithSignals(ln net.Listener) error {
