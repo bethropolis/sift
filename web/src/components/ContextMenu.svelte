@@ -102,6 +102,9 @@
   onkeydown={handleMenuKey}
 >
   {#each items as item (item.id)}
+    {#if item.separatorBefore}
+      <hr class="ctx-sep" />
+    {/if}
     <button
       role="menuitem"
       disabled={item.disabled}
@@ -152,6 +155,11 @@
   .ctx-item:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+  .ctx-sep {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 4px 6px;
   }
   .ctx-hint {
     font-size: 10.5px;

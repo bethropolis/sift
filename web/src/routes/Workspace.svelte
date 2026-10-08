@@ -292,23 +292,50 @@
       }
     };
     if (!isDir && files.some((f) => f.path === path && f.followable)) {
-      const follow = (direction: 'deps' | 'dependents', label: string): MenuItem => ({
+      const follow = (
+        direction: 'deps' | 'dependents',
+        label: string,
+        first: boolean,
+      ): MenuItem => ({
         id: `follow-${direction}`,
         label,
         hint: '',
         disabled: isFollowing,
+        separatorBefore: first,
         run: () => {
           void handleFollowFile(path, direction);
         },
       });
-      items.push(follow('dependents', 'Show dependents'));
-      items.push(follow('deps', 'Show dependencies'));
+      items.push(follow('dependents', 'Show dependents', true));
+      items.push(follow('deps', 'Show dependencies', false));
     }
+    items.push(
+      {
+        id: 'expand-all',
+        label: 'Expand all',
+        hint: 'E',
+        disabled: treeActions === null,
+        separatorBefore: true,
+        run: () => {
+          treeActions?.expandAll();
+        },
+      },
+      {
+        id: 'collapse-all',
+        label: 'Collapse all',
+        hint: 'C',
+        disabled: treeActions === null,
+        run: () => {
+          treeActions?.collapseAll();
+        },
+      },
+    );
     items.push({
       id: 'copy-full',
       label: 'Copy full path',
       hint: '',
       disabled: false,
+      separatorBefore: true,
       run: copyPath(fullPath),
     });
     items.push({

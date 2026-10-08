@@ -13,6 +13,8 @@ export interface MenuItem {
   hint: string;
   disabled: boolean;
   run: () => void | Promise<void>;
+  /** Render a separator above this item to group long menus. */
+  separatorBefore?: boolean;
 }
 
 function isTextField(el: HTMLElement | null): el is HTMLInputElement | HTMLTextAreaElement {
