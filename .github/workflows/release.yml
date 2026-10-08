@@ -30,50 +30,12 @@ jobs:
         with:
           bun-version: '1.4.2'
 
-      - name: Build the serve web UI
-        run: |
-          cd web
-          bun install --frozen-lockfile
-          VITE_MOCK=false bun run build
-          bun scripts/check-budget.ts
-
       - name: Check frontend supply chain and CSP hygiene
-        run: |
-          cd web
-          test -f bun.lock || (echo "web/bun.lock missing" && exit 1)
-          # Storage access is confined to src/lib/persist.ts (UI layout prefs,
-          # namespaced + validated); it must not leak into components.
-          grep -rn "localStorage\|sessionStorage" src --include="*.svelte" && exit 1 || true
-          test "$(grep -rln 'localStorage\|sessionStorage' src --include='*.ts' | grep -v '^src/lib/persist.ts$' | wc -l)" = "0"
-          grep -rn "{@html\|innerHTML\|eval(\|new Function\|setInterval" src --include="*.svelte" --include="*.ts" && exit 1 || true
-          grep -rn 'style="' src --include="*.svelte" && exit 1 || true
-          echo "frontend hygiene OK"
-
-      - name: Embed the web UI in the tag
-        # `go install ...@vX.Y.Z` builds from the tagged tree, so the built
-        # assets must be IN the tag. Force-add web/dist (gitignored on main),
-        # move the tag forward, and stop: the re-pushed tag re-runs this
-        # workflow, which then finds dist present and skips straight to
-        # GoReleaser. main itself stays clean.
-        id: embed
-        run: |
-          if git ls-tree -r "${GITHUB_REF_NAME}" web/dist --name-only | grep -q '\.gz$'; then
-            echo "tag already embeds the web UI"
-            echo "retag=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f web/dist
-          git commit -m "chore(release): embed serve web UI for ${GITHUB_REF_NAME}"
-          git tag -f "${GITHUB_REF_NAME}"
-          git push -f origin "${GITHUB_REF_NAME}"
-          echo "retag=true" >> "$GITHUB_OUTPUT"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: sh scripts/check-hygiene.sh
 
       - name: Run GoReleaser
-        if: steps.embed.outputs.retag != 'true'
+        # The web UI is built by GoReleaser's before-hooks (see
+        # .goreleaser.yaml): one tag push, one run, no retag dance.
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser

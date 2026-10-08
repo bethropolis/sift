@@ -36,12 +36,10 @@ func (m *IgnoreMatcher) ClassifyVisibility(relativePath string, isDir bool) Visi
 
 // ShouldIgnore checks if a file or directory should be ignored
 func (m *IgnoreMatcher) ShouldIgnore(relativePath string, isDir bool) bool {
-	// Return early if matcher is nil or disabled
 	if m == nil || m.disabled {
 		return false
 	}
 
-	// Normalize empty paths
 	if relativePath == "" || relativePath == "." {
 		return false // Never ignore the root itself
 	}

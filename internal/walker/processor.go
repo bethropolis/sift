@@ -86,7 +86,6 @@ func processFile(root, path, relativePath string, options WalkOptions, walkFn Wa
 		return nil
 	}
 
-	// Read file content
 	content, err := os.ReadFile(readPath)
 	if err != nil {
 		options.Logger.Error("processFile Error [%s]: Failed to read file: %v", relativePath, err)
@@ -105,7 +104,6 @@ func processFile(root, path, relativePath string, options WalkOptions, walkFn Wa
 		return nil
 	}
 
-	// Call the walk function with the content
 	options.Logger.Debug("processFile Success [%s]: Read %d bytes. Calling walkFn.", relativePath, len(content))
 	if err := walkFn(relativePath, content, nil); err != nil {
 		options.Logger.Error("processFile Error [%s]: Callback function returned error: %v", relativePath, err)

@@ -8,7 +8,6 @@ import (
 	"github.com/bethropolis/sift/internal/utils"
 )
 
-// WalkOptions configures the behavior of the Walk function
 type WalkOptions struct {
 	Logger        utils.Logger
 	Concurrent    bool
@@ -26,10 +25,8 @@ type WalkOptions struct {
 	PathFilter func(relativePath string) bool
 }
 
-// ProgressCallback is a function that receives progress updates
 type ProgressCallback func(stats ProgressStats)
 
-// ProgressStats holds statistics about the walk progress
 type ProgressStats struct {
 	TotalFiles      int64  // Total files seen
 	ProcessedFiles  int64  // Files that passed all filters and were processed
@@ -39,7 +36,6 @@ type ProgressStats struct {
 	CurrentFilePath string // Path of the current file being processed (relative)
 }
 
-// defaultOptions returns the default walk options
 func defaultOptions() WalkOptions {
 	return WalkOptions{
 		Logger:       &utils.NoopLogger{},
@@ -52,10 +48,8 @@ func defaultOptions() WalkOptions {
 	}
 }
 
-// Option is a functional option for configuring WalkOptions
 type Option func(*WalkOptions)
 
-// WithLogger sets a custom logger for the walker
 func WithLogger(logger utils.Logger) Option {
 	return func(opts *WalkOptions) {
 		if logger != nil {
@@ -64,14 +58,12 @@ func WithLogger(logger utils.Logger) Option {
 	}
 }
 
-// WithConcurrency enables or disables concurrent file processing
 func WithConcurrency(enabled bool) Option {
 	return func(opts *WalkOptions) {
 		opts.Concurrent = enabled
 	}
 }
 
-// WithMaxWorkers sets the maximum number of concurrent workers
 func WithMaxWorkers(workers int) Option {
 	return func(opts *WalkOptions) {
 		if workers > 0 {
@@ -80,14 +72,12 @@ func WithMaxWorkers(workers int) Option {
 	}
 }
 
-// WithMaxFileSize sets the maximum file size to read in bytes
 func WithMaxFileSize(maxBytes int64) Option {
 	return func(opts *WalkOptions) {
 		opts.MaxFileSize = maxBytes
 	}
 }
 
-// WithExtensions sets the file extensions to include (without the dot)
 func WithExtensions(extensions []string) Option {
 	return func(opts *WalkOptions) {
 		extMap := make(map[string]struct{}, len(extensions))
@@ -98,7 +88,6 @@ func WithExtensions(extensions []string) Option {
 	}
 }
 
-// WithExtensionMap sets the file extensions to include from a map (without the dot)
 func WithExtensionMap(extMap map[string]struct{}) Option {
 	return func(opts *WalkOptions) {
 		if extMap != nil {
@@ -113,7 +102,6 @@ func WithExtensionMap(extMap map[string]struct{}) Option {
 	}
 }
 
-// WithContext sets the context for cancellation
 func WithContext(ctx context.Context) Option {
 	return func(opts *WalkOptions) {
 		if ctx != nil {
@@ -130,7 +118,6 @@ func WithIncludeBinary(include bool) Option {
 	}
 }
 
-// WithProgress adds a progress callback function
 func WithProgress(fn ProgressCallback) Option {
 	return func(o *WalkOptions) {
 		o.ProgressFn = fn

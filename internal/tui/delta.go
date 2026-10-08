@@ -32,9 +32,7 @@ type DeltaCommit struct {
 type DeltaStrategy int
 
 const (
-	// DeltaFull dumps the full content of the changed files.
 	DeltaFull DeltaStrategy = iota
-	// DeltaPatch dumps the raw unified diff in a context_update block.
 	DeltaPatch
 )
 
@@ -46,7 +44,6 @@ type DeltaSelection struct {
 	Clipboard bool
 }
 
-// newDeltaInfo returns a default DeltaInfo for the modal.
 func newDeltaInfo() *DeltaInfo {
 	return &DeltaInfo{}
 }

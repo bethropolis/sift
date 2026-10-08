@@ -9,15 +9,12 @@ import (
 	gitignore "github.com/denormal/go-gitignore"
 )
 
-// New creates and initializes an IgnoreMatcher
 func New(rootDir string, opts ...Option) (*IgnoreMatcher, error) {
-	// First, get the absolute path for the root directory
 	absRootDir, err := filepath.Abs(rootDir)
 	if err != nil {
 		return nil, fmt.Errorf("ignore: failed to get absolute path for rootDir '%s': %w", rootDir, err)
 	}
 
-	// Initialize with default configuration
 	matcher := &IgnoreMatcher{
 		rootDir:       absRootDir,
 		ignoreHidden:  true, // Default
@@ -26,12 +23,10 @@ func New(rootDir string, opts ...Option) (*IgnoreMatcher, error) {
 		logger:        &utils.NoopLogger{},
 	}
 
-	// Apply functional options
 	for _, opt := range opts {
 		opt(matcher)
 	}
 
-	// Initialize the gitignore engine
 	if err := matcher.init(); err != nil {
 		return nil, err
 	}
@@ -39,7 +34,6 @@ func New(rootDir string, opts ...Option) (*IgnoreMatcher, error) {
 	return matcher, nil
 }
 
-// init initializes the gitignore engine
 func (m *IgnoreMatcher) init() error {
 	m.logger.Debug("ignore.New: Initializing for root: %s", m.rootDir)
 	m.logger.Debug("ignore.New: ignoreHidden flag set to: %v", m.ignoreHidden)
@@ -72,7 +66,6 @@ func (m *IgnoreMatcher) init() error {
 	m.repoIgnore = repoMatcher
 	m.logger.Debug("ignore.New: Successfully loaded repository ignores.")
 
-	// Build custom ignore matcher from patterns passed via flags
 	if len(m.customPatterns) > 0 {
 		m.logger.Debug("ignore.New: Building matcher from %d custom patterns: %v", len(m.customPatterns), m.customPatterns)
 		m.customIgnore = gitignore.New(strings.NewReader(strings.Join(m.customPatterns, "\n")), m.rootDir, nil)

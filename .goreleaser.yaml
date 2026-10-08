@@ -5,6 +5,7 @@ project_name: sift
 before:
   hooks:
     - go mod download
+    - sh scripts/build-web.sh
 
 builds:
   - id: sift

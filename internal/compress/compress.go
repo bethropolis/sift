@@ -18,7 +18,6 @@ type Compressor struct {
 	engine *signature.Engine
 }
 
-// New returns a Compressor backed by a signature engine with a parser pool for
 // every registered language.
 func New() *Compressor {
 	return &Compressor{engine: signature.New()}

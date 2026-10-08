@@ -1,9 +1,8 @@
 package mcp
 
-// applyArg coerces one JSON-decoded tool argument onto a config field.
+// intArg coerces one JSON-decoded tool argument onto a config field.
 // Numbers arrive as float64; unknown keys are ignored so newer clients stay
 // compatible with this server.
-
 func intArg(args map[string]any, key string, dst *int) {
 	v, ok := args[key]
 	if !ok {

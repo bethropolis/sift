@@ -78,17 +78,14 @@ func (e *Evaluator) ShouldSkipMeta(path string, approxTokens int) (bool, string)
 // callers that already ran ShouldSkipPath can avoid the redundant check by
 // only invoking ShouldSkip on surviving candidates.
 func (e *Evaluator) ShouldSkip(path string, content []byte, tokens int) (bool, string) {
-	// 1. Token threshold guardrail.
 	if skip, reason := e.ExceedsTokenLimit(tokens); skip {
 		return true, reason
 	}
 
-	// 2. Generated header detection ("DO NOT EDIT", "@generated", etc.).
 	if IsGeneratedHeader(content) {
 		return true, "Auto-generated file header detected"
 	}
 
-	// 3. Language-specific rules.
 	return e.ShouldSkipPath(path)
 }
 

@@ -10,9 +10,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// ---------------------------------------------------------------------------
 // Prompt file helper (used by Profile.Apply and Target.Apply).
-// ---------------------------------------------------------------------------
 
 func readPromptFile(path string) (string, error) {
 	return readPromptFileWithRoot("", path)
@@ -49,9 +47,7 @@ func readPromptFileWithRoot(rootDir, path string) (string, error) {
 	return string(data), nil
 }
 
-// ---------------------------------------------------------------------------
 // Config file reading (v2 shape).
-// ---------------------------------------------------------------------------
 
 // readConfigFile loads a full v2 config file from path, returning a zero
 // value when the file does not exist.
@@ -79,9 +75,7 @@ func readConfigFile(path string) (configFile, error) {
 	return cf, nil
 }
 
-// ---------------------------------------------------------------------------
 // SiftDefaults / Target / Automation → Config helpers.
-// ---------------------------------------------------------------------------
 
 func (s *SiftDefaults) applyTo(c *Config) {
 	if s == nil {
@@ -225,9 +219,7 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Extends resolution.
-// ---------------------------------------------------------------------------
 
 // resolveExtends expands profile extends chains, detecting cycles.
 // Returns a new map where each profile already includes its ancestors.
@@ -275,9 +267,7 @@ func expandProfile(name string, all map[string]Profile, visiting map[string]bool
 	return base, nil
 }
 
-// ---------------------------------------------------------------------------
 // Public resolution API.
-// ---------------------------------------------------------------------------
 
 // ResolveOption configures ResolveConfig.
 type ResolveOption func(*resolveOpts)

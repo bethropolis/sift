@@ -7,8 +7,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// helpContentLines returns the flattened content lines, used by tests and
-// the scroll clamp logic. The width 56 matches the minimum usable modal width.
 func helpContentLines() []string {
 	return helpLines(helpSections(), 56)
 }
@@ -83,7 +81,6 @@ func helpSections() []helpSection {
 	}
 }
 
-// helpLines flattens sections into plain strings for rendering.
 func helpLines(sections []helpSection, contentWidth int) []string {
 	var out []string
 	for si, sec := range sections {
@@ -137,7 +134,6 @@ func (m model) helpDisplayLines(sections []helpSection, contentWidth int) []stri
 	return out
 }
 
-// renderHelpModal overlays the keyboard-shortcut reference on the picker.
 func (m *model) renderHelpModal(view string, width, height int) string {
 	modalWidth := min(width, 62)
 	if modalWidth < 30 {

@@ -15,11 +15,9 @@ func TestSelectAndResult(t *testing.T) {
 	}
 	m := newModel(BuildTree(items), Options{})
 
-	// Select the second item (row 1 after "a.go").
 	m = updateKey(m, tea.KeyDown)
 	m = updateKey(m, tea.KeySpace)
 
-	// Select everything via 'a'.
 	m = updateKey(m, tea.KeyRunes, 'a')
 
 	got := m.root.Selections()
@@ -32,7 +30,6 @@ func TestSelectAndResult(t *testing.T) {
 		t.Errorf("Selections = %v, want %v", got, want)
 	}
 
-	// 'a' again deselects all.
 	m = updateKey(m, tea.KeyRunes, 'a')
 	if got := m.root.Selections(); len(got) != 0 {
 		t.Errorf("after toggle-all-off Selections = %v, want empty", got)
@@ -100,7 +97,7 @@ func TestModePropagation(t *testing.T) {
 	internal := root.findChild("internal")
 	internal.setSelected(true)
 
-	internal.CycleMode() // full -> signatures
+	internal.CycleMode()
 	if internal.Mode != ModeSignatures {
 		t.Errorf("dir Mode = %v, want signatures", internal.Mode)
 	}
@@ -113,7 +110,7 @@ func TestModePropagation(t *testing.T) {
 		t.Errorf("TotalActiveTokens = %d, want 20 (8+12)", got)
 	}
 
-	internal.CycleMode() // signatures -> skip
+	internal.CycleMode()
 	if got := root.Selections(); len(got) != 0 {
 		t.Errorf("skipped dir still selected: %v", got)
 	}
@@ -131,7 +128,7 @@ func TestCycleModeFiltered(t *testing.T) {
 	m.recomputeRows()
 
 	internal := root.findChild("internal")
-	m.cycleMode(internal) // full -> signatures
+	m.cycleMode(internal)
 
 	if got := internal.findChild("app.go").Mode; got != ModeSignatures {
 		t.Errorf("app.go Mode = %v, want signatures", got)
@@ -139,22 +136,18 @@ func TestCycleModeFiltered(t *testing.T) {
 	if got := internal.findChild("app_test.go").Mode; got != ModeSignatures {
 		t.Errorf("app_test.go Mode = %v, want signatures", got)
 	}
-	// Non-matching siblings must keep their mode.
 	if got := internal.findChild("other.go").Mode; got != ModeFull {
 		t.Errorf("other.go Mode = %v, want full (not in filter)", got)
 	}
-	// The directory aggregate must show the mixed state.
 	if got := internal.Mode; got != ModeFull {
 		t.Errorf("dir Mode = %v, want full (mixed children)", got)
 	}
 
-	// Repeated presses must continue through skip and back to full even though
-	// the directory aggregate remains mixed because other.go is not matched.
-	m.cycleMode(internal) // signatures -> skip
+	m.cycleMode(internal)
 	if got := internal.findChild("app.go").Mode; got != ModeSkip {
 		t.Errorf("app.go Mode after second cycle = %v, want skip", got)
 	}
-	m.cycleMode(internal) // skip -> full
+	m.cycleMode(internal)
 	if got := internal.findChild("app.go").Mode; got != ModeFull {
 		t.Errorf("app.go Mode after third cycle = %v, want full", got)
 	}
@@ -171,7 +164,7 @@ func TestCycleModeFilteredNested(t *testing.T) {
 	m.recomputeRows()
 
 	a := root.findChild("a")
-	m.cycleMode(a) // full -> signatures
+	m.cycleMode(a)
 
 	if got := a.findChild("b").findChild("matchme.go").Mode; got != ModeSignatures {
 		t.Errorf("nested matchme.go Mode = %v, want signatures", got)

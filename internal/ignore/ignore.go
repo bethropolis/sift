@@ -5,12 +5,10 @@
 // It uses the functional options pattern for configuration.
 package ignore
 
-// NewDefaultMatcher creates an IgnoreMatcher with default settings
 func NewDefaultMatcher(rootDir string) (*IgnoreMatcher, error) {
 	return New(rootDir)
 }
 
-// NewFromConfig creates an IgnoreMatcher from a Config struct
 func NewFromConfig(cfg Config) (*IgnoreMatcher, error) {
 	options := []Option{
 		WithHiddenIgnore(cfg.IgnoreHidden),
@@ -30,13 +28,11 @@ func NewFromConfig(cfg Config) (*IgnoreMatcher, error) {
 	return New(cfg.RootDir, options...)
 }
 
-// CreateDisabledMatcher returns a matcher that ignores nothing
 func CreateDisabledMatcher() *IgnoreMatcher {
 	matcher, _ := New(".", WithDisabled(true))
 	return matcher
 }
 
-// IsIgnored is a convenience function to check if a path should be ignored
 func IsIgnored(matcher *IgnoreMatcher, path string, isDir bool) bool {
 	if matcher == nil {
 		return false

@@ -137,11 +137,13 @@ directory and are preserved across upgrades.
 Remove the installed binary, and optionally the config/state directory:
 
 ```sh
-rm -f ~/.local/bin/sift               # curl / local installer path
+./scripts/uninstall.sh            # from a checkout; binary + generated completions
+./scripts/uninstall.sh --purge    # ...and the config/state directory
 brew uninstall bethropolis/tap/sift   # Homebrew
 scoop uninstall sift                  # Scoop
-
-sift desktop uninstall                # remove the app-launcher entry first, if any
-
-rm -rf ~/.config/sift                 # optional: config, state, and preferences
 ```
+
+`uninstall.sh` honors `SIFT_INSTALL_DIR`, removes the desktop launcher first
+(via the binary itself), and only ever deletes files sift created. Without a
+checkout, the manual equivalent is `rm -f ~/.local/bin/sift` plus the
+completion files; the config/state directory is `~/.config/sift`.

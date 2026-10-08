@@ -58,7 +58,6 @@ func (pyDriver) Imports(path, moduleRoot string, content []byte) []string {
 		if raw == "" {
 			return
 		}
-		// Check for relative imports starting with '.'
 		if strings.HasPrefix(raw, ".") {
 			dots := 0
 			for dots < len(raw) && raw[dots] == '.' {

@@ -593,9 +593,6 @@ func opportunisticUpgrade(result *Result, ordered []Candidate, prompt string, tu
 	}
 }
 
-// bestAffordable returns the highest-utility variant that fits within budget,
-// or a zero-token skip variant when nothing fits. It prefers the most useful
-// representation of a file that the remaining budget can still pay for.
 func balanceAreaBudget(result *Result, ordered []Candidate, prompt string, tuning Tuning, protected []bool) {
 	if result.Budget <= 0 || len(ordered) == 0 {
 		return
@@ -729,6 +726,9 @@ func balanceAreaBudget(result *Result, ordered []Candidate, prompt string, tunin
 	}
 }
 
+// bestAffordable returns the highest-utility variant that fits within budget,
+// or a zero-token skip variant when nothing fits. It prefers the most useful
+// representation of a file that the remaining budget can still pay for.
 func bestAffordable(candidate Candidate, budget int, tuning Tuning, prompt string) Variant {
 	var best Variant
 	for _, v := range variants(candidate, prompt, tuning) {

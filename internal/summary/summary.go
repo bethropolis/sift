@@ -1,4 +1,3 @@
-// Package summary handles display of scan results and statistics
 package summary
 
 import (
@@ -11,7 +10,6 @@ import (
 	"github.com/bethropolis/sift/internal/walker"
 )
 
-// DisplayResults shows the end results of a scan operation
 func DisplayResults(
 	logger utils.Logger,
 	fileCount int64,
@@ -26,7 +24,6 @@ func DisplayResults(
 	}
 }
 
-// DisplaySkippedItems formats and prints information about skipped items
 func DisplaySkippedItems(
 	logger utils.Logger,
 	skippedItems []walker.SkippedItem,
@@ -41,7 +38,6 @@ func DisplaySkippedItems(
 
 	infoLog("--- Skipped Items (%d) ---", len(skippedItems))
 	if len(skippedItems) > 0 {
-		// Sort for consistent output
 		sort.Slice(skippedItems, func(i, j int) bool {
 			return skippedItems[i].Path < skippedItems[j].Path
 		})
@@ -50,10 +46,9 @@ func DisplaySkippedItems(
 			if item.IsDir {
 				typeStr = "DIR " // Add space for alignment
 			}
-			// Print to stderr
 			fmt.Fprintf(output, "Skipped %s: %-.*s [%s]\n",
 				typeStr,
-				50, // Max width for path column
+				50,
 				item.Path,
 				item.Reason,
 			)

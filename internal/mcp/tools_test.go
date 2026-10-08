@@ -46,7 +46,6 @@ func writeMCPRepo(t *testing.T) (root, configHome string) {
 	}
 	run("add", "-A")
 	run("commit", "-qm", "init")
-	// Uncommitted edit for the default pack_diff path.
 	f, err := os.OpenFile(filepath.Join(root, "main.go"), os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +102,6 @@ func TestPackDiffPatchBlock(t *testing.T) {
 
 func TestListTreeMinimal(t *testing.T) {
 	root, _ := writeMCPRepo(t)
-	// Uncommitted nested file: exercises derived directory entries.
 	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +145,6 @@ func TestHandlersAreStateless(t *testing.T) {
 	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
 		t.Errorf("state.json exists after tool calls: %v", err)
 	}
-	// No output document may be created in the scanned tree either.
 	if _, err := os.Stat(filepath.Join(root, "codebase.md")); !os.IsNotExist(err) {
 		t.Error("codebase.md created in scanned tree")
 	}
@@ -163,7 +160,6 @@ func TestStdioEndToEnd(t *testing.T) {
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_tree"}}`,
 	}, "\n")
-	// list_tree runs against cfg.RootDir; point it at the repo.
 	cfg := mcpTestConfig(root)
 	var out bytes.Buffer
 	if err := Run(context.Background(), strings.NewReader(in), &out, cfg); err != nil {

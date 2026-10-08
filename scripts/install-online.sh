@@ -9,7 +9,6 @@ set -eu
 #   SIFT_INSTALL_DIR   destination directory (default: ~/.local/bin)
 #   NO_COLOR           disable ANSI colors
 
-# --- usage ------------------------------------------------------------------
 usage() {
     cat <<'EOF'
 Usage: install.sh [options]
@@ -53,7 +52,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# --- output helpers ---------------------------------------------------------
 # Colors only when stdout is a TTY, TERM is usable, and NO_COLOR is unset.
 # POSIX-portable: escape sequences come from printf, never from $'...'.
 use_tty=0
@@ -145,10 +143,8 @@ die() {
     abort
 }
 
-# --- helpers ----------------------------------------------------------------
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
-# --- prerequisites ----------------------------------------------------------
 banner
 
 repo=${SIFT_REPOSITORY:-bethropolis/sift}
@@ -240,7 +236,6 @@ if [ -e "$prefix/sift" ] && [ -d "$prefix/sift" ]; then
 fi
 step_ok "$prefix"
 
-# --- download & install -----------------------------------------------------
 tmp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t sift 2>/dev/null || true)
 if [ -z "$tmp_dir" ] || [ ! -d "$tmp_dir" ]; then
     tmp_dir="${TMPDIR:-/tmp}/sift-install.$$"
@@ -330,7 +325,6 @@ fi
 new_ver=$("$prefix/sift" version 2>/dev/null || true)
 step_ok "$prefix/sift"
 
-# --- shell completions ------------------------------------------------------
 # Best-effort: generate completions from the installed binary into user-local
 # directories. Never aborts the install; per-shell failures are warnings.
 step_begin "installing shell completions"
@@ -373,7 +367,6 @@ else
     step_ok "skipped"
 fi
 
-# --- summary ----------------------------------------------------------------
 [ "$quiet" -eq 1 ] || printf '\n'
 if [ -n "$old_ver" ] && [ -n "$new_ver" ] && [ "$old_ver" != "$new_ver" ]; then
     ok "${c_bold}upgraded${c_reset}  ${c_dim}${old_ver}${c_reset} → ${c_bold}${new_ver}${c_reset}"

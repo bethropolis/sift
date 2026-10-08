@@ -34,7 +34,6 @@ func TestLaunchTokenSingleUse(t *testing.T) {
 	if !ok || !app {
 		t.Fatalf("first exchange = %v/%v", ok, app)
 	}
-	// Replay must fail.
 	if _, ok := store.exchange(tok); ok {
 		t.Fatal("replayed token was accepted")
 	}
@@ -49,7 +48,6 @@ func TestLaunchTokenWrongAndEmpty(t *testing.T) {
 	if _, ok := store.exchange(""); ok {
 		t.Fatal("empty token accepted")
 	}
-	// The real token still works after failures.
 	if _, ok := store.exchange(tok); !ok {
 		t.Fatal("valid token rejected after failures")
 	}
@@ -119,7 +117,6 @@ func TestLaunchTokenPurgeKeepsStoreBounded(t *testing.T) {
 		}
 		clock.advance(launchTokenTTL + time.Second)
 	}
-	// Every mint prunes the previous batch, so nothing accumulates.
 	store.mu.Lock()
 	n := len(store.tokens)
 	store.mu.Unlock()

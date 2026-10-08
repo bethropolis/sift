@@ -77,7 +77,7 @@ sig:
 # Build the serve web UI (live API; gzip-precompressed into web/dist).
 # Isolated mock UI work: cd web && VITE_MOCK=true bun run dev
 web:
-  cd web && bun install --frozen-lockfile --silent && VITE_MOCK=false bun run build
+  sh scripts/build-web.sh
 
 # Dev server for the web UI with /api proxied to a local `sift serve` (live)
 web-dev:
@@ -91,6 +91,11 @@ web-budget:
 # override with SIFT_INSTALL_DIR=...). install.sh reuses the just-built UI.
 install: web
   bash scripts/install.sh
+
+# Remove the local install: binary + generated completions
+# (--purge also removes the config/state directory)
+uninstall args="":
+  bash scripts/uninstall.sh {{ args }}
 
 # Sync docs/*.md into a site source dir as the /docs/ collection (default: site/)
 docs-site dest="site":

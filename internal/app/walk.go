@@ -5,7 +5,6 @@ import (
 	"github.com/bethropolis/sift/internal/walker"
 )
 
-// walkDirectory is a helper method that performs the actual directory walk
 func (a *App) walkDirectory(
 	rootDir string,
 	matcher *ignore.IgnoreMatcher,

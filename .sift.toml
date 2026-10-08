@@ -44,7 +44,6 @@ ignore = [
 # Repository-wide default: go + docs + CI/config, signatures-only for
 # everything else. The picker can still widen this per file.
 
-# ---------------------------------------------------------------------------
 # Per-area profiles.
 #
 # IMPORTANT: `sift dump` has NO per-file mode setting. `compress_mode` is one
@@ -57,7 +56,6 @@ ignore = [
 #   * split by area and give each its own target (different modes per target)
 #   * use `ignore` to drop files entirely
 # Use `sift pick` when you need genuine per-file control.
-# ---------------------------------------------------------------------------
 
 # Whole repo, signatures — cheap orientation. Default, so bare `sift dump`
 # uses it.
@@ -104,7 +102,6 @@ ignore = [
 ]
 prompt = "Summarize the documented behavior of this project for a new user."
 
-# ---------------------------------------------------------------------------
 # What `.sift.toml` controls per command
 #
 # Read this before assuming a key applies everywhere.
@@ -132,7 +129,6 @@ prompt = "Summarize the documented behavior of this project for a new user."
 #   `dump`. `dump` has no role classifier, so tests are skipped there with
 #   the `ignore` globs above. `select`/picker skip test/fixture/mock roles
 #   automatically unless the task prompt is about tests.
-# ---------------------------------------------------------------------------
 
 [scoring]
 # These tune `sift select` and the picker's smart-select. They have NO effect on

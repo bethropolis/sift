@@ -23,36 +23,30 @@ func TestPreviewScroll(t *testing.T) {
 		t.Fatalf("previewPageSize = %d, want > 0", page)
 	}
 
-	// Initially at the top.
 	if m.previewOffset != 0 {
 		t.Fatalf("initial previewOffset = %d, want 0", m.previewOffset)
 	}
 
-	// PgDn advances by a page.
 	m = updateKey(m, tea.KeyPgDown)
 	if m.previewOffset != page {
 		t.Errorf("after PgDn previewOffset = %d, want %d", m.previewOffset, page)
 	}
 
-	// PgUp returns to the top.
 	m = updateKey(m, tea.KeyPgUp)
 	if m.previewOffset != 0 {
 		t.Errorf("after PgUp previewOffset = %d, want 0", m.previewOffset)
 	}
 
-	// Ctrl+d advances by a half page.
 	m = updateKey(m, tea.KeyCtrlD)
 	if m.previewOffset != m.previewHalfPage() {
 		t.Errorf("after Ctrl+d previewOffset = %d, want %d", m.previewOffset, m.previewHalfPage())
 	}
 
-	// ']' scrolls down a full page from the half-page offset.
 	m = updateKey(m, tea.KeyRunes, ']')
 	if m.previewOffset != m.previewHalfPage()+page {
 		t.Errorf("after ] previewOffset = %d, want %d", m.previewOffset, m.previewHalfPage()+page)
 	}
 
-	// '[' scrolls back up a full page.
 	m = updateKey(m, tea.KeyRunes, '[')
 	if m.previewOffset != m.previewHalfPage() {
 		t.Errorf("after [ previewOffset = %d, want %d", m.previewOffset, m.previewHalfPage())

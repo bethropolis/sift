@@ -49,22 +49,18 @@ var heavyDirBasenames = map[string]bool{
 func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts ...Option) ([]SkippedItem, error) {
 	startTime := time.Now()
 
-	// Apply options
 	options := defaultOptions()
 	for _, opt := range opts {
 		opt(&options)
 	}
-	// Get absolute path for the root directory
 	absRootDir, err := filepath.Abs(rootDir)
 	if err != nil {
 		return []SkippedItem{{Path: rootDir, Reason: ReasonSkippedPathError, IsDir: true}},
 			fmt.Errorf("walker: failed to get absolute path for '%s': %w", rootDir, err)
 	}
 
-	// Create a tracker for skipped items
 	tracker := NewSkippedTracker(100)
 
-	// Create atomic counters for progress tracking
 	stats := &walkStats{}
 	defer func() {
 		if options.StatsFn != nil {
@@ -72,12 +68,10 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 		}
 	}()
 
-	// Start progress reporting if enabled
 	var progressCtx context.Context
 	var progressCancel context.CancelFunc
 
 	if options.ProgressFn != nil {
-		// Create a separate context for progress updates
 		progressCtx, progressCancel = context.WithCancel(context.Background())
 		defer progressCancel()
 
@@ -120,12 +114,10 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 
 	processEntry := newProcessEntry(absRootDir, options, matcher, tracker, stats)
 
-	// Choose between concurrent and sequential processing
 	if options.Concurrent {
 		return walkConcurrent(absRootDir, options, walkFn, tracker, stats, processEntry, startTime)
 	}
 
-	// Sequential processing
 	options.Logger.Debug("Walker: Starting sequential walk.")
 	walkErr := filepath.WalkDir(absRootDir, func(path string, d fs.DirEntry, err error) error {
 		processDecisionErr, shouldProcess := processEntry(path, d, err)
@@ -142,7 +134,6 @@ func Walk(rootDir string, matcher *ignore.IgnoreMatcher, walkFn WalkFunc, opts .
 				return nil
 			}
 
-			// Triple check - make sure this isn't the root dir or "."
 			if path != absRootDir && relativePath != "." {
 				options.Logger.Debug("Walker Processing Sequentially: File [%s]", relativePath)
 				if cbErr := processFile(absRootDir, path, relativePath, options, walkFn, tracker, stats); cbErr != nil {
@@ -173,17 +164,14 @@ func newProcessEntry(
 	stats *walkStats,
 ) func(path string, d fs.DirEntry, err error) (error, bool) {
 	return func(path string, d fs.DirEntry, err error) (error, bool) {
-		// Check context before processing anything
 		select {
 		case <-options.Context.Done():
 			return options.Context.Err(), false
 		default:
-			// Continue processing
 		}
 
 		isDir := d != nil && d.IsDir()
 
-		// Update statistics based on entry type
 		if isDir {
 			stats.totalDirs.Add(1)
 		} else {
@@ -204,7 +192,6 @@ func newProcessEntry(
 
 		options.Logger.Debug("Walker: Evaluating entry: %q (isDir: %v)", relativePath, isDir)
 
-		// Handle walk errors
 		if err != nil {
 			reason := ReasonSkippedWalkError
 			if os.IsPermission(err) {
@@ -223,7 +210,6 @@ func newProcessEntry(
 			return nil, false
 		}
 
-		// Skip root itself
 		if path == absRootDir || relativePath == "." {
 			options.Logger.Debug("Walker: Skipping root entry '.'")
 			return nil, false
@@ -247,13 +233,11 @@ func newProcessEntry(
 			return nil, false
 		}
 
-		// Only process files, not directories
 		if isDir {
 			options.Logger.Debug("Walker: Descending into directory %q", relativePath)
 			return nil, false
 		}
 
-		// Check extension filtering if enabled
 		if options.ExtensionMap != nil && len(options.ExtensionMap) > 0 {
 			ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filepath.ToSlash(relativePath)), "."))
 			_, allowed := options.ExtensionMap[ext]

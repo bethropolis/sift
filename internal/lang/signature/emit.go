@@ -94,26 +94,22 @@ func (e *Engine) walk(n *sitter.Node, src []byte, spec *SignatureSpec, b *string
 func (e *Engine) emitNode(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) bool {
 	nodeType := n.Type()
 
-	// 1. const/let/var value = () => { ... } becomes a signature.
 	if spec.VariableWithFunction != nil && spec.VariableWithFunction(n, src) {
 		e.emitVariableFunctionSignature(n, src, spec, b)
 		return true
 	}
 
-	// 2. Package, imports, and const/var declarations carry no bodies.
 	if spec.HeaderOrConst(nodeType) {
 		b.WriteString(strings.TrimSpace(n.Content(src)))
 		b.WriteString("\n\n")
 		return true
 	}
 
-	// 3. Type definitions preserve their interior structure.
 	if spec.TypeDefinition(nodeType) {
 		e.emitTypeWithStructure(n, src, spec, b)
 		return true
 	}
 
-	// 4. Functions and methods keep their header plus a body placeholder.
 	if spec.FunctionOrMethod(nodeType) {
 		doc := docComment(src, n)
 		sig := signatureFrom(declStart(n), src, n, spec)

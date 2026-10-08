@@ -62,14 +62,12 @@ func walkConcurrent(
 	filesChan := make(chan struct{ path, relativePath string }, options.MaxWorkers*2)
 	abort := newWalkAbort()
 
-	// Start worker goroutines
 	options.Logger.Debug("Starting %d workers for concurrent processing.", options.MaxWorkers)
 	for i := 0; i < options.MaxWorkers; i++ {
 		wg.Add(1)
 		go fileProcessorWorker(i+1, absRootDir, filesChan, &wg, options, walkFn, tracker, stats, abort)
 	}
 
-	// Use a goroutine to walk the directory tree and queue files
 	done := make(chan error, 1)
 	walkFinished := make(chan struct{})
 
@@ -93,9 +91,7 @@ func walkConcurrent(
 					return nil
 				}
 
-				// Triple check - make sure this isn't the root dir or "."
 				if path != absRootDir && relativePath != "." {
-					// Send to channel with context and abort support
 					select {
 					case <-options.Context.Done():
 						return options.Context.Err()
@@ -113,7 +109,6 @@ func walkConcurrent(
 		close(walkFinished)
 	}()
 
-	// Wait for either context cancellation or walk completion
 	select {
 	case <-options.Context.Done():
 		options.Logger.Debug("Walker: Context cancelled, waiting for walkDir to finish...")
@@ -122,20 +117,15 @@ func walkConcurrent(
 		options.Logger.Debug("Walker: Directory traversal completed")
 	}
 
-	// Now close the channel to signal workers to finish
 	close(filesChan)
 
-	// Wait for all workers to finish processing
 	options.Logger.Debug("Walker: Waiting for workers to complete...")
 	wg.Wait()
 
-	// Get the walk error, if any
 	var walkErr error
 	select {
 	case walkErr = <-done:
-		// Got the error (or nil)
 	default:
-		// Should never happen but just in case
 		walkErr = fmt.Errorf("walker: internal error - missing walk result")
 	}
 

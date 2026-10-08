@@ -37,7 +37,7 @@ func truncateTail(s string, maxLen int) string {
 	return "…" + string(runes[len(runes)-keep:])
 }
 
-// formatTokenCount keeps exact values readable and scales large values to a
+// compactTokenCount keeps exact values readable and scales large values to a
 // compact developer-friendly form. Callers decide whether to add "~" for an
 // estimate or a unit such as "tokens".
 func compactTokenCount(value int) string {

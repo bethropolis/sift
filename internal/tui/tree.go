@@ -120,7 +120,6 @@ type Item struct {
 // has Name "." and Kind KindDir with Expanded true.
 func BuildTree(items []Item) *TreeNode {
 	root := &TreeNode{Name: ".", Kind: KindDir, Expanded: true}
-	// Keep files sorted by path so ranks remain stable.
 	sorted := append([]Item(nil), items...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
 

@@ -34,7 +34,6 @@ func (a *App) RenderFinal(files []format.FileEntry, skippedItems []walker.Skippe
 	return a.RenderFinalWithPrompt(files, skippedItems, duration, runErr, a.cfg.Prompt)
 }
 
-// RenderFinalWithPrompt renders picker output with a session-specific
 // directive without mutating application configuration.
 func (a *App) RenderFinalWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, prompt string) error {
 	return a.renderWithPrompt(files, skippedItems, duration, runErr, false, prompt)
@@ -47,7 +46,6 @@ func (a *App) RenderToClipboard(files []format.FileEntry) error {
 	return a.RenderToClipboardWithPrompt(files, a.cfg.Prompt)
 }
 
-// RenderToClipboardWithPrompt renders clipboard output with a session-specific
 // directive without mutating application configuration.
 func (a *App) RenderToClipboardWithPrompt(files []format.FileEntry, prompt string) error {
 	var buf bytes.Buffer
@@ -159,7 +157,6 @@ func (a *App) render(files []format.FileEntry, skippedItems []walker.SkippedItem
 }
 
 func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool, prompt string) error {
-	// Apply the token budget, keeping the highest-priority files.
 	var usedTokens int
 	if applyBudget && a.cfg.Budget > 0 {
 		a.infoLog("Applying token budget: %d", a.cfg.Budget)
@@ -176,7 +173,6 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 	}
 	tokenTotal := int64(usedTokens)
 
-	// --- Render output ---
 	var writeErr error
 	if a.cfg.Clipboard {
 		var buf bytes.Buffer
@@ -207,7 +203,6 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 		}
 	}
 
-	// --- Handle walk errors ---
 	if runErr != nil {
 		if errors.Is(runErr, context.DeadlineExceeded) {
 			a.log.Warn("Timeout of %v reached. Scan stopped.", a.cfg.Timeout)
@@ -223,10 +218,8 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 		return writeErr
 	}
 
-	// --- Show results summary ---
 	summary.DisplayResults(a.log, int64(len(files)), tokenTotal, duration, a.cfg.Quiet)
 
-	// --- Show Skipped Items (if requested) ---
 	if a.cfg.ShowSkipped {
 		summary.DisplaySkippedItems(a.log, skippedItems, os.Stderr, a.cfg.Quiet)
 	}

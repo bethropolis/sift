@@ -130,7 +130,6 @@ func TestHostRebinding(t *testing.T) {
 func TestRequestHygiene(t *testing.T) {
 	srv, _ := testServer(t)
 
-	// Mismatched Origin on POST.
 	req := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{}`))
 	req.Host = "127.0.0.1:7777"
 	req.Header.Set("Content-Type", "application/json")
@@ -141,7 +140,6 @@ func TestRequestHygiene(t *testing.T) {
 		t.Fatalf("mismatched Origin = %d, want 403", rec.Code)
 	}
 
-	// Cross-site fetch metadata.
 	req = httptest.NewRequest("POST", "/api/login", strings.NewReader(`{}`))
 	req.Host = "127.0.0.1:7777"
 	req.Header.Set("Content-Type", "application/json")
@@ -152,7 +150,6 @@ func TestRequestHygiene(t *testing.T) {
 		t.Fatalf("cross-site fetch = %d, want 403", rec.Code)
 	}
 
-	// Non-JSON POST body.
 	req = httptest.NewRequest("POST", "/api/login", strings.NewReader(`password=x`))
 	req.Host = "127.0.0.1:7777"
 	req.Header.Set("Content-Type", "text/plain")
@@ -162,7 +159,6 @@ func TestRequestHygiene(t *testing.T) {
 		t.Fatalf("text/plain POST = %d, want 415", rec.Code)
 	}
 
-	// OPTIONS is never CORS.
 	req = httptest.NewRequest("OPTIONS", "/api/meta", nil)
 	req.Host = "127.0.0.1:7777"
 	rec = httptest.NewRecorder()
@@ -171,7 +167,6 @@ func TestRequestHygiene(t *testing.T) {
 		t.Fatalf("OPTIONS = %d, want 405", rec.Code)
 	}
 
-	// Headers present, CORS absent, on API and static alike.
 	for _, target := range []string{"/api/meta", "/"} {
 		req := httptest.NewRequest("GET", target, nil)
 		req.Host = "127.0.0.1:7777"

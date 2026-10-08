@@ -100,7 +100,6 @@ func (c *Config) Validate() (*auth.Auth, error) {
 		return a, nil
 	}
 
-	// --- Remote mode: refuse unless everything is configured. ---
 	if !c.AllowRemote {
 		return nil, fmt.Errorf("refusing non-loopback bind %q without --allow-remote", c.Listen)
 	}

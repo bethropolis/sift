@@ -44,9 +44,8 @@ var ErrFileSkipped = scan.ErrFileSkipped
 // Run executes the main application logic.
 // It returns a non-nil error when the scan failed, including on timeout.
 func (a *App) Run() error {
-	startTime := time.Now() // Start timer for overall execution
+	startTime := time.Now()
 
-	// Show version and exit if requested
 	if a.cfg.ShowVersion {
 		fmt.Printf("sift version %s\n", a.cfg.Version)
 		return nil
@@ -139,10 +138,9 @@ func (a *App) walkAndCollect(mode collectMode, ctx context.Context, emit func(fo
 		return nil, err
 	}
 
-	// --- Create the per-file processor. It owns token counting, smart
 	// filtering, and signature compression. The tokenizer codec is safe for
 	// concurrent Count calls and the compressor pools its parsers, so the
-	// walker's workers share one instance. ---
+	// walker's workers share one instance.
 	processor, err := a.newProcessor(mode)
 	if err != nil {
 		return nil, err
@@ -155,7 +153,6 @@ func (a *App) walkAndCollect(mode collectMode, ctx context.Context, emit func(fo
 
 	walkFn := a.processWalkEntry(mode, processor, &smartSkipped, &smartMu, matcher, emit)
 
-	// --- Start the directory walk ---
 	a.infoLog("Scanning directory: %s", absRootDir)
 	if a.cfg.Concurrent {
 		a.infoLog("Using concurrent processing with %d workers.", a.cfg.MaxWorkers)
@@ -163,7 +160,6 @@ func (a *App) walkAndCollect(mode collectMode, ctx context.Context, emit func(fo
 
 	skippedItems, err := a.walkDirectory(absRootDir, matcher, walkFn, walkOptions)
 
-	// Fold smart-filtered files into the walker's skip list.
 	if len(smartSkipped) > 0 {
 		smartMu.Lock()
 		skippedItems = append(skippedItems, smartSkipped...)
@@ -251,7 +247,6 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 		}
 
 		if content == nil {
-			// This case shouldn't happen if err is nil, but good to log if it does
 			a.log.Warn("printFunc called for '%s' with nil content and nil error.", relativePath)
 			return nil
 		}

@@ -16,22 +16,16 @@ type footerAction struct {
 
 func (a footerAction) text() string { return a.key + " " + a.label }
 
-// scanSpinner returns one frame of the braille-dot scanning animation.
 var scanSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func (m model) spinnerChar() string {
 	return scanSpinnerFrames[m.spinnerFrame%len(scanSpinnerFrames)]
 }
 
-// footerHeight returns the number of rendered footer lines. The body is
-// normalized before the separator is added, so the separator itself does not
-// consume a layout row.
 func (m model) footerHeight() int {
 	return 2
 }
 
-// keyBadge renders a single key hint as  key  label  using dim styling for
-// the label and a slightly brighter style for the key itself.
 func (m model) keyBadge(key, label string) string {
 	k := lipgloss.NewStyle().Foreground(m.styles.accent).Bold(true).Render(key)
 	l := m.styles.muted.Render(label)

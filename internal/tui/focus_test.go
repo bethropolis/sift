@@ -40,7 +40,6 @@ func TestFocusPreviewScrollKeys(t *testing.T) {
 	m.height = 12
 	m.width = 80
 
-	// Tree focus: j/k move the cursor.
 	m = updateKey(m, tea.KeyRunes, 'j')
 	if m.cursor != 0 {
 		t.Fatalf("tree-focused j moved cursor to %d, want 0 (single row)", m.cursor)
@@ -49,7 +48,6 @@ func TestFocusPreviewScrollKeys(t *testing.T) {
 		t.Fatalf("tree-focused j changed previewOffset to %d, want 0", m.previewOffset)
 	}
 
-	// Preview focus: j/k scroll the preview.
 	m = updateKey(m, tea.KeyTab) // FocusPreview
 	m = updateKey(m, tea.KeyRunes, 'j')
 	if m.previewOffset != 1 {
@@ -60,7 +58,6 @@ func TestFocusPreviewScrollKeys(t *testing.T) {
 		t.Errorf("preview-focused k previewOffset = %d, want 0", m.previewOffset)
 	}
 
-	// Arrow keys follow the same focus routing.
 	m = updateKey(m, tea.KeyDown)
 	if m.previewOffset != 1 {
 		t.Errorf("preview-focused Down previewOffset = %d, want 1", m.previewOffset)
@@ -78,8 +75,6 @@ func TestFocusSwitchBackKeys(t *testing.T) {
 	m = updateKey(m, tea.KeyTab) // FocusPreview
 	m = updateKey(m, tea.KeyRunes, 'j')
 
-	// h switches back to the tree without collapsing (no parent) and without
-	// resetting the preview scroll.
 	m = updateKey(m, tea.KeyRunes, 'h')
 	if m.focus != FocusTree {
 		t.Errorf("h focus = %v, want FocusTree", m.focus)
@@ -88,7 +83,6 @@ func TestFocusSwitchBackKeys(t *testing.T) {
 		t.Errorf("h reset previewOffset to %d, want 1", m.previewOffset)
 	}
 
-	// Left also switches back to the tree.
 	m = updateKey(m, tea.KeyTab)
 	m = updateKey(m, tea.KeyLeft)
 	if m.focus != FocusTree {
@@ -99,7 +93,6 @@ func TestFocusSwitchBackKeys(t *testing.T) {
 func TestEscSwitchesBeforeQuitting(t *testing.T) {
 	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{})
 
-	// Tree focus: Esc quits.
 	m = updateKey(m, tea.KeyEsc)
 	if !m.quit {
 		t.Error("Esc with tree focus should quit")

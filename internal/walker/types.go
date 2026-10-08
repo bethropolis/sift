@@ -5,7 +5,6 @@ import (
 	"sync"
 )
 
-// WalkFunc is the callback function type used by Walk
 type WalkFunc func(relativePath string, content []byte, err error) error
 
 // SkippedReason clarifies why a file/directory was not processed.
@@ -41,7 +40,6 @@ type SkippedItem struct {
 // etc.) can otherwise grow the skip list without bound and balloon memory.
 const defaultMaxSkippedItems = 10000
 
-// SkippedTracker is a struct to track skipped items
 type SkippedTracker struct {
 	items    []SkippedItem
 	mutex    sync.Mutex
@@ -49,7 +47,6 @@ type SkippedTracker struct {
 	dropped  int // skips not recorded because the cap was reached
 }
 
-// NewSkippedTracker creates a new SkippedTracker
 func NewSkippedTracker(capacity int) *SkippedTracker {
 	st := &SkippedTracker{
 		items:    make([]SkippedItem, 0, capacity),
@@ -74,7 +71,6 @@ func (st *SkippedTracker) Track(path string, reason SkippedReason, isDir bool) {
 	st.items = append(st.items, SkippedItem{Path: path, Reason: reason, IsDir: isDir})
 }
 
-// Items returns a copy of the tracked skipped items.
 func (st *SkippedTracker) Items() []SkippedItem {
 	st.mutex.Lock()
 	defer st.mutex.Unlock()

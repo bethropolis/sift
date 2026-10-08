@@ -53,7 +53,6 @@ func TestLinuxRoundTrip(t *testing.T) {
 			t.Errorf("missing installed file %s: %v", f, err)
 		}
 	}
-	// Idempotent: re-install repairs without error.
 	if _, err := installLinux(); err != nil {
 		t.Fatalf("re-install: %v", err)
 	}
@@ -72,7 +71,6 @@ func TestLinuxRoundTrip(t *testing.T) {
 			t.Errorf("%s survived uninstall", f)
 		}
 	}
-	// Missing files are success, not error.
 	if out, err := uninstallLinux(); err != nil || len(out.Files) != 0 {
 		t.Errorf("second uninstall = %v, %v", out, err)
 	}
@@ -109,7 +107,6 @@ func TestLauncherScriptQuoting(t *testing.T) {
 	if !strings.HasPrefix(script, "#!/bin/sh\n") {
 		t.Error("script missing shebang")
 	}
-	// The quoted path must survive a shell round-trip.
 	if !strings.Contains(script, `serve --app "$@"`) {
 		t.Errorf("script missing exec line:\n%s", script)
 	}

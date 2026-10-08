@@ -2,7 +2,6 @@ package ignore
 
 import "github.com/bethropolis/sift/internal/utils"
 
-// Option functions for configuration
 type Option func(*IgnoreMatcher)
 
 func WithHiddenIgnore(ignore bool) Option {

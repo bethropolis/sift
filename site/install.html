@@ -75,7 +75,9 @@ scoop install <span class="tok-accent">sift</span></pre>
           </div>
           <p class="note">
             Builds a copy without the CGO-only signature engine unless your
-            toolchain has cgo enabled. Prebuilt release binaries always
+            toolchain has cgo enabled. It also lacks the embedded
+            <code>sift serve</code> browser UI (needs <code>bun</code> — use
+            the installer instead for that). Prebuilt release binaries always
             include <code>--mode signatures</code> support.
           </p>
         </div>

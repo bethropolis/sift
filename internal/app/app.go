@@ -13,7 +13,6 @@ import (
 	"github.com/bethropolis/sift/internal/smart"
 )
 
-// App encapsulates the main application functionality
 type App struct {
 	cfg    *config.Config
 	log    *logger.Logger
@@ -60,10 +59,8 @@ func (a *App) EnablePickerVisibility() { a.pickerVisibility = true }
 // returned when the output file cannot be created. Color decisions are passed
 // explicitly to the logger and renderer rather than mutating global state.
 func New(cfg *config.Config) (*App, error) {
-	// Resolve color usage from the terminal and output destination
 	cfg.ResolveColors()
 
-	// Set up output destination. A dash means stdout; otherwise the dump is
 	// written to a file (codebase.md by default). Relative paths resolve
 	// against the scanned root so the dump lands next to the codebase.
 	var output io.Writer = os.Stdout
@@ -84,18 +81,14 @@ func New(cfg *config.Config) (*App, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create output file: %w", err)
 		}
-		// Note: file will be closed by main function
 		output = file
 	}
 
-	// Set up logger
 	log := logger.New(os.Stderr, cfg.Verbose, cfg.UseColors)
 
-	// Apply log level if specified (overrides verbose/quiet flags)
 	if cfg.LogLevel != "" {
 		log.SetLevel(cfg.LogLevel)
 	} else if cfg.Quiet {
-		// For backward compatibility
 		log.WithLevel(logger.LevelWarn)
 	}
 
@@ -108,21 +101,18 @@ func New(cfg *config.Config) (*App, error) {
 	}, nil
 }
 
-// Close performs cleanup, such as closing the output file if one was opened.
 func (a *App) Close() {
 	if f, ok := a.output.(*os.File); ok && f != os.Stdout && f != os.Stderr {
 		f.Close()
 	}
 }
 
-// infoLog logs at INFO level unless quiet mode is active.
 func (a *App) infoLog(format string, args ...interface{}) {
 	if !a.cfg.Quiet {
 		a.log.Info(format, args...)
 	}
 }
 
-// LogError logs an error message through the app's logger.
 func (a *App) LogError(format string, args ...interface{}) {
 	a.log.Error(format, args...)
 }
