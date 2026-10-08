@@ -5,6 +5,7 @@
     type PackResult,
     type RecentProject,
     type ApiMeta,
+    type FollowHit,
   } from '../lib/api';
   import FileTree, { type TreeFoldActions } from '../components/FileTree.svelte';
   import CodePreview from '../components/CodePreview.svelte';
@@ -42,6 +43,17 @@
   let filterQuery = $state('');
   let loadingTree = $state(true);
   let treeError = $state<string | null>(null);
+
+  // Follow walk state: the applied hit set plus the selections it replaced,
+  // so clearing restores exactly what was there. Session-only by design.
+  let followState = $state<{
+    seed: string;
+    direction: string;
+    hits: FollowHit[];
+    unanalyzed: number;
+    prev: Record<string, FileSelectionMode>;
+  } | null>(null);
+  let isFollowing = $state(false);
 
   // File preview state
   let previewContent = $state('');
@@ -90,6 +102,7 @@
     let alive = true;
     loadingTree = true;
     treeError = null;
+    followState = null;
     // A new project starts from the server's resolved budget, not the last
     // session's override.
     budgetOverride = null;
@@ -278,6 +291,19 @@
         toast({ id: 'copy-path', kind: 'error', message: 'Couldn’t copy the path' });
       }
     };
+    if (!isDir && files.some((f) => f.path === path && f.followable)) {
+      const follow = (direction: 'deps' | 'dependents', label: string): MenuItem => ({
+        id: `follow-${direction}`,
+        label,
+        hint: '',
+        disabled: isFollowing,
+        run: () => {
+          void handleFollowFile(path, direction);
+        },
+      });
+      items.push(follow('dependents', 'Show dependents'));
+      items.push(follow('deps', 'Show dependencies'));
+    }
     items.push({
       id: 'copy-full',
       label: 'Copy full path',
@@ -293,6 +319,45 @@
       run: copyPath(path),
     });
     openCtxMenu(e.clientX, e.clientY, items, opener);
+  }
+
+  // Follow walk from the explorer: replaces the selection with exactly what
+  // the CLI follow picks (seed full, near hops full, far hops signatures)
+  // and remembers the previous selection for Clear. Failures toast the
+  // server's reason; the selection is untouched.
+  async function handleFollowFile(path: string, direction: 'deps' | 'dependents') {
+    if (isFollowing) return;
+    isFollowing = true;
+    focusedPath = path;
+    try {
+      const res = await api.follow({ root: projectRoot, path, direction });
+      const prev = { ...selections };
+      const next: Record<string, FileSelectionMode> = {};
+      for (const f of files) next[f.path] = 'skip';
+      for (const h of res.hits) next[h.path] = h.mode;
+      selections = next;
+      followState = {
+        seed: res.seed,
+        direction: res.direction,
+        hits: res.hits,
+        unanalyzed: res.unanalyzed,
+        prev,
+      };
+    } catch (err) {
+      toast({
+        id: 'follow-failed',
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Follow walk failed',
+      });
+    } finally {
+      isFollowing = false;
+    }
+  }
+
+  function clearFollow() {
+    if (!followState) return;
+    selections = followState.prev;
+    followState = null;
   }
 
   async function handleSmartSelect() {
@@ -573,6 +638,30 @@
         {:else if treeError}
           <div class="pane-error">{treeError}</div>
         {:else}
+          {#if followState}
+            {@const hopCounts = (() => {
+              const byHop = new Map<number, number>();
+              for (const h of followState.hits) {
+                if (h.distance === 0) continue;
+                byHop.set(h.distance, (byHop.get(h.distance) ?? 0) + 1);
+              }
+              return [...byHop.entries()]
+                .sort((a, b) => a[0] - b[0])
+                .map(([d, n]) => `hop ${d}: ${n}`)
+                .join(', ');
+            })()}
+            <div class="follow-banner" role="status">
+              <span
+                class="follow-text"
+                title={`${followState.seed} · ${followState.direction} · ${hopCounts}${followState.unanalyzed > 0 ? ` · ${followState.unanalyzed} files need a resolver` : ''}`}
+              >
+                Following {followState.seed} · {followState.direction} · {followState.hits.length} files
+              </span>
+              <button class="btn btn-sm btn-ghost" onclick={clearFollow} title="Restore previous selection">
+                Clear
+              </button>
+            </div>
+          {/if}
           <FileTree
             {files}
             {selections}
@@ -731,6 +820,23 @@
     text-align: center;
     color: var(--status-danger);
     font-size: 11px;
+  }
+  .follow-banner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .follow-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink-faint);
+    font-family: var(--font-mono);
   }
   .main {
     flex: 1;

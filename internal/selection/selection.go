@@ -167,6 +167,10 @@ type Signals struct {
 	Centrality   float64 `json:"centrality,omitempty"`
 	Role         float64 `json:"role,omitempty"`
 	TestAffinity float64 `json:"test_affinity,omitempty"`
+	// Distance is the import-graph hop count from a follow seed. It is zero
+	// for ordinary selections and carried through to reports so the walk
+	// that picked a file stays observable.
+	Distance float64 `json:"distance,omitempty"`
 }
 
 // Candidate is a collected file plus the mode preference supplied by history

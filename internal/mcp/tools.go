@@ -283,55 +283,23 @@ func handlePackFollow(ctx context.Context, args map[string]any, cfg *config.Conf
 
 	ranker := app.NewRankerWithWeights(absRoot, app.WeightsFromScoring(runCfg.Scoring))
 	preferred, graph := ranker.RankGraph(files)
-	paths := make([]string, 0, len(files))
-	for _, f := range files {
-		paths = append(paths, filepath.ToSlash(f.Path))
-	}
-	expanded := app.ExpandGraphDirs(graph, paths)
-	inverted := app.InvertGraph(expanded)
-	var adj map[string][]string
-	switch direction {
-	case app.FollowDependents:
-		adj = inverted
-	case app.FollowBoth:
-		adj = app.MergeGraphs(expanded, inverted)
-	default:
-		adj = expanded
-	}
-	hits := app.WalkGraph(adj, []string{seed}, depth)
-	modes := app.FollowModes(hits, fullDepth)
+	modeOverride := ""
 	if modeGiven {
-		for p := range modes {
-			modes[p] = runCfg.Mode
-		}
+		modeOverride = runCfg.Mode
 	}
-	testAffinity := app.RelatedTestAffinity(files, graph)
-	candidates := make([]selection.Candidate, 0, len(hits))
-	byEntry := make(map[string]int, len(files))
-	for i, f := range files {
-		byEntry[filepath.ToSlash(f.Path)] = i
+	sel, err := app.FollowCandidates(files, graph, preferred, seed, direction, depth, fullDepth, modeOverride)
+	if err != nil {
+		return "", err
 	}
-	for _, h := range hits {
-		f := files[byEntry[h.Path]]
-		sc := preferred[f.Path]
-		candidates = append(candidates, selection.Candidate{
-			File:          f,
-			PreferredMode: modes[h.Path],
-			Signals: selection.Signals{
-				Recency:      sc.Signals.Recency,
-				Churn:        sc.Signals.Churn,
-				Centrality:   sc.Signals.Centrality,
-				Role:         sc.Signals.Role,
-				TestAffinity: testAffinity[h.Path],
-			},
-		})
-	}
-	result := selection.Select(candidates, selection.Request{
+	result := selection.Select(sel.Candidates, selection.Request{
 		Budget: runCfg.Budget,
 		Prompt: runCfg.Prompt,
 		Tuning: app.TuningFromScoring(runCfg.Scoring),
 	})
-	wantMode := modes[seed]
+	wantMode := modeOverride
+	if wantMode == "" {
+		wantMode = sel.Modes[seed]
+	}
 	for _, d := range result.Decisions {
 		if filepath.ToSlash(d.Path) == seed && d.Selected && string(d.Mode) == wantMode {
 			buf, err := app.RenderBuffer(ctx, result.Selected, runCfg.Prompt, &runCfg)

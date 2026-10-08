@@ -82,6 +82,8 @@ export interface TreeFile {
   tokens: number;
   language: string;
   score: number; // 0 to 1 (git relevance score)
+  /** True when the server can walk this file's imports (follow menu). */
+  followable: boolean;
 }
 
 export interface TreeResult {
@@ -111,6 +113,27 @@ export type SelectionMode = 'full' | 'sigs' | 'skip';
 
 export interface SmartSelectResult {
   selections: Record<string, SelectionMode>;
+}
+
+export interface FollowHit {
+  path: string;
+  distance: number;
+  via: string;
+  mode: 'full' | 'sigs';
+}
+
+export interface FollowResult {
+  seed: string;
+  direction: string;
+  depth: number;
+  hits: FollowHit[];
+  unanalyzed: number;
+}
+
+export interface FollowPayload {
+  root: string;
+  path: string;
+  direction: 'deps' | 'dependents' | 'both';
 }
 
 export interface PackPayload {

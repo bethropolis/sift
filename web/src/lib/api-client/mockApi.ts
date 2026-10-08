@@ -12,6 +12,8 @@ import type {
   CloneProgress,
   CloneRequest,
   FileContentResult,
+  FollowPayload,
+  FollowResult,
   PackPayload,
   PackResult,
   PackSection,
@@ -176,10 +178,18 @@ export async function getTree(root: string): Promise<TreeResult> {
 
   return {
     root,
-    files: mockTreeFiles,
+    files: mockTreeFiles.map((f) => ({ ...f, followable: isFollowableExt(f.path) })),
     budget: 64000,
     budgetSource: 'default',
   };
+}
+
+// Mock-only mirror of the server's import-scanner extensions, so the follow
+// menu gates the same way in isolated UI work.
+function isFollowableExt(path: string): boolean {
+  return /\.(go|ts|tsx|js|jsx|mjs|cjs|py|pyi|rs|java|kt|kts|cs|cpp|cc|cxx|c|h|hpp|php|rb|swift|dart)$/i.test(
+    path,
+  );
 }
 
 export async function getFile(root: string, path: string, mode: 'full' | 'sigs'): Promise<FileContentResult> {
@@ -315,6 +325,26 @@ export async function smartSelect(root: string, budget: number): Promise<SmartSe
   }
 
   return { selections };
+}
+
+export async function follow(payload: FollowPayload): Promise<FollowResult> {
+  await delay(80);
+
+  const { path, direction } = payload;
+  // Canned walk over the mock tree: the seed plus nearby Go files, so the
+  // follow banner, mode assignment, and restore path are all exercisable
+  // without a server.
+  const peers = mockTreeFiles.filter((f) => f.path !== path && f.path.endsWith('.go')).slice(0, 5);
+  const hits: FollowResult['hits'] = [
+    { path, distance: 0, via: '', mode: 'full' },
+    ...peers.map((f, i) => ({
+      path: f.path,
+      distance: 1,
+      via: path,
+      mode: (i < 2 ? 'full' : 'sigs') as 'full' | 'sigs',
+    })),
+  ];
+  return { seed: path, direction, depth: 2, hits, unanalyzed: 3 };
 }
 
 export async function pack(payload: PackPayload): Promise<PackResult> {

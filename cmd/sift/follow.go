@@ -97,62 +97,25 @@ func runFollow(cmd *cobra.Command, args []string) error {
 	ranker := app.NewRankerWithWeights(absRoot, scores)
 	preferred, graph := ranker.RankGraph(files)
 
-	paths := make([]string, 0, len(files))
-	for _, f := range files {
-		paths = append(paths, filepath.ToSlash(f.Path))
-	}
-	expanded := app.ExpandGraphDirs(graph, paths)
-	inverted := app.InvertGraph(expanded)
-	var adj map[string][]string
-	switch direction {
-	case app.FollowDependents:
-		adj = inverted
-	case app.FollowBoth:
-		adj = app.MergeGraphs(expanded, inverted)
-	default:
-		adj = expanded
-	}
-	hits := app.WalkGraph(adj, []string{seed}, followDepth)
-	modes := app.FollowModes(hits, followFullDepth)
+	modeOverride := ""
 	if cmd.Flags().Changed("mode") {
-		for p := range modes {
-			modes[p] = cfg.Mode
-		}
+		modeOverride = cfg.Mode
 	}
-
-	unanalyzed := 0
-	for _, f := range files {
-		if !lang.HasImportScanner(filepath.ToSlash(f.Path)) {
-			unanalyzed++
-		}
+	sel, err := app.FollowCandidates(files, graph, preferred, seed, direction, followDepth, followFullDepth, modeOverride)
+	if err != nil {
+		return err
 	}
-	candidates := make([]selection.Candidate, 0, len(hits))
-	testAffinity := app.RelatedTestAffinity(files, graph)
-	byEntry := make(map[string]int, len(files))
-	for i, f := range files {
-		byEntry[filepath.ToSlash(f.Path)] = i
-	}
-	for _, h := range hits {
-		file := files[byEntry[h.Path]]
-		candidates = append(candidates, selection.Candidate{
-			File:          file,
-			PreferredMode: modes[h.Path],
-			Signals: selection.Signals{
-				Recency:      preferred[file.Path].Signals.Recency,
-				Churn:        preferred[file.Path].Signals.Churn,
-				Centrality:   preferred[file.Path].Signals.Centrality,
-				Role:         preferred[file.Path].Signals.Role,
-				TestAffinity: testAffinity[h.Path],
-			},
-		})
-	}
-	result := selection.Select(candidates, selection.Request{
+	hits := sel.Hits
+	result := selection.Select(sel.Candidates, selection.Request{
 		Budget: cfg.Budget,
 		Prompt: cfg.Prompt,
 		Tuning: app.TuningFromScoring(cfg.Scoring),
 	})
 
-	wantMode := modes[seed]
+	wantMode := modeOverride
+	if wantMode == "" {
+		wantMode = sel.Modes[seed]
+	}
 	seedOK := false
 	for _, d := range result.Decisions {
 		if filepath.ToSlash(d.Path) == seed && d.Selected && string(d.Mode) == wantMode {
@@ -168,7 +131,7 @@ func runFollow(cmd *cobra.Command, args []string) error {
 	if err := application.RenderFinal(result.Selected, skipped, time.Since(start), nil); err != nil {
 		return err
 	}
-	printFollowSummary(seed, direction, hits, unanalyzed)
+	printFollowSummary(seed, direction, hits, sel.Unanalyzed)
 	return nil
 }
 

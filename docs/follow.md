@@ -63,3 +63,16 @@ analyzed" number in the summary.
 
 See also [Dependency expansion](dependencies.md), which auto-includes imports
 of whatever `select` (or the picker) chose.
+
+## In the web UI and select
+
+Right-click a supported file in the explorer and pick **Show dependents** or
+**Show dependencies**: the selection becomes exactly what the CLI would pick
+(seed full, near hops full, far hops signatures), with a banner naming the
+seed, direction, and hop counts. **Clear** restores the previous selection.
+
+`sift select --follow <file>` (plus `--follow-direction`, `--follow-depth`,
+`--follow-full-depth`) restricts a select run to one walk, so the selection
+report shows what follow picks. Each decision's signals carry the hop
+`distance` (visible in `json`/`ndjson` reports; the seed itself is distance
+0), and the walk summary prints to stderr ahead of the report.

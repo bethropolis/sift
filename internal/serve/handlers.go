@@ -14,6 +14,7 @@ import (
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/lang"
 	"github.com/bethropolis/sift/internal/selection"
 	"github.com/bethropolis/sift/internal/serve/auth"
 	"github.com/bethropolis/sift/internal/state"
@@ -331,20 +332,23 @@ func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type file struct {
-		Path     string  `json:"path"`
-		Size     int     `json:"size"`
-		Tokens   int     `json:"tokens"`
-		Language string  `json:"language"`
-		Score    float64 `json:"score"`
+		Path      string  `json:"path"`
+		Size      int     `json:"size"`
+		Tokens    int     `json:"tokens"`
+		Language  string  `json:"language"`
+		Score     float64 `json:"score"`
+		Followable bool   `json:"followable"`
 	}
 	out := make([]file, 0, len(files))
 	for _, f := range files {
+		p := filepath.ToSlash(f.Path)
 		out = append(out, file{
-			Path:     filepath.ToSlash(f.Path),
-			Size:     len(f.Content),
-			Tokens:   f.TokensFull,
-			Language: f.Language,
-			Score:    f.RankScore,
+			Path:       p,
+			Size:       len(f.Content),
+			Tokens:     f.TokensFull,
+			Language:   f.Language,
+			Score:      f.RankScore,
+			Followable: lang.HasImportScanner(p),
 		})
 	}
 	// The budget rides along so the client displays and sends the resolved
@@ -500,6 +504,110 @@ func (s *Server) handleSmartSelect(w http.ResponseWriter, r *http.Request) {
 		selections[filepath.ToSlash(d.Path)] = mode
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"selections": selections})
+}
+
+// handleFollow walks the import graph from one seed file and returns the
+// hits with distances, so the explorer can select exactly what the CLI
+// follow picks. It returns paths and modes only, never file content.
+func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Root      string `json:"root"`
+		Path      string `json:"path"`
+		Direction string `json:"direction"`
+		Depth     *int   `json:"depth"`
+		FullDepth *int   `json:"fullDepth"`
+	}
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	root, err := s.openProject(body.Root)
+	if err != nil {
+		s.log.Warn("denied follow", "root", relForm(body.Root))
+		writeAPIError(w, http.StatusForbidden, "cannot open that project")
+		return
+	}
+	direction := body.Direction
+	if direction == "" {
+		direction = app.FollowDependents
+	}
+	if _, err := app.ParseFollowDirection(direction); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "direction must be deps, dependents, or both")
+		return
+	}
+	depth, fullDepth := 2, 1
+	if body.Depth != nil {
+		depth = *body.Depth
+	}
+	if body.FullDepth != nil {
+		fullDepth = *body.FullDepth
+	}
+	seed, err := app.ResolveSeed(root, body.Path)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, followErrorText(err))
+		return
+	}
+	cfg, err := s.engineConfigFor(root)
+	if err != nil {
+		s.log.Warn("config resolve", "root", relForm(body.Root), "err", err)
+		writeAPIError(w, http.StatusInternalServerError, "scan failed")
+		return
+	}
+	files, skipped, err := app.ScanPicker(r.Context(), root, cfg)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "scan failed")
+		return
+	}
+	present := false
+	for _, f := range files {
+		if filepath.ToSlash(f.Path) == seed {
+			present = true
+		}
+	}
+	if !present {
+		for _, sk := range skipped {
+			if filepath.ToSlash(sk.Path) == seed {
+				writeAPIError(w, http.StatusBadRequest, "seed is skipped: "+strings.ToLower(string(sk.Reason)))
+				return
+			}
+		}
+		writeAPIError(w, http.StatusBadRequest, "seed is ignored or outside the collected tree")
+		return
+	}
+	if !lang.HasImportScanner(seed) {
+		writeAPIError(w, http.StatusBadRequest, "no import resolver for this file type")
+		return
+	}
+	ranker := app.NewRankerWithWeights(root, app.WeightsFromScoring(cfg.Scoring))
+	graph := ranker.DependencyGraph(files)
+	sel, err := app.FollowCandidates(files, graph, nil, seed, direction, depth, fullDepth, "")
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "scan failed")
+		return
+	}
+	type hit struct {
+		Path     string `json:"path"`
+		Distance int    `json:"distance"`
+		Via      string `json:"via"`
+		Mode     string `json:"mode"`
+	}
+	hits := make([]hit, 0, len(sel.Hits))
+	for _, h := range sel.Hits {
+		mode := sel.Modes[h.Path]
+		if mode == "signatures" {
+			mode = "sigs"
+		}
+		hits = append(hits, hit{Path: h.Path, Distance: h.Distance, Via: h.Via, Mode: mode})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"seed": seed, "direction": direction, "depth": depth,
+		"hits": hits, "unanalyzed": sel.Unanalyzed,
+	})
+}
+
+// followErrorText trims the internal "follow: " prefix: the endpoint name
+// already says where the error came from.
+func followErrorText(err error) string {
+	return strings.TrimPrefix(err.Error(), "follow: ")
 }
 
 // handlePack renders the browser's explicit selections into the document.

@@ -6,6 +6,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/lang"
+	"github.com/bethropolis/sift/internal/rank"
+	"github.com/bethropolis/sift/internal/selection"
 )
 
 // Follow directions for walking the import graph.
@@ -172,6 +177,79 @@ func FollowModes(hits []FollowHit, fullDepth int) map[string]string {
 		}
 	}
 	return modes
+}
+
+// FollowSelection is the optimizer-ready form of a seed walk: one candidate
+// per hit with distance-based mode preferences, plus the walk itself, the
+// per-path modes, and the count of eligible files no resolver covers.
+type FollowSelection struct {
+	Candidates []selection.Candidate
+	Hits       []FollowHit
+	Modes      map[string]string
+	Unanalyzed int
+}
+
+// FollowCandidates walks the import graph from the seed and builds the
+// optimizer input, sharing one construction across the follow command, the
+// select --follow debug flag, the MCP tool, and the serve endpoint. files
+// are the collected entries, graph their forward adjacency, and preferred
+// their rank results for signals. modeOverride ("" for distance-based
+// modes) honors an explicit --mode for every hit including the seed.
+func FollowCandidates(files []format.FileEntry, graph map[string][]string, preferred map[string]rank.FileScoreResult, seed, direction string, maxDepth, fullDepth int, modeOverride string) (FollowSelection, error) {
+	paths := make([]string, 0, len(files))
+	byEntry := make(map[string]int, len(files))
+	scannerMissing := 0
+	for i, f := range files {
+		p := filepath.ToSlash(f.Path)
+		paths = append(paths, p)
+		byEntry[p] = i
+		if !lang.HasImportScanner(p) {
+			scannerMissing++
+		}
+	}
+	expanded := ExpandGraphDirs(graph, paths)
+	inverted := InvertGraph(expanded)
+	var adj map[string][]string
+	switch direction {
+	case FollowDependents:
+		adj = inverted
+	case FollowBoth:
+		adj = MergeGraphs(expanded, inverted)
+	default:
+		adj = expanded
+	}
+	hits := WalkGraph(adj, []string{seed}, maxDepth)
+	modes := FollowModes(hits, fullDepth)
+	if modeOverride != "" {
+		for p := range modes {
+			modes[p] = modeOverride
+		}
+	}
+	testAffinity := RelatedTestAffinity(files, graph)
+	candidates := make([]selection.Candidate, 0, len(hits))
+	for _, h := range hits {
+		f := files[byEntry[h.Path]]
+		sc := preferred[f.Path]
+		candidates = append(candidates, selection.Candidate{
+			File:          f,
+			PreferredMode: modes[h.Path],
+			Signals: selection.Signals{
+				Recency:      sc.Signals.Recency,
+				Churn:        sc.Signals.Churn,
+				Centrality:   sc.Signals.Centrality,
+				Role:         sc.Signals.Role,
+				TestAffinity: testAffinity[h.Path],
+				Distance:     float64(h.Distance),
+			},
+		})
+	}
+	return FollowSelection{Candidates: candidates, Hits: hits, Modes: modes, Unanalyzed: scannerMissing}, nil
+}
+
+// SeedPinError reports that the seed did not survive budgeting at its
+// assigned mode, so there is nothing worth rendering.
+func SeedPinError(seed string, wantMode string, budget int) error {
+	return fmt.Errorf("seed %q alone exceeds the token budget (%d) at %s mode", seed, budget, wantMode)
 }
 
 // ResolveSeed maps a seed argument (root-relative or absolute) to the

@@ -48,7 +48,7 @@ export function stamp<T extends { name: string }>(entries: T[]): (T & { modTime:
 }
 
 // Generate realistic mock files for a Go project (~150 files)
-export const mockTreeFiles: TreeFile[] = [
+export const mockTreeFiles: Array<Omit<TreeFile, 'followable'>> = [
   // Root files
   { path: 'go.mod', size: 1420, tokens: 340, language: 'go', score: 0.94 },
   { path: 'go.sum', size: 18450, tokens: 4200, language: 'text', score: 0.25 },

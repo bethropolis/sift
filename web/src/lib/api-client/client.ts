@@ -13,6 +13,8 @@ import type {
   CloneProgress,
   CloneRequest,
   FileContentResult,
+  FollowPayload,
+  FollowResult,
   PackPayload,
   PackResult,
   RecentProject,
@@ -117,6 +119,27 @@ export async function pack(payload: PackPayload): Promise<PackResult> {
     if (res.status === 401) handle401();
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+}
+
+export async function follow(payload: FollowPayload): Promise<FollowResult> {
+    const res = await fetch('/api/follow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.status === 401) handle401();
+    if (!res.ok) throw new Error(await followError(res));
+    return res.json();
+}
+
+async function followError(res: Response): Promise<string> {
+    try {
+        const body = (await res.json()) as { error?: string };
+        if (body?.error) return body.error;
+    } catch {
+        // Fall through to the status line.
+    }
+    return `HTTP ${res.status}`;
 }
 
 export async function getSettings(): Promise<SettingsData> {
