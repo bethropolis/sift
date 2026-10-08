@@ -530,6 +530,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     position: relative;
+    scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;
   }
