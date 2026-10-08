@@ -8,7 +8,6 @@ import (
 	"strings"
 )
 
-// bundleID identifies the Sift.app bundle.
 const bundleID = "com.bethropolis.sift"
 
 func appDir() (string, error) {

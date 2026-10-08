@@ -83,3 +83,29 @@ scoops:
     homepage: https://github.com/bethropolis/sift
     license: MIT
     skip_upload: '{{ not (isEnvSet "SCOOP_BUCKET_GITHUB_TOKEN") }}'
+
+
+aurs:
+  - name: sift-context-bin
+    homepage: "https://github.com/bethropolis/sift"
+    description: "Sift a codebase into an LLM-friendly context document"
+    license: "MIT"
+    private_key: "{{ .Env.AUR_KEY }}"
+    git_url: "ssh://aur@aur.archlinux.org/sift-context-bin.git"
+    disable: "{{ .IsSnapshot }}"
+    provides:
+      - sift
+    conflicts:
+      - sift
+    optdepends:
+      - "chromium: chromeless window for sift serve --app"
+      - "git: repository cloning with sift clone and serve --allow-clone"
+    package: |-
+      install -Dm755 "./sift" "${pkgdir}/usr/bin/sift"
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/sift-context-bin/LICENSE"
+      install -dm755 "${pkgdir}/usr/share/bash-completion/completions" \
+                     "${pkgdir}/usr/share/zsh/site-functions" \
+                     "${pkgdir}/usr/share/fish/vendor_completions.d"
+      ./sift completion bash > "${pkgdir}/usr/share/bash-completion/completions/sift"
+      ./sift completion zsh > "${pkgdir}/usr/share/zsh/site-functions/_sift"
+      ./sift completion fish > "${pkgdir}/usr/share/fish/vendor_completions.d/sift.fish"

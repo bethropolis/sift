@@ -16,8 +16,6 @@ func init() {
 	desktopCmd.AddCommand(desktopStatusCmd)
 }
 
-// desktopCmd manages the OS launcher that opens `sift serve --app`: an XDG
-// .desktop file on Linux, a Sift.app bundle on macOS.
 var desktopCmd = &cobra.Command{
 	Use:   "desktop",
 	Short: "Install or remove the Sift desktop launcher",
