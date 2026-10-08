@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Sift
+Comment=Sift: pack a codebase into LLM context
+Exec=sift serve --app
+Icon=sift
+Terminal=false
+Categories=Development;
+Keywords=code;llm;context;
+StartupNotify=false

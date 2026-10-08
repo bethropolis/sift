@@ -121,6 +121,10 @@ unsigned bundle). Everything is user-local and marked, so uninstall only
 removes files sift created — a foreign file at one of these paths is left
 alone with an explanation.
 
+Distro packages may ship the same entry system-wide: `packaging/sift.desktop`
+launches `sift serve --app` and travels in the release tarballs (including
+`sift-context-bin` from v1.4.0 on).
+
 ## Upgrading
 
 Re-run the same install command you used originally — the installer overwrites

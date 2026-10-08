@@ -47,6 +47,8 @@ archives:
     files:
       - README.md
       - LICENSE
+      - packaging/sift.desktop
+      - packaging/sift.png
 
 checksum:
   name_template: checksums.txt
@@ -89,6 +91,8 @@ aurs:
   - name: sift-context-bin
     homepage: "https://github.com/bethropolis/sift"
     description: "Sift a codebase into an LLM-friendly context document"
+    maintainers:
+      - "bethropolis <bethropolis at gmail dot com>"    
     license: "MIT"
     private_key: "{{ .Env.AUR_KEY }}"
     git_url: "ssh://aur@aur.archlinux.org/sift-context-bin.git"
@@ -109,3 +113,5 @@ aurs:
       ./sift completion bash > "${pkgdir}/usr/share/bash-completion/completions/sift"
       ./sift completion zsh > "${pkgdir}/usr/share/zsh/site-functions/_sift"
       ./sift completion fish > "${pkgdir}/usr/share/fish/vendor_completions.d/sift.fish"
+      install -Dm644 "packaging/sift.desktop" "${pkgdir}/usr/share/applications/sift.desktop"
+      install -Dm644 "packaging/sift.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/sift.png"
