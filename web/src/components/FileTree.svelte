@@ -7,9 +7,10 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { TreeFile } from '../lib/api';
   import { formatTokens } from '../lib/format';
-  import { cycleMode, type FileSelectionMode } from '../lib/selection';
+  import { cycleMode, toggleMode, type FileSelectionMode } from '../lib/selection';
   import { parsePattern, splitHighlight } from '../lib/filter';
   import { buildTree, collectDescendants } from './tree/tree';
   import { flattenRows, ROW_HEIGHT, windowRows } from './tree/rows';
@@ -112,11 +113,16 @@
 
   function handleDirCheckboxClick(e: MouseEvent, dirPath: string) {
     e.stopPropagation();
+    cycleDirMode(dirPath);
+  }
+
+  // Directory aggregate cycle (TUI parity): Full → Sigs → Skip → Full.
+  // All-sigs advances to skip, all-skip wraps to full, and all-full and
+  // mixed sets both advance to sigs. Shared by the checkbox and row
+  // double-click so both always agree.
+  function cycleDirMode(dirPath: string) {
     const descendants = dirDescendants.get(dirPath) || [];
     if (descendants.length === 0) return;
-    // TUI parity: the directory aggregate cycles Full → Sigs → Skip → Full.
-    // All-sigs advances to skip, all-skip wraps to full, and all-full and
-    // mixed sets both advance to sigs.
     const modes = descendants.map((p) => selections[p] || 'full');
     let next: FileSelectionMode;
     if (modes.every((m) => m === 'sigs')) next = 'skip';
@@ -155,12 +161,18 @@
   });
 
   // Keep keyboard-driven focus visible (virtual list: manual scroll math,
-  // adjusted only when the focused row is outside the window).
+  // adjusted only when the focused row is outside the window). flatRows is
+  // read untracked on purpose: expanding/collapsing reshuffles rows under a
+  // stable focus, and re-asserting visibility then would yank the viewport
+  // (e.g. pinning the focused row to the bottom edge after opening a big
+  // directory above it). Only a focus change itself may move the scroll, so
+  // inserted rows simply displace what is below them.
   $effect(() => {
     const path = focusedPath;
     const el = containerEl;
     if (!path || !el) return;
-    const idx = flatRows.findIndex((r) => !r.isDir && r.node.path === path);
+    const rows = untrack(() => flatRows);
+    const idx = rows.findIndex((r) => !r.isDir && r.node.path === path);
     if (idx === -1) return;
     const top = idx * ROW_HEIGHT;
     if (top < el.scrollTop) el.scrollTop = top;
@@ -307,11 +319,27 @@
               role="treeitem"
               aria-selected={row.isDir ? undefined : !isSkipped}
               aria-expanded={row.isDir ? row.isExpanded : undefined}
-              onclick={() => {
+              onclick={(e) => {
+                if (e.shiftKey) {
+                  // Shift-click changes the mode in place: no focus move,
+                  // no tab switch, no expand toggle — a pure background
+                  // action (Space-key semantics for files, checkbox-cycle
+                  // semantics for folders).
+                  if (row.isDir) cycleDirMode(node.path);
+                  else onModeChange(node.path, toggleMode(mode));
+                  return;
+                }
                 if (row.isDir) toggleDirectory(node.path);
                 else onFocusFile(node.path);
               }}
+              ondblclick={() => {
+                // Double-click is an "open it" gesture, never "close it":
+                // the two clicks toggled collapse twice, so settle expanded.
+                // (Mode changes live on Shift-click instead.)
+                if (row.isDir) collapsedDirs = { ...collapsedDirs, [node.path]: false };
+              }}
               oncontextmenu={(e) => onRowContextMenu?.(e, node.path, row.isDir)}
+              title={row.isDir ? 'Shift-click to cycle folder mode' : 'Shift-click to include/exclude'}
               onkeydown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
@@ -349,6 +377,7 @@
               {#if row.isDir}
                 <div
                   onclick={(e) => handleDirCheckboxClick(e, node.path)}
+                  ondblclick={(e) => e.stopPropagation()}
                   onkeydown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
@@ -377,6 +406,7 @@
                     e.stopPropagation();
                     onModeChange(node.path, cycleMode(mode));
                   }}
+                  ondblclick={(e) => e.stopPropagation()}
                   class={`mode-badge ${mode} row-mode`}
                   title="Click to cycle mode (m: full -> sigs -> skip)"
                 >
@@ -544,6 +574,9 @@
     border-left: 2px solid transparent;
     font-size: 11.5px;
     transition: background-color 50ms ease;
+    /* Rows are not text-selectable (avoids the selection flash on
+       rapid or shift clicks). */
+    user-select: none;
   }
   .row:hover {
     background-color: var(--surface-alt);
