@@ -87,6 +87,12 @@ func Imports(path, moduleRoot string, content []byte) []string {
 	return registry.Imports(path, moduleRoot, content)
 }
 
+// HasImportScanner reports whether the language for path extracts imports.
+func HasImportScanner(path string) bool { return registry.HasImportScanner(path) }
+
+// ImportExtensions lists the sorted extensions of import-scanning languages.
+func ImportExtensions() []string { return registry.ImportExtensions() }
+
 // ResolveImports returns the import targets referenced by a file as
 // confirmed, existing repo-relative file paths. Drivers implementing
 // ImportResolver commit to real files; all other paths fall back to generic

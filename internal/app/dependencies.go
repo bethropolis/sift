@@ -2,7 +2,6 @@ package app
 
 import (
 	"path/filepath"
-	"strings"
 
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
@@ -14,53 +13,30 @@ import (
 // codegrab's --max-depth); negative means unlimited, zero disables
 // expansion. A visited set breaks import cycles. Graph targets naming
 // directories (Go package imports) expand to every collected file beneath
-// them. Already-selected files are never returned.
+// them. Already-selected files are never returned. Output is stable: by
+// distance, then by path.
 func ExpandDependencies(selected, files []format.FileEntry, graph map[string][]string, maxDepth int) []format.FileEntry {
 	if maxDepth == 0 {
 		return nil
 	}
 	byPath := make(map[string]format.FileEntry, len(files))
+	paths := make([]string, 0, len(files))
 	for _, f := range files {
-		byPath[filepath.ToSlash(f.Path)] = f
+		p := filepath.ToSlash(f.Path)
+		byPath[p] = f
+		paths = append(paths, p)
 	}
-	visited := make(map[string]bool, len(selected))
-	frontier := make([]string, 0, len(selected))
+	seeds := make([]string, 0, len(selected))
 	for _, s := range selected {
-		p := filepath.ToSlash(s.Path)
-		visited[p] = true
-		frontier = append(frontier, p)
+		seeds = append(seeds, filepath.ToSlash(s.Path))
 	}
 	var out []format.FileEntry
-	for depth := 0; len(frontier) > 0 && (maxDepth < 0 || depth < maxDepth); depth++ {
-		var next []string
-		for _, p := range frontier {
-			for _, t := range graph[p] {
-				for _, fp := range expandTarget(t, byPath) {
-					if visited[fp] {
-						continue
-					}
-					visited[fp] = true
-					out = append(out, byPath[fp])
-					next = append(next, fp)
-				}
-			}
+	for _, h := range WalkGraph(ExpandGraphDirs(graph, paths), seeds, maxDepth) {
+		if h.Distance == 0 {
+			continue
 		}
-		frontier = next
-	}
-	return out
-}
-
-// expandTarget resolves one graph target to collected file paths: a file
-// maps to itself, a directory to every collected file beneath it.
-func expandTarget(target string, byPath map[string]format.FileEntry) []string {
-	if _, ok := byPath[target]; ok {
-		return []string{target}
-	}
-	var out []string
-	prefix := strings.TrimSuffix(target, "/") + "/"
-	for p := range byPath {
-		if strings.HasPrefix(p, prefix) {
-			out = append(out, p)
+		if f, ok := byPath[h.Path]; ok {
+			out = append(out, f)
 		}
 	}
 	return out

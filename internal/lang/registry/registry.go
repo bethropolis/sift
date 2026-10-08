@@ -5,6 +5,7 @@ package registry
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -82,6 +83,39 @@ func Classify(path string) types.Classification {
 	}
 	classifyCache.Store(path, c)
 	return c
+}
+
+// HasImportScanner reports whether the language for path extracts import
+// syntax. Files without a scanner contribute no edges in either direction.
+func HasImportScanner(path string) bool {
+	norm := strings.ToLower(filepath.ToSlash(path))
+	if l, ok := ForPath(norm); ok {
+		_, ok := l.(types.ImportScanner)
+		return ok
+	}
+	return false
+}
+
+// ImportExtensions lists the sorted file extensions of languages that
+// extract imports, for error messages naming resolver support.
+func ImportExtensions() []string {
+	mu.RLock()
+	defer mu.RUnlock()
+	seen := map[string]bool{}
+	var out []string
+	for _, l := range byID {
+		if _, ok := l.(types.ImportScanner); !ok {
+			continue
+		}
+		for _, ext := range l.Extensions() {
+			if !seen[ext] {
+				seen[ext] = true
+				out = append(out, ext)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Imports returns the import targets referenced by a file, resolved to
