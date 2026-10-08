@@ -14,7 +14,6 @@ func itoa(n int) string { return strconv.Itoa(n) }
 // command line. The token is single-use with a 60s TTL; every failure returns
 // the same generic 401.
 func (s *Server) handleSessionLaunch(w http.ResponseWriter, r *http.Request) {
-	// Tight body cap: the payload is one short token.
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
 	var body struct {
 		Token string `json:"token"`
@@ -43,7 +42,7 @@ func (s *Server) handleSessionLaunch(w http.ResponseWriter, r *http.Request) {
 	s.appCtl.markAlive()
 
 	cookie := s.auth.MintSessionCookie(app)
-	s.secureCookie(cookie)
+	s.secureCookie(cookie, r)
 	http.SetCookie(w, cookie)
 	s.log.Info("launch token exchanged", "app", app)
 	writeJSON(w, http.StatusOK, map[string]any{"app": app})

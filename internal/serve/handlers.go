@@ -169,10 +169,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	s.auth.RecordResult(ip, true)
 	s.log.Info("login success", "ip", ip)
 	c := s.auth.MintCookie()
-	s.secureCookie(c)
-	if s.secureProxyRequest(r) {
-		c.Secure = true
-	}
+	s.secureCookie(c, r)
 	http.SetCookie(w, c)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -180,6 +177,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 // handleLogout clears the session cookie.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	c := &http.Cookie{Name: auth.CookieName, Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode}
+	s.secureCookie(c, r)
 	http.SetCookie(w, c)
 	w.WriteHeader(http.StatusNoContent)
 }

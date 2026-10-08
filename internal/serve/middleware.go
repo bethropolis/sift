@@ -138,7 +138,7 @@ func (s *Server) requireSession(next http.Handler) http.Handler {
 		}
 		if reissue {
 			c := s.auth.MintCookie()
-			s.secureCookie(c)
+			s.secureCookie(c, r)
 			http.SetCookie(w, c)
 		}
 		next.ServeHTTP(w, r)

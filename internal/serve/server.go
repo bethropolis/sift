@@ -268,8 +268,8 @@ func lanIPv4s(addrs []net.Addr) []string {
 
 // secureCookie applies the Secure flag when the session travels over TLS:
 // direct TLS, or a trusted proxy reporting https.
-func (s *Server) secureCookie(c *http.Cookie) {
-	if s.tls {
+func (s *Server) secureCookie(c *http.Cookie, r *http.Request) {
+	if s.tls || s.secureProxyRequest(r) {
 		c.Secure = true
 	}
 }
