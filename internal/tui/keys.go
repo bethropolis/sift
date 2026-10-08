@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/bethropolis/sift/internal/app"
 )
 
 // updateMouse routes mouse events to the pane under the cursor: the wheel
@@ -335,6 +337,10 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selectAll()
 		case "s":
 			return m, m.smartSelect()
+		case "f":
+			return m, m.follow(app.FollowDependents)
+		case "F":
+			return m, m.follow(app.FollowDeps)
 		case "/":
 			m.filtering = true
 			m.filter = ""

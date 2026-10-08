@@ -81,7 +81,7 @@ func (m model) contextualActions(width int) string {
 	case m.focus == FocusPreview:
 		hints = []string{m.keyBadge("↑↓", "Scroll"), m.keyBadge("m", "Mode"), m.keyBadge("?", "Help"), m.keyBadge("Y", "Gen+Copy")}
 	default:
-		hints = []string{m.keyBadge("Space", "Select"), m.keyBadge("/", "Filter"), m.keyBadge("s", "Smart"), m.keyBadge("g", "Generate"), m.keyBadge("?", "Help"), m.keyBadge("Y", "Gen+Copy")}
+		hints = []string{m.keyBadge("Space", "Select"), m.keyBadge("/", "Filter"), m.keyBadge("s", "Smart"), m.keyBadge("g", "Generate"), m.keyBadge("?", "Help"), m.keyBadge("Y", "Gen+Copy"), m.keyBadge("f", "Follow")}
 	}
 	if width < 60 {
 		return strings.Join(hints[:min(1, len(hints))], sep)

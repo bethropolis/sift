@@ -50,6 +50,7 @@ cursor.
 | `Space` | Select / deselect the current file or folder |
 | `m` | Cycle a file's mode: `FULL` → `SIGS` → `SKIP` |
 | `s` | Smart-select files by Git history and budget |
+| `f` / `F` | Follow imports from the cursor file (dependents / dependencies) |
 | `a` | Select all / deselect all |
 | `d` | Open the incremental delta modal |
 | `t` | Open the color-theme selector |
@@ -93,6 +94,15 @@ freely; the footer's token tally and budget bar update live.
 `s` chooses a selection automatically from Git history and commit size. Working
 tree edits and small, focused commits favor `FULL`; large bulk commits favor
 `SIGS`. The result is shaped by your current `--budget`.
+
+## Follow imports
+
+`f` replaces the selection with the import-graph walk from the cursor file
+(dependents: what could break), `F` walks the other way (dependencies: what
+the file needs). The seed renders in full, near hops in full, far hops as
+signatures; everything else is skipped. Hop info lands in each file's mode
+reason, visible in the inspector. Same defaults as the CLI: depth 2,
+full-depth 1.
 
 ## Filtering and visibility
 

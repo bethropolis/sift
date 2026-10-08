@@ -64,7 +64,10 @@ analyzed" number in the summary.
 See also [Dependency expansion](dependencies.md), which auto-includes imports
 of whatever `select` (or the picker) chose.
 
-## In the web UI and select
+## In the TUI, web UI and select
+
+In the picker, `f` follows dependents from the cursor file and `F` follows
+dependencies, replacing the selection with the walk.
 
 Right-click a supported file in the explorer and pick **Show dependents** or
 **Show dependencies**: the selection becomes exactly what the CLI would pick

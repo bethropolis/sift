@@ -49,6 +49,7 @@ func helpSections() []helpSection {
 				{"m", "Cycle Mode  FULL → SIGS → SKIP"},
 				{"a", "Select All / Deselect All"},
 				{"s", "Smart Select by git history"},
+				{"f / F", "Follow imports from file (dependents / dependencies)"},
 			},
 		},
 		{
