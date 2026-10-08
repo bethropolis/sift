@@ -37,7 +37,7 @@ if [ -d "$DOCS_SRC/assets" ]; then
 fi
 
 # Canonical nav order (matches docs/README.md grouping).
-SLUGS=(index installation usage picker configuration output delta dependencies mcp)
+SLUGS=(index installation usage picker configuration output delta dependencies follow mcp)
 
 declare -A TITLES
 for slug in "${SLUGS[@]}"; do
@@ -131,7 +131,7 @@ body = "\n".join(lines[body_start:])
 
 # Rewrite doc-to-doc links: ](name.md) / ](name.md#frag) -> site permalinks.
 doc_names = ["installation", "usage", "picker", "configuration",
-             "output", "delta", "dependencies", "mcp"]
+             "output", "delta", "dependencies", "follow", "mcp"]
 for name in doc_names:
     body = re.sub(
         r"\]\(" + name + r"\.md(#[^)]*)?\)",

@@ -76,12 +76,11 @@ func runFollow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	byPath := make(map[string]int, len(files))
-	for i, f := range files {
-		byPath[filepath.ToSlash(f.Path)] = i
+	byPath := make(map[string]bool, len(files))
+	for _, f := range files {
+		byPath[filepath.ToSlash(f.Path)] = true
 	}
-	_, ok := byPath[seed]
-	if !ok {
+	if !byPath[seed] {
 		for _, s := range skipped {
 			if filepath.ToSlash(s.Path) == seed {
 				return fmt.Errorf("sift follow: seed %q skipped: %s", args[0], strings.ToLower(string(s.Reason)))
@@ -129,8 +128,12 @@ func runFollow(cmd *cobra.Command, args []string) error {
 	}
 	candidates := make([]selection.Candidate, 0, len(hits))
 	testAffinity := app.RelatedTestAffinity(files, graph)
+	byEntry := make(map[string]int, len(files))
+	for i, f := range files {
+		byEntry[filepath.ToSlash(f.Path)] = i
+	}
 	for _, h := range hits {
-		file := files[byPath[h.Path]]
+		file := files[byEntry[h.Path]]
 		candidates = append(candidates, selection.Candidate{
 			File:          file,
 			PreferredMode: modes[h.Path],

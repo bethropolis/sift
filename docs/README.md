@@ -24,6 +24,8 @@ most important context fits in a model's window.
   last dump
 - [Dependency expansion](dependencies.md) — auto-include imports of the
   selected files as signature-compressed context
+- [Following imports](follow.md) — `sift follow`: render a file plus its
+  import-graph neighbors, transitively
 - [MCP server](mcp.md) — expose sift to coding agents over stdio
 - [Browser picker](serve.md) — `sift serve`: the embedded web UI and its
   [protocol and threat model](serve-protocol.md)
@@ -38,6 +40,7 @@ most important context fits in a model's window.
 | `sift select [path]` | Auto-select useful files and render them |
 | `sift diff [ref]` | Render only files changed relative to a Git ref |
 | `sift delta [path]` | Render only changes since the last recorded dump |
+| `sift follow <file>` | Render a file plus its import-graph neighbors |
 | `sift watch [path]` | Re-render the document whenever files change |
 | `sift mcp [path]` | Start an MCP server over stdio for coding agents |
 

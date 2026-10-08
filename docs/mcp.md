@@ -257,6 +257,7 @@ Via Cline's MCP settings UI, or `cline_mcp_settings.json` directly:
 | --- | --- | --- |
 | `pack_context` | `budget` (int, tokens), `prompt` (string, optional relevance hint), `mode` (`"full"` \| `"signatures"`, default `"full"`), `style` (output style, e.g. `markdown`/`xml`), `ext` (comma-separated string, e.g. `"go,md"`), `ignore` (comma-separated string, gitignore syntax) | Packs the directory into one ranked, token-budgeted context document. This is the primary tool — most sessions only need this one. |
 | `pack_diff` | `from` (git ref; omit/empty for uncommitted working-tree changes), `patch` (bool, default `false`) | Packs only what changed since `from`, either as full file contents or a raw unified patch (`patch: true`). |
+| `pack_follow` | `file` (seed file, required), `direction` (`"deps"` \| `"dependents"` \| `"both"`, default `"dependents"`), `depth` (int, default `2`, `-1` unlimited), `full_depth` (int, default `1`), `budget` (int, tokens), `mode` (`"full"` \| `"signatures"`) | Packs one file plus its import-graph neighbors: dependents show what could break, deps show what the file needs. |
 | `list_tree` | `ext` (comma-separated string), `ignore` (comma-separated string) | Lists the repository structure — paths only, no content. Cheap way to orient before calling `pack_context`. |
 
 There is no separate `get_file_signatures` tool — call `pack_context` with

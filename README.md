@@ -42,6 +42,7 @@ Go, Rust, JavaScript/TypeScript (including TSX), Python, PHP, Java, Kotlin, C#, 
 | `copy`   | Re-copy the last output to the clipboard          |
 | `diff`   | Render files changed relative to a git ref        |
 | `delta`  | Render files changed since the last dump          |
+| `follow` | Render a file plus its import-graph neighbors     |
 | `watch`  | Re-render whenever files change                   |
 | `serve`  | Run sift from a browser                           |
 
@@ -139,6 +140,7 @@ sift pick [path]    # interactively choose files, then render
 sift select [path]  # automatically select useful files
 sift diff [ref]     # files changed relative to a git ref
 sift delta [path]   # only changes since the last recorded dump
+sift follow <file>  # render a file plus its import-graph neighbors
 sift watch [path]   # re-render on file changes
 sift serve          # browser picker at http://127.0.0.1:7777
 ```

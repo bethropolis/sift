@@ -26,6 +26,9 @@
     - title: Dependency expansion
       url: /docs/dependencies/
       desc: Auto-include imports of selected files as compressed context.
+    - title: Following imports
+      url: /docs/follow/
+      desc: Render a file plus its import-graph neighbors, transitively.
     - title: MCP server
       url: /docs/mcp/
       desc: Expose sift to coding agents over stdio.
