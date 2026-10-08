@@ -179,11 +179,11 @@ func footerLine(left, right string, width int) string {
 	if gap >= 2 {
 		return left + strings.Repeat(" ", gap) + right
 	}
-	rightWidth := min(width-2, ansi.StringWidth(right))
-	right = ansi.Truncate(right, rightWidth, "…")
-	leftWidth := max(1, width-ansi.StringWidth(right)-1)
-	left = ansi.Truncate(left, leftWidth, "…")
-	return left + " " + right
+	// Too narrow for both: the status (left) wins and the key hints drop.
+	// Splitting the difference shreds the status into unreadable mush
+	// ("0 selected · 0 tokens · …") while hiding what it means; hints are
+	// discoverability, counts and Style are state.
+	return ansi.Truncate(left, width, "…")
 }
 
 func (m model) renderFooter(width int) string {
