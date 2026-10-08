@@ -101,6 +101,26 @@ without reinstalling, source the output directly:
 source <(sift completion bash)
 ```
 
+## Desktop launcher (Linux and macOS)
+
+`sift desktop install` adds Sift to your app launcher, opening
+`sift serve --app` (run it with the installed binary, not a `go run`
+cache path — the entry embeds the binary that ran the install):
+
+```sh
+sift desktop install    # install the launcher
+sift desktop status     # show what is installed
+sift desktop uninstall  # remove it again
+```
+
+Linux writes `~/.local/share/applications/sift.desktop` plus an icon and
+refreshes the desktop database. macOS builds `~/Applications/Sift.app`
+(the icon needs `sips`, which ships with macOS; without it the bundle
+installs iconless, and first launch may show a Gatekeeper prompt for the
+unsigned bundle). Everything is user-local and marked, so uninstall only
+removes files sift created — a foreign file at one of these paths is left
+alone with an explanation.
+
 ## Upgrading
 
 Re-run the same install command you used originally — the installer overwrites
@@ -116,6 +136,8 @@ Remove the installed binary, and optionally the config/state directory:
 rm -f ~/.local/bin/sift               # curl / local installer path
 brew uninstall bethropolis/tap/sift   # Homebrew
 scoop uninstall sift                  # Scoop
+
+sift desktop uninstall                # remove the app-launcher entry first, if any
 
 rm -rf ~/.config/sift                 # optional: config, state, and preferences
 ```
