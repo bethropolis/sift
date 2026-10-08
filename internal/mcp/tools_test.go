@@ -66,6 +66,75 @@ func mcpTestConfig(root string) *config.Config {
 	return cfg
 }
 
+// writeFollowRepo builds a temp repo where main.go imports ./sub, for
+// pack_follow walk tests. No git needed: ranking degrades to zero signals.
+func writeFollowRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	write := func(path, content string) {
+		t.Helper()
+		full := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("go.mod", "module example.com/followtest\n\ngo 1.26\n")
+	write("main.go", "package main\n\nimport (\n\t\"example.com/followtest/sub\"\n\t\"example.com/followtest/sub2\"\n)\n\nfunc main() { sub.Hi(); sub2.Yo() }\n")
+	write("sub/sub.go", "package sub\n\nfunc Hi() {}\n")
+	write("sub2/sub2.go", "package sub2\n\nfunc Yo() {}\n")
+	return root
+}
+
+func TestPackFollowDependents(t *testing.T) {
+	root := writeFollowRepo(t)
+	text, err := handlePackFollow(context.Background(), map[string]any{
+		"file": "sub/sub.go", "direction": "dependents",
+	}, mcpTestConfig(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "func main()") || !strings.Contains(text, "func Hi()") {
+		t.Errorf("pack_follow dependents missing seed or importer:\n%s", text)
+	}
+}
+
+func TestPackFollowDepsAndStateless(t *testing.T) {
+	root := writeFollowRepo(t)
+	cfg := mcpTestConfig(root)
+	ctx := context.Background()
+	first, err := handlePackFollow(ctx, map[string]any{
+		"file": "main.go", "direction": "deps",
+	}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := handlePackFollow(ctx, map[string]any{
+		"file": "sub/sub.go", "direction": "dependents",
+	}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(first, "func Hi()") {
+		t.Errorf("pack_follow deps missing dependency:\n%s", first)
+	}
+	if first == second {
+		t.Error("consecutive calls with different seeds returned identical output")
+	}
+	if _, err := handlePackFollow(ctx, map[string]any{"file": "missing.go"}, cfg); err == nil {
+		t.Error("expected error for missing seed")
+	}
+	if _, err := handlePackFollow(ctx, map[string]any{}, cfg); err == nil {
+		t.Error("expected error for empty file")
+	}
+	if _, err := handlePackFollow(ctx, map[string]any{"file": "main.go", "direction": "up"}, cfg); err == nil {
+		t.Error("expected error for bad direction")
+	}
+}
+
 func TestPackContextRespectsBudget(t *testing.T) {
 	root, _ := writeMCPRepo(t)
 	text, err := handlePackContext(context.Background(), map[string]any{
@@ -139,6 +208,9 @@ func TestHandlersAreStateless(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := handleListTree(ctx, map[string]any{}, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handlePackFollow(ctx, map[string]any{"file": "main.go"}, cfg); err != nil {
 		t.Fatal(err)
 	}
 	statePath := filepath.Join(configHome, "sift", "state.json")
