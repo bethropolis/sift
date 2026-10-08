@@ -58,6 +58,9 @@ sift clone https://github.com/org/project --here  # keep the checkout here (empt
 
 `clone` accepts `--branch NAME` (or `-b NAME`) and `--depth N`; it uses the
 installed Git client and the platform's temporary-directory support.
+Depth 1 keeps the clone fast and is enough for dumping and asking about the
+code, but history-based ranking (recency, churn) needs history: pass
+`--depth 30` or more if you want `select` and smart-select to rank by it.
 
 ## Automatic selection
 
