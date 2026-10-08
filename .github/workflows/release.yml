@@ -57,7 +57,7 @@ jobs:
         # GoReleaser. main itself stays clean.
         id: embed
         run: |
-          if git ls-tree "${GITHUB_REF_NAME}" web/dist --name-only | grep -q '\.gz$'; then
+          if git ls-tree -r "${GITHUB_REF_NAME}" web/dist --name-only | grep -q '\.gz$'; then
             echo "tag already embeds the web UI"
             echo "retag=false" >> "$GITHUB_OUTPUT"
             exit 0
