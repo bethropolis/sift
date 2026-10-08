@@ -64,6 +64,28 @@ server sends nothing on a timer, so an idle app window costs no work. After a
 laptop sleep the UI shows a brief "reconnecting" banner and retries by itself,
 or the ended screen if the server is really gone.
 
+## Clone a repository
+
+The Projects page has a **Clone** button, and pasting a git URL into its
+search box offers a "Clone …" row (Enter starts it). The dialog takes a URL,
+an optional branch or tag, and a history depth (default 1, like
+`sift clone`).
+
+- **Temporary by design:** the checkout lives in a private temp directory and
+  opens straight in the workspace, marked with a `temp` pill. It is removed
+  when sift stops (or with its Remove button) and never lands in recents or
+  the Resume target, so nothing points at a deleted directory.
+- **Progress and cancel:** the dialog shows git's own progress with a Cancel
+  button. Cancelling stops the clone and deletes the half-made checkout.
+- **Your git, your credentials:** cloning runs the system `git`, so SSH keys,
+  credential helpers, and `~/.gitconfig` work as in a terminal. A repo that
+  needs a login you haven't set up fails with git's message (plus a hint for
+  private repos). Only remote URLs are accepted — local paths and `file://`
+  are refused.
+- **Availability:** strictly opt-in with `sift serve --allow-clone` (and
+  system git installed). Without the flag the button and the search-box offer
+  are hidden entirely — on loopback binds too.
+
 ## Remote use
 
 Remote mode is deliberately strict. Any non-loopback bind (including
@@ -76,6 +98,8 @@ Remote mode is deliberately strict. Any non-loopback bind (including
 - at least one `--allowed-host`
 - exactly one of `--tls-cert`/`--tls-key`, `--tls-self-signed`,
   `--behind-proxy`, `--insecure-http`
+- `--allow-clone` to enable cloning repositories (off by default on every
+  bind; needs system git too)
 
 The cheap, safe remote recipe is an SSH tunnel — no remote flags at all:
 

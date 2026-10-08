@@ -173,3 +173,81 @@ func FuzzResolve(f *testing.F) {
 		}
 	})
 }
+
+func TestExtraRoots(t *testing.T) {
+	j, _, outside := testJail(t)
+	file := filepath.Join(outside, "f.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := j.Resolve(file); err == nil {
+		t.Fatal("outside path resolved before AddRoot")
+	}
+
+	real, err := j.AddRoot(outside)
+	if err != nil {
+		t.Fatalf("AddRoot: %v", err)
+	}
+	if _, err := j.Resolve(file); err != nil {
+		t.Fatalf("path under an added root: %v", err)
+	}
+	// The added root is exactly that directory: its parent stays closed.
+	if _, err := j.Resolve(filepath.Dir(outside)); err == nil {
+		t.Error("parent of an added root resolved")
+	}
+	// The startup roots listed in the UI are unchanged.
+	if got := j.Roots(); len(got) != 1 {
+		t.Errorf("Roots() = %v, want only the startup root", got)
+	}
+	// Adding twice is a no-op.
+	if again, err := j.AddRoot(outside); err != nil || again != real {
+		t.Errorf("second AddRoot = %q, %v", again, err)
+	}
+
+	j.RemoveRoot(real)
+	if _, err := j.Resolve(file); err == nil {
+		t.Error("path resolved after RemoveRoot")
+	}
+	j.RemoveRoot(real) // unknown roots are ignored
+}
+
+func TestAddRootRejectsBadInput(t *testing.T) {
+	j, root, _ := testJail(t)
+	if _, err := j.AddRoot(filepath.Join(root, "missing")); err == nil {
+		t.Error("missing dir accepted")
+	}
+	if _, err := j.AddRoot(filepath.Join(root, "ok.txt")); err == nil {
+		t.Error("regular file accepted as a root")
+	}
+}
+
+func TestExtraRootKeepsDenylist(t *testing.T) {
+	j, _, outside := testJail(t)
+	if err := os.MkdirAll(filepath.Join(outside, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := j.AddRoot(outside); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := j.Resolve(filepath.Join(outside, ".ssh")); err == nil {
+		t.Error("denylisted dir reachable under an added root")
+	}
+}
+
+func TestExtraRootSymlinkEscape(t *testing.T) {
+	j, _, outside := testJail(t)
+	secretDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(secretDir, "s.txt"), []byte("s"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secretDir, filepath.Join(outside, "link")); err != nil {
+		t.Skip("symlinks unavailable")
+	}
+	if _, err := j.AddRoot(outside); err != nil {
+		t.Fatal(err)
+	}
+	// A hostile repo's symlink must not lead out of the checkout.
+	if _, err := j.Resolve(filepath.Join(outside, "link", "s.txt")); err == nil {
+		t.Error("symlink inside an added root escaped it")
+	}
+}

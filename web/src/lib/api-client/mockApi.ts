@@ -8,6 +8,9 @@
 import type {
   ApiMeta,
   BrowseResult,
+  CloneError,
+  CloneProgress,
+  CloneRequest,
   FileContentResult,
   PackPayload,
   PackResult,
@@ -15,6 +18,7 @@ import type {
   RecentProject,
   SettingsData,
   SmartSelectResult,
+  TempClone,
   TreeResult,
 } from './types';
 import { loginError } from './live';
@@ -45,6 +49,7 @@ export async function getMeta(): Promise<ApiMeta> {
     roots: ['/Users/developer/code', '/Users/developer/work'],
     authKind: 'token',
     authenticated: mockAuthenticated,
+    features: { clone: true },
   };
 }
 
@@ -426,4 +431,51 @@ export async function getSettings(): Promise<SettingsData> {
 export async function saveSettings(settings: SettingsData): Promise<void> {
   await delay(40);
   setMockSettings({ ...settings });
+}
+
+// --- Temporary clones (mock): a URL containing "fail" simulates a git error. ---
+let mockClones: TempClone[] = [];
+
+export async function cloneRepo(
+  req: CloneRequest,
+  onProgress: (p: CloneProgress) => void,
+  signal?: AbortSignal,
+): Promise<TempClone> {
+  const steps: CloneProgress[] = [
+    { phase: 'Counting objects', percent: 100 },
+    { phase: 'Receiving objects', percent: 20 },
+    { phase: 'Receiving objects', percent: 65 },
+    { phase: 'Receiving objects', percent: 100 },
+    { phase: 'Resolving deltas', percent: 100 },
+  ];
+  for (const step of steps) {
+    await delay(260);
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    onProgress(step);
+  }
+  if (req.url.includes('fail')) {
+    const err = new Error('git could not clone the repository.') as CloneError;
+    err.detail = 'fatal: Authentication failed for ' + req.url;
+    throw err;
+  }
+  const name = (req.url.replace(/\/+$/, '').split(/[/:]/).pop() || 'repo').replace(/\.git$/, '');
+  const clone: TempClone = {
+    root: `/tmp/sift-clone-${Math.floor(Math.random() * 1e9)}/${name}`,
+    name,
+    url: req.url,
+    branch: req.branch,
+    started: Date.now(),
+  };
+  mockClones = [clone, ...mockClones];
+  return clone;
+}
+
+export async function getClones(): Promise<TempClone[]> {
+  await delay(30);
+  return [...mockClones];
+}
+
+export async function deleteClone(root: string): Promise<void> {
+  await delay(30);
+  mockClones = mockClones.filter((c) => c.root !== root);
 }

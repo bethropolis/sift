@@ -26,9 +26,10 @@ if (gz.length === 0) {
 
 const size = (f: string) => statSync(f).size;
 const total = gz.reduce((n, f) => n + size(f), 0);
-// Entry chunk is the non-lazy JS at assets/index-*.js.gz; the Settings chunk
-// (Settings-*.js.gz) is lazy-loaded and excluded from the initial budget.
-const initialFiles = gz.filter((f) => f.endsWith('.js.gz') && !f.includes('Settings-'));
+// The entry chunk is assets/index-*.js.gz. Every other JS chunk (the Settings
+// and Clone dialogs, ...) is lazy-loaded and excluded from the initial budget;
+// matching the entry by name means new lazy chunks never need a script edit.
+const initialFiles = gz.filter((f) => /\/index-[^/]*\.js\.gz$/.test(f));
 const initial = initialFiles.reduce((n, f) => n + size(f), 0);
 
 console.log(`initial JS: ${(initial / 1024).toFixed(1)} KiB gz (${initialFiles.length} files)`);

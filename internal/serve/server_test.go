@@ -36,7 +36,7 @@ func testServer(t *testing.T) (*Server, string) {
 	engineCfg := config.New()
 	engineCfg.Quiet = true
 	engineCfg.SmartFilter = false
-	srv, err := New(&Config{Listen: "127.0.0.1:7777", Roots: []string{root}}, engineCfg, nil)
+	srv, err := New(&Config{Listen: "127.0.0.1:7777", Roots: []string{root}, AllowClone: true}, engineCfg, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

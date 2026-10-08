@@ -12,7 +12,7 @@ capped at 4 MiB and must be `application/json` (415 otherwise).
 | Route | Auth | Notes |
 | :-- | :-- | :-- |
 | `GET /`, `/assets/*` | public | `index.html` is `no-cache`; hashed assets `immutable`. |
-| `GET /api/meta` | public (minimal) | Always: `{version, mode, tls, authKind, authenticated}`. Authed adds `{roots, styles, defaultBrowse}` (`~/Projects` when jailed, else first root). |
+| `GET /api/meta` | public (minimal) | Always: `{version, mode, tls, authKind, authenticated}`. Authed adds `{roots, styles, defaultBrowse}` (`~/Projects` when jailed, else first root) and `{features: {clone}}` (true only with `--allow-clone` and git installed); the UI hides clone entry points when false. |
 | `POST /api/login`, `POST /api/logout` | public / session | `{password}` or `{token}`. 204, 401, or 429 with `retryAfter`. |
 | `GET /api/recents`, `POST /api/recents`, `DELETE /api/recents?root=` | session | POST records an open (GETs never mutate). Cap 25. |
 | `GET /api/browse?path=` | session | Directories only, 5000 entries, `isGitRepo` by `lstat(.git)`. Dot-directories hidden unless `&hidden=1`. Entries carry `modTime` (unix millis) for sort-by-updated. |
@@ -23,6 +23,9 @@ capped at 4 MiB and must be `application/json` (415 otherwise).
 | `GET/PUT /api/settings` | session | `{defaultStyle, defaultBudget, theme, showHidden, fileSort}`; theme validated `[a-z0-9-]{1,32}` (`system` follows the OS), `fileSort` is `name` or `updated`. The theme id is shared with the TUI (mirrored to the legacy field), so changing it in either frontend changes it in both. `defaultBudget` seeds fresh workspaces (see Budget). |
 | `POST /api/session/launch` | public (token is the credential) | `{token}` → `{app}`. `--app` auto-login: one-time, 60s TTL, loopback-only. Shares the login lockout. Any failure is the same generic `401`. |
 | `GET /api/app/heartbeat` | session | SSE liveness stream, app mode only (`404` otherwise). No server-side ticker; the handler blocks until the client leaves or the server starts shutting down. |
+| `POST /api/clone` | session | `{url, branch?, depth?}` → NDJSON progress lines (`{"type":"progress","phase","percent"}`), then one `done` (`{root, name, url}`) or `error` (`{message, detail?}`). 404 without `--allow-clone` (or without git). Rejects local paths, `file://`, `ext::`, leading `-`, URLs with embedded passwords, and depths outside 1–1000. One clone at a time, 5-minute timeout; aborting the request cancels git and removes the checkout. |
+| `GET /api/clones` | session | This session's temporary clones, newest first (`{root, name, url, branch?, started}`). Same 404 gate. |
+| `DELETE /api/clone?root=` | session | Removes one server-created clone (directory deleted, jail root withdrawn). Anything else is 404 and untouched. Same 404 gate. |
 
 ## Budget
 
@@ -96,6 +99,38 @@ startup-resolved roots → denylist. Failures are a generic 403.
 - The scan itself is read-only: hardened git (`GIT_OPTIONAL_LOCKS=0`, no
   fsmonitor/hooks/drivers, scrubbed env) plus the tree-hash proof test.
 
+## Clone
+
+Cloning is the one deliberate exception to read-only: the server runs
+`git clone` on behalf of the session (shared `internal/gitclone` package with
+the `sift clone` CLI, same validation).
+
+- **URLs:** remote only (`https`, `http`, `ssh`, `git`, scp-like
+  `user@host:path`). Local paths and `file://` are refused in both the CLI
+  and the server; `ext::<helper>` remotes, leading-`-` arguments, and URLs
+  with embedded `user:password@` are refused too. The URL always follows `--`.
+- **Git environment:** `GIT_ALLOW_PROTOCOL=http:https:ssh:git`,
+  `GIT_TERMINAL_PROMPT=0`, a detached session (no terminal prompts), plus the
+  scanner's hardened git flags. Auth is whatever the system git already does
+  (credential helpers, `~/.gitconfig`, ssh agent); nothing credential-shaped
+  crosses the browser. Private repos that need a login fail fast with git's
+  own message.
+- **Checkouts:** private `sift-clone-*` temp dirs holding one repo dir each,
+  deleted on every shutdown path (signal, idle timeout, window closed) and by
+  the OS temp cleaner after a crash. At most 5 per session, one clone at a
+  time, 5-minute timeout, no submodules, `--depth` 1–1000 (default 1).
+- **Jail:** each finished checkout is registered as an extra jail root scoped
+  to exactly that directory (siblings and the temp parent stay 403); removal
+  withdraws it. The startup roots shown in the UI never change, and the
+  denylist applies beneath clone roots too. A cloned repo's own `.sift.toml`
+  is screened at clone time and refused with its checkout removed.
+- **Not recents:** clones are listed per session (`GET /api/clones`) and open
+  like projects, but never enter the on-disk recents or the resume target —
+  both would dangle after the server stops.
+- **Availability:** strictly opt-in via `--allow-clone` on every bind
+  (plus system git). Without the flag the routes are 404 and
+  `meta.features.clone` is false. Clone URLs are logged credential-stripped.
+
 ## Content safety
 
 - Redaction defaults on for previews **and** output; token counts are
@@ -110,5 +145,6 @@ startup-resolved roots → denylist. Failures are a generic 403.
 No tickers, janitors, watchers, caches, or SSE. Grammars/redaction rules load
 on first use. The only idle goroutines are the accept loop and per-connection
 readers (asserted by the goroutine-baseline test). `--idle-timeout` exits the
-process after the quiet period via a one-shot timer reset per request.
-Frontend fetches on user action only (plus the login lockout countdown).
+process after the quiet period via a one-shot timer reset per request; a clone
+in flight postpones the exit until it finishes (its request began long ago),
+and a long clone resets the timer when it ends. Frontend fetches on user action only (plus the login lockout countdown).

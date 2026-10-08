@@ -9,12 +9,16 @@ import { handle401, loginRequest } from './live';
 import type {
   ApiMeta,
   BrowseResult,
+  CloneError,
+  CloneProgress,
+  CloneRequest,
   FileContentResult,
   PackPayload,
   PackResult,
   RecentProject,
   SettingsData,
   SmartSelectResult,
+  TempClone,
   TreeResult,
 } from './types';
 
@@ -131,6 +135,77 @@ export async function saveSettings(settings: SettingsData): Promise<void> {
     if (res.status === 401) handle401();
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return;
+}
+
+function cloneError(message: string, detail?: string): CloneError {
+    const err = new Error(message) as CloneError;
+    if (detail) err.detail = detail;
+    return err;
+}
+
+/**
+ * Clone a repository into a server-side temporary directory. The response is
+ * NDJSON: progress lines, then exactly one `done` or `error`. Aborting
+ * `signal` cancels the clone on the server and removes the checkout.
+ */
+export async function cloneRepo(
+    req: CloneRequest,
+    onProgress: (p: CloneProgress) => void,
+    signal?: AbortSignal,
+): Promise<TempClone> {
+    const res = await fetch('/api/clone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      signal,
+    });
+    if (res.status === 401) handle401();
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw cloneError(data?.error || `HTTP ${res.status}`);
+    }
+    if (!res.body) throw cloneError('The browser cannot stream this response');
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = '';
+    const out: { value: TempClone | null } = { value: null };
+    // One line at a time: a chunk can hold several events or half of one.
+    const handleLine = (line: string) => {
+      if (!line.trim()) return;
+      const ev = JSON.parse(line);
+      if (ev.type === 'progress') onProgress({ phase: ev.phase, percent: ev.percent });
+      else if (ev.type === 'error') throw cloneError(ev.message || 'Clone failed', ev.detail);
+      else if (ev.type === 'done') {
+        out.value = { root: ev.root, name: ev.name, url: ev.url, branch: req.branch, started: Date.now() };
+      }
+    };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffered += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffered.indexOf('\n')) >= 0) {
+        handleLine(buffered.slice(0, nl));
+        buffered = buffered.slice(nl + 1);
+      }
+    }
+    handleLine(buffered);
+    if (!out.value) throw cloneError('The connection ended before the clone finished');
+    return out.value;
+}
+
+export async function getClones(): Promise<TempClone[]> {
+    const res = await fetch('/api/clones');
+    if (res.status === 401) handle401();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+export async function deleteClone(root: string): Promise<void> {
+    const res = await fetch(`/api/clone?root=${encodeURIComponent(root)}`, { method: 'DELETE' });
+    if (res.status === 401) handle401();
+    if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
 }
 
 /**

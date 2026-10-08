@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RecentProject } from '../../lib/api';
+  import { isTempCloneRoot } from '../../lib/clones.svelte';
   import { formatTokens } from '../../lib/format';
   import Icon from '../../components/Icon.svelte';
   import ProjectSwitcher from '../../components/ProjectSwitcher.svelte';
@@ -61,6 +62,10 @@
         onSelectProject={(r) => onNavigate(`/p/${encodeURIComponent(r)}`)}
         onBrowse={() => onNavigate('/projects')}
       />
+
+      {#if isTempCloneRoot(projectRoot)}
+        <span class="font-mono temp-pill" title="Temporary clone: removed when sift stops">temp</span>
+      {/if}
 
       <span class="hide-on-compact sep">|</span>
 
@@ -206,6 +211,16 @@
     font-size: 10.5px;
     color: var(--ink-faint);
     font-family: var(--font-mono);
+  }
+  .temp-pill {
+    font-size: 9.5px;
+    color: var(--accent-ink);
+    background-color: var(--accent-soft);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 1px 5px;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .toml-pill {
     font-size: 9.5px;

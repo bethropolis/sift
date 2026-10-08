@@ -53,6 +53,11 @@ type Server struct {
 	remote    bool
 	tls       bool
 
+	// clones owns this process's temporary checkouts; cloneOK is the
+	// startup decision (git present, loopback or --allow-clone).
+	clones  *cloneState
+	cloneOK bool
+
 	mux     *http.ServeMux
 	packSem chan struct{}
 
@@ -108,12 +113,14 @@ func New(cfg *Config, engineCfg *config.Config, log *slog.Logger) (*Server, erro
 		syntaxCache:  highlight.NewSyntaxCache(),
 		launchTokens: newLaunchTokens(),
 		done:         make(chan struct{}),
+		clones:       newCloneState(),
 	}
 	s.appCtl = newAppController(func(reason string) {
 		s.log.Info(reason)
 		s.shutdown()
 	}, nil)
 	s.remote = s.isRemoteBind()
+	s.cloneOK = s.cloneAllowed()
 	s.tls = cfg.TLSCert != "" || cfg.TLSSelfSigned
 	s.hosts = s.buildHostSet()
 	s.registerRoutes()
@@ -138,6 +145,10 @@ func (s *Server) routes() []route {
 		{"POST", "/api/pack", false},
 		{"GET", "/api/settings", false},
 		{"PUT", "/api/settings", false},
+		// Temporary clones: 404 unless git exists and (loopback or --allow-clone).
+		{"POST", "/api/clone", false},
+		{"GET", "/api/clones", false},
+		{"DELETE", "/api/clone", false},
 		// Auto-login for the launched window. Public like /api/login because
 		// the token itself is the credential, and loopback-only via --app.
 		{"POST", "/api/session/launch", true},
@@ -167,6 +178,9 @@ func (s *Server) registerRoutes() {
 	mux.Handle("POST /api/pack", s.apiChain(http.HandlerFunc(s.handlePack), false))
 	mux.Handle("GET /api/settings", s.apiChain(http.HandlerFunc(s.handleSettingsGet), false))
 	mux.Handle("PUT /api/settings", s.apiChain(http.HandlerFunc(s.handleSettingsPut), false))
+	mux.Handle("POST /api/clone", s.apiChain(http.HandlerFunc(s.handleClone), false))
+	mux.Handle("GET /api/clones", s.apiChain(http.HandlerFunc(s.handleClonesGet), false))
+	mux.Handle("DELETE /api/clone", s.apiChain(http.HandlerFunc(s.handleCloneDelete), false))
 
 	// App-mode endpoints.
 	mux.Handle("POST /api/session/launch", s.apiChain(http.HandlerFunc(s.handleSessionLaunch), true))
@@ -272,17 +286,34 @@ func (s *Server) idleReset(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.idleMu.Lock()
-		if s.idleTimer != nil {
-			s.idleTimer.Stop()
-			s.idleTimer = time.AfterFunc(s.cfg.IdleTimeout, func() {
-				s.log.Info("idle timeout reached, exiting")
-				s.shutdown()
-			})
-		}
-		s.idleMu.Unlock()
+		s.resetIdle()
 		next.ServeHTTP(w, r)
 	})
+}
+
+// resetIdle restarts the one-shot idle timer (a no-op without --idle-timeout
+// or before the server is running).
+func (s *Server) resetIdle() {
+	if s.cfg.IdleTimeout <= 0 {
+		return
+	}
+	s.idleMu.Lock()
+	defer s.idleMu.Unlock()
+	if s.idleTimer != nil {
+		s.idleTimer.Stop()
+		s.idleTimer = time.AfterFunc(s.cfg.IdleTimeout, s.onIdle)
+	}
+}
+
+// onIdle fires when the quiet period elapses. A clone in flight is activity
+// (its request began long ago), so it postpones the exit instead of killing it.
+func (s *Server) onIdle() {
+	if s.clones.isRunning() {
+		s.resetIdle()
+		return
+	}
+	s.log.Info("idle timeout reached, exiting")
+	s.shutdown()
 }
 
 // shutdown gracefully stops the server. It is safe to call from several
@@ -320,6 +351,9 @@ func (s *Server) Run() error {
 	if err := checkWebUI(); err != nil {
 		return err
 	}
+	// Temporary clones live exactly as long as this process: every exit path
+	// (signal, idle timeout, window closed, serve error) returns through here.
+	defer s.clones.removeAll()
 
 	ln, err := net.Listen("tcp", s.cfg.Listen)
 	if err != nil {
@@ -347,10 +381,7 @@ func (s *Server) Run() error {
 
 	if s.cfg.IdleTimeout > 0 {
 		s.idleMu.Lock()
-		s.idleTimer = time.AfterFunc(s.cfg.IdleTimeout, func() {
-			s.log.Info("idle timeout reached, exiting")
-			s.shutdown()
-		})
+		s.idleTimer = time.AfterFunc(s.cfg.IdleTimeout, s.onIdle)
 		s.idleMu.Unlock()
 	}
 

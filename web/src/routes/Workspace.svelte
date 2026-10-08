@@ -18,6 +18,7 @@
   import type { MenuItem } from '../lib/contextmenu';
   import { openCtxMenu } from '../lib/ctxmenu.svelte';
   import { toast } from '../lib/toast.svelte';
+  import { isTempCloneRoot } from '../lib/clones.svelte';
   import { isEditingTarget, isPlainKey } from '../lib/keyboard';
   import { getUIPrefs, setUIPrefs } from '../lib/persist';
 
@@ -439,7 +440,14 @@
   // Persist layout prefs (pure view state: sidebar, tab, format, last
   // project — see lib/persist.ts). No server data is cached here.
   $effect(() => {
-    setUIPrefs({ sidebarOpen, tab: activeTab, style: selectedStyle, lastProject: projectRoot });
+    // A temporary clone dies with the server, so it must never become the
+    // "resume" target: keep whatever real project was remembered before.
+    setUIPrefs({
+      sidebarOpen,
+      tab: activeTab,
+      style: selectedStyle,
+      lastProject: isTempCloneRoot(projectRoot) ? getUIPrefs().lastProject : projectRoot,
+    });
   });
 
   let filePathsList = $derived(files.map((f) => f.path));

@@ -18,6 +18,41 @@ export interface ApiMeta {
   authenticated: boolean;
   /** Session came from `sift serve --app`; drives Quit + the liveness stream. */
   app?: boolean;
+  /**
+   * Server-side feature switches (authenticated meta only). A missing key
+   * means off: the UI hides entry points for features that would 404.
+   */
+  features?: { clone?: boolean };
+}
+
+/** Body of POST /api/clone. */
+export interface CloneRequest {
+  url: string;
+  branch?: string;
+  /** History depth; the server defaults to 1 and caps at 1000. */
+  depth?: number;
+}
+
+/** One git progress update streamed while cloning. */
+export interface CloneProgress {
+  phase: string;
+  percent: number;
+}
+
+/** A finished temporary clone (lives until the server stops or it is removed). */
+export interface TempClone {
+  root: string;
+  name: string;
+  /** Repository URL with any credentials stripped. */
+  url: string;
+  branch?: string;
+  /** Unix millis. */
+  started: number;
+}
+
+/** Clone failure; `detail` is git's own last messages when it has them. */
+export interface CloneError extends Error {
+  detail?: string;
 }
 
 export interface RecentProject {

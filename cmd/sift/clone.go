@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/gitclone"
 )
 
 var (
@@ -32,7 +32,11 @@ var cloneCmd = &cobra.Command{
 	Short: "Shallow-clone a repository and dump its context",
 	Long: `Clone a repository with limited history, then write codebase.md in the
 current directory. By default the checkout is temporary and removed after the
-dump. Use --here to keep the checkout in the current directory.`,
+dump. Use --here to keep the checkout in the current directory.
+
+Only remote repositories are supported (https, ssh, git, or user@host:path).
+Local paths and file:// URLs are refused. Authentication is whatever your git
+already does: credential helpers, ssh keys, and the ssh agent.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runClone,
 }
@@ -49,8 +53,15 @@ func runClone(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get current directory: %w", err)
 	}
 
+	// Validate before touching the disk so a bad URL never leaves a temp dir.
+	if err := gitclone.ValidateURL(args[0]); err != nil {
+		return err
+	}
+	if err := gitclone.ValidateRef(cloneBranch); err != nil {
+		return err
+	}
+
 	var repoDir string
-	var cleanup func()
 	if cloneHere {
 		entries, err := os.ReadDir(cwd)
 		if err != nil {
@@ -60,28 +71,26 @@ func runClone(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("--here requires an empty current directory (%s)", cwd)
 		}
 		repoDir = cwd
-		cleanup = func() {}
 	} else {
-		tempDir, err := os.MkdirTemp("", "sift-clone-")
+		tmp, err := gitclone.NewTemp("repo")
 		if err != nil {
-			return fmt.Errorf("create temporary clone directory: %w", err)
+			return err
 		}
-		repoDir = filepath.Join(tempDir, "repo")
-		cleanup = func() { _ = os.RemoveAll(tempDir) }
+		repoDir = tmp.Repo
+		defer func() { _ = tmp.Remove() }()
 	}
-	defer cleanup()
 
-	gitArgs := []string{"clone", fmt.Sprintf("--depth=%d", cloneDepth), "--single-branch"}
-	if cloneBranch != "" {
-		gitArgs = append(gitArgs, "--branch", cloneBranch)
-	}
-	gitArgs = append(gitArgs, "--", args[0], repoDir)
-	clone := exec.Command("git", gitArgs...)
-	clone.Stdin = cmd.InOrStdin()
-	clone.Stdout = cmd.ErrOrStderr()
-	clone.Stderr = cmd.ErrOrStderr()
-	if err := clone.Run(); err != nil {
-		return fmt.Errorf("git clone: %w", err)
+	// Interactive: git may prompt on this terminal (credentials, host keys).
+	if err := gitclone.Clone(cmd.Context(), gitclone.Options{
+		URL:         args[0],
+		Branch:      cloneBranch,
+		Depth:       cloneDepth,
+		Dest:        repoDir,
+		Interactive: true,
+		Stdin:       cmd.InOrStdin(),
+		Output:      cmd.ErrOrStderr(),
+	}); err != nil {
+		return err
 	}
 
 	cfg.RootDir = repoDir

@@ -26,9 +26,13 @@ type Config struct {
 	BehindProxy     bool
 	AllowedHosts    []string
 	AllowUnredacted bool
-	InsecureHTTP    bool
-	IdleTimeout     time.Duration
-	Open            bool
+	// AllowClone enables "clone a repository" in the web UI (needs system
+	// git too). Off by default on every bind; without it the clone routes
+	// are 404 and the UI hides every entry point.
+	AllowClone   bool
+	InsecureHTTP bool
+	IdleTimeout  time.Duration
+	Open         bool
 	// App launches the UI in a chromeless browser window and, unless
 	// KeepAlive is set, stops the server when that window goes away.
 	App bool

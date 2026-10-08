@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { type ApiMeta } from '../lib/api';
+  import type { Component } from 'svelte';
+  import { type ApiMeta, type TempClone } from '../lib/api';
   import Icon from '../components/Icon.svelte';
+  import { clones, loadClones, looksLikeRepoUrl, repoNameFromUrl } from '../lib/clones.svelte';
   import { isPlainKey } from '../lib/keyboard';
   import { getUIPrefs } from '../lib/persist';
+  import { toast } from '../lib/toast.svelte';
   import {
     filterEntries,
     filterRecents,
@@ -14,6 +17,7 @@
   } from './projects/store.svelte';
   import RecentsList from './projects/RecentsList.svelte';
   import FolderBrowser from './projects/FolderBrowser.svelte';
+  import TempClones from './projects/TempClones.svelte';
 
   interface Props {
     meta: ApiMeta | null;
@@ -30,6 +34,37 @@
   let filteredRecents = $derived(filterRecents());
   let filteredEntries = $derived(filterEntries());
 
+  // Clone is offered only when the server says it can (git installed, and
+  // loopback or --allow-clone); otherwise every entry point is hidden.
+  let cloneEnabled = $derived(meta?.features?.clone === true);
+  let queryIsRepoUrl = $derived(cloneEnabled && looksLikeRepoUrl(projects.searchQuery));
+
+  // Lazy-load the clone dialog (same pattern as Settings): it is rarely
+  // opened, so it stays out of the initial bundle.
+  let showClone = $state(false);
+  let cloneUrl = $state('');
+  let cloneModal = $state<Component<any> | null>(null);
+
+  $effect(() => {
+    if (showClone && !cloneModal) {
+      import('../components/CloneModal.svelte').then((m) => {
+        cloneModal = m.default;
+      });
+    }
+  });
+
+  function openClone(url = '') {
+    cloneUrl = url.trim();
+    showClone = true;
+  }
+
+  function handleCloned(clone: TempClone) {
+    showClone = false;
+    projects.searchQuery = '';
+    toast({ id: 'cloned', kind: 'success', message: `Cloned ${clone.name}`, duration: 2600 });
+    onOpenProject(clone.root);
+  }
+
   // Keep selected index within bounds.
   $effect(() => {
     if (projects.selectedIndex >= filteredRecents.length) {
@@ -41,6 +76,10 @@
     e.preventDefault();
     const query = projects.searchQuery.trim();
     if (!query) return;
+    if (cloneEnabled && looksLikeRepoUrl(query)) {
+      openClone(query);
+      return;
+    }
     if (query.startsWith('/') || query.startsWith('~')) {
       onOpenProject(query);
       return;
@@ -93,6 +132,12 @@
     lastProject = getUIPrefs().lastProject;
   });
 
+  // The session's temporary clones come from the server, so they survive a
+  // page reload (they only die with the server).
+  $effect(() => {
+    if (cloneEnabled) void loadClones();
+  });
+
   // Default the browser to ~/Projects (or the first root) once meta arrives,
   // so it never opens on a nonexistent directory.
   $effect(() => {
@@ -138,7 +183,9 @@
               projects.searchQuery = e.currentTarget.value;
               projects.selectedIndex = 0;
             }}
-            placeholder="Search projects or enter /path/to/folder... (Press /)"
+            placeholder={cloneEnabled
+              ? 'Search, enter /path, or paste a git URL to clone… (Press /)'
+              : 'Search projects or enter /path/to/folder... (Press /)'}
             class="input input-mono search-input"
             class:has-query={!!projects.searchQuery}
           />
@@ -175,8 +222,34 @@
             Folder Browser
           </button>
         </div>
+
+        {#if cloneEnabled}
+          <button
+            type="button"
+            onclick={() => openClone()}
+            class="btn btn-sm clone-btn"
+            title="Clone a git repository"
+          >
+            <Icon name="clone" size={13} />
+            <span>Clone</span>
+          </button>
+        {/if}
       </div>
 
+      {#if queryIsRepoUrl}
+        <button type="button" class="suggest" onclick={() => openClone(projects.searchQuery)}>
+          <span class="suggest-icon"><Icon name="clone" size={14} /></span>
+          <span class="suggest-text">
+            Clone <span class="font-mono suggest-name">{repoNameFromUrl(projects.searchQuery)}</span>
+            <span class="suggest-sub">as a temporary shallow checkout</span>
+          </span>
+          <kbd class="font-mono suggest-key">Enter</kbd>
+        </button>
+      {/if}
+
+      {#if cloneEnabled && clones.items.length > 0}
+        <TempClones {onOpenProject} />
+      {/if}
 
       {#if projects.activeView === 'recents'}
         <RecentsList {onOpenProject} onSwitchToBrowse={() => switchToBrowse(meta)} />
@@ -189,7 +262,85 @@
   </div>
 </div>
 
+{#if showClone}
+  {#if cloneModal}
+    {@const CloneModalComp = cloneModal}
+    <CloneModalComp initialUrl={cloneUrl} onClose={() => (showClone = false)} onCloned={handleCloned} />
+  {:else}
+    <div role="dialog" aria-label="Clone repository" class="modal-loading">
+      <span class="font-mono">Loading…</span>
+    </div>
+  {/if}
+{/if}
+
 <style>
+  .modal-loading {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+  .clone-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  .suggest {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 16px;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--accent-soft);
+    color: var(--ink);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 60ms ease;
+  }
+  .suggest:hover,
+  .suggest:focus-visible {
+    background-color: color-mix(in srgb, var(--accent) 18%, var(--panel-bg));
+  }
+  .suggest-icon {
+    display: flex;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .suggest-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .suggest-name {
+    font-weight: 600;
+  }
+  .suggest-sub {
+    color: var(--ink-faint);
+    font-size: 11.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .suggest-key {
+    font-size: 10px;
+    color: var(--ink-faint);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 1px 5px;
+    flex-shrink: 0;
+  }
   .page {
     flex: 1;
     overflow-y: auto;

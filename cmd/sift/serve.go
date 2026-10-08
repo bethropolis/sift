@@ -35,6 +35,7 @@ func registerServeFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&serveCfg.BehindProxy, "behind-proxy", false, "Trust X-Forwarded-Proto/For behind a TLS proxy")
 	fs.StringArrayVar(&serveCfg.AllowedHosts, "allowed-host", nil, "Extra allowed Host value (repeatable)")
 	fs.BoolVar(&serveCfg.AllowUnredacted, "allow-unredacted", false, "Remote only: permit redact=false")
+	fs.BoolVar(&serveCfg.AllowClone, "allow-clone", false, "Enable cloning repositories in the web UI (requires git)")
 	fs.BoolVar(&serveCfg.InsecureHTTP, "insecure-http", false, "Remote without TLS (loud warning)")
 	fs.DurationVar(&serveCfg.IdleTimeout, "idle-timeout", 0, "Exit after no requests for this long (e.g. '30m')")
 	fs.BoolVar(&serveCfg.Open, "open", false, "Open the browser (local only)")

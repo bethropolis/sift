@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // maxPathLen bounds client paths before any filesystem access.
@@ -28,10 +29,15 @@ var defaultDeny = []string{
 	".netrc",
 }
 
-// Jail is a resolved, immutable filesystem jail.
+// Jail is a resolved filesystem jail. The startup roots never change; the
+// only mutable part is the small set of extra roots the server itself
+// registers for directories it created (temporary clones).
 type Jail struct {
 	roots []string
 	deny  []string
+
+	mu    sync.RWMutex
+	extra []string
 }
 
 // New builds a jail from the configured roots (each resolved with
@@ -120,7 +126,55 @@ func (j *Jail) containingRoot(abs string) (string, bool) {
 			return root, true
 		}
 	}
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	for _, root := range j.extra {
+		if abs == root || strings.HasPrefix(abs, root+string(filepath.Separator)) {
+			return root, true
+		}
+	}
 	return "", false
+}
+
+// AddRoot admits one more directory (resolved through symlinks, so a /tmp
+// that is itself a link still matches). It is for directories the server
+// created, never for client input; the denylist still applies beneath it.
+// It returns the resolved path, which is also what RemoveRoot expects.
+func (j *Jail) AddRoot(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("bad root %q: %w", dir, err)
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", fmt.Errorf("bad root %q: %w", dir, err)
+	}
+	real = filepath.Clean(real)
+	info, err := os.Stat(real)
+	if err != nil || !info.IsDir() {
+		return "", fmt.Errorf("root %q is not a directory", dir)
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, r := range j.extra {
+		if r == real {
+			return real, nil
+		}
+	}
+	j.extra = append(j.extra, real)
+	return real, nil
+}
+
+// RemoveRoot withdraws a root added with AddRoot. Unknown roots are ignored.
+func (j *Jail) RemoveRoot(real string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for i, r := range j.extra {
+		if r == real {
+			j.extra = append(j.extra[:i], j.extra[i+1:]...)
+			return
+		}
+	}
 }
 
 // denied reports whether the denylist matches at any depth of a

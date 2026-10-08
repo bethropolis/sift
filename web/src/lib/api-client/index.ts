@@ -10,7 +10,10 @@
 
 import {
   browse as liveBrowse,
+  cloneRepo as liveCloneRepo,
+  deleteClone as liveDeleteClone,
   deleteRecent as liveDeleteRecent,
+  getClones as liveGetClones,
   getFile as liveGetFile,
   getMeta as liveGetMeta,
   getRecents as liveGetRecents,
@@ -27,7 +30,10 @@ import {
 } from './client';
 import {
   browse as mockBrowse,
+  cloneRepo as mockCloneRepo,
+  deleteClone as mockDeleteClone,
   deleteRecent as mockDeleteRecent,
+  getClones as mockGetClones,
   getFile as mockGetFile,
   getMeta as mockGetMeta,
   getRecents as mockGetRecents,
@@ -78,6 +84,10 @@ export const api = {
   saveSettings: pick(liveSaveSettings, mockSaveSettings),
   /** App-mode auto-login (sift serve --app). */
   launchSession: pick(liveLaunchSession, mockLaunchSession),
+  /** Clone a repo into a server-side temp dir (streams progress; abortable). */
+  cloneRepo: pick(liveCloneRepo, mockCloneRepo),
+  getClones: pick(liveGetClones, mockGetClones),
+  deleteClone: pick(liveDeleteClone, mockDeleteClone),
 };
 
 // Re-export contracts so callers keep importing from '../lib/api'.
@@ -85,6 +95,9 @@ export type {
   ApiMeta,
   BrowseEntry,
   BrowseResult,
+  CloneError,
+  CloneProgress,
+  CloneRequest,
   FileContentResult,
   PackPayload,
   PackResult,
@@ -93,6 +106,7 @@ export type {
   SelectionMode,
   SettingsData,
   SmartSelectResult,
+  TempClone,
   TreeFile,
   TreeResult,
   LoginError,

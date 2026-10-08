@@ -34,6 +34,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeNDJSON writes one JSON value and a newline (the caller flushes).
+func writeNDJSON(w http.ResponseWriter, v any) error {
+	return json.NewEncoder(w).Encode(v)
+}
+
 func writeAPIError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
@@ -106,6 +111,8 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		// app is read from the signed session, not a URL hint, so it survives
 		// reloads. Drives the Quit button and the liveness stream.
 		meta["app"] = app
+		// Feature flags the UI uses to hide entry points that would 404.
+		meta["features"] = map[string]bool{"clone": s.cloneOK}
 	}
 	writeJSON(w, http.StatusOK, meta)
 }
@@ -214,6 +221,12 @@ func (s *Server) handleRecentsPost(w http.ResponseWriter, r *http.Request) {
 	if issues := config.CheckProjectConfig(root); len(issues) > 0 {
 		s.log.Warn("denied project open (config)", "root", relForm(root))
 		writeAPIError(w, http.StatusForbidden, "cannot open that path")
+		return
+	}
+	// Temporary clones vanish when the server stops; recents persist on
+	// disk, so recording one would only leave a dead entry behind.
+	if s.clones.owns(root) {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	state.RecordRecent(root)
