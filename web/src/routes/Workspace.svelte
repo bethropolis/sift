@@ -348,6 +348,38 @@
     openCtxMenu(e.clientX, e.clientY, items, opener);
   }
 
+  // Right-click on empty explorer space: fold actions only. preventDefault
+  // keeps the App-level fallback from firing its own menu on top.
+  function handleEmptyContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    const opener = e.target instanceof HTMLElement ? e.target : null;
+    openCtxMenu(
+      e.clientX,
+      e.clientY,
+      [
+        {
+          id: 'expand-all',
+          label: 'Expand all',
+          hint: 'E',
+          disabled: treeActions === null,
+          run: () => {
+            treeActions?.expandAll();
+          },
+        },
+        {
+          id: 'collapse-all',
+          label: 'Collapse all',
+          hint: 'C',
+          disabled: treeActions === null,
+          run: () => {
+            treeActions?.collapseAll();
+          },
+        },
+      ],
+      opener,
+    );
+  }
+
   // Follow walk from the explorer: replaces the selection with exactly what
   // the CLI follow picks (seed full, near hops full, far hops signatures)
   // and remembers the previous selection for Clear. Failures toast the
@@ -707,6 +739,7 @@
             bind:visibleFilePaths={visiblePaths}
             bind:treeActions
             onRowContextMenu={handleRowContextMenu}
+            onEmptyContextMenu={handleEmptyContextMenu}
           />
         {/if}
       </div>

@@ -37,6 +37,8 @@
     visibleFilePaths?: string[];
     /** Right-click on a row: parent builds file-aware menu items. */
     onRowContextMenu?: (e: MouseEvent, path: string, isDir: boolean) => void;
+    /** Right-click on empty tree space (not on a row): fold actions menu. */
+    onEmptyContextMenu?: (e: MouseEvent) => void;
   }
 
   // Re-exported via bind:filterInput so parents can focus the filter box.
@@ -56,6 +58,7 @@
     treeActions = $bindable(null),
     visibleFilePaths = $bindable([]),
     onRowContextMenu,
+    onEmptyContextMenu,
   }: Props = $props();
 
   let collapsedDirs = $state<Record<string, boolean>>({});
@@ -303,6 +306,12 @@
     role="tree"
     aria-label="Files tree"
     onscroll={(e) => (scrollTop = e.currentTarget.scrollTop)}
+    oncontextmenu={(e) => {
+      // Empty-space menu: rows handle their own menu above, so anything
+      // bubbling from a treeitem is already spoken for.
+      if (e.target instanceof HTMLElement && e.target.closest('[role="treeitem"]')) return;
+      onEmptyContextMenu?.(e);
+    }}
     class="tree-list"
   >
     {#if totalRows === 0}
@@ -532,18 +541,27 @@
     position: relative;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 120ms ease;
+  }
+  .tree-list:hover {
+    scrollbar-color: var(--border) transparent;
   }
   .tree-list::-webkit-scrollbar {
-    width: 10px;
+    width: 8px;
   }
   .tree-list::-webkit-scrollbar-track {
     background: transparent;
   }
   .tree-list::-webkit-scrollbar-thumb {
-    background-color: var(--border-strong);
+    background-color: transparent;
     border-radius: 6px;
-    border: 3px solid var(--bg);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background-color 120ms ease;
+  }
+  .tree-list:hover::-webkit-scrollbar-thumb {
+    background-color: var(--border);
   }
   .tree-list::-webkit-scrollbar-thumb:hover {
     background-color: var(--ink-faint);
