@@ -215,7 +215,10 @@
     overflow-y: auto;
     padding: 4px;
     scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-color: transparent transparent;
+  }
+  .dropdown-list:hover {
+    scrollbar-color: var(--border) transparent;
   }
   .empty {
     padding: 12px;

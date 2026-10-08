@@ -220,7 +220,7 @@
     max-height: calc(100dvh - 32px);
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-color: transparent transparent;
     background-color: var(--bg);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-strong);
@@ -230,6 +230,9 @@
     flex-direction: column;
     gap: 12px;
     animation: pop-in 130ms ease-out;
+  }
+  .panel:hover {
+    scrollbar-color: var(--border) transparent;
   }
   .panel-head {
     display: flex;

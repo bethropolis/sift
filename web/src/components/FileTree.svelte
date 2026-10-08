@@ -542,29 +542,9 @@
     scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
-    transition: scrollbar-color 120ms ease;
   }
   .tree-list:hover {
     scrollbar-color: var(--border) transparent;
-  }
-  .tree-list::-webkit-scrollbar {
-    width: 8px;
-  }
-  .tree-list::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .tree-list::-webkit-scrollbar-thumb {
-    background-color: transparent;
-    border-radius: 6px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-    transition: background-color 120ms ease;
-  }
-  .tree-list:hover::-webkit-scrollbar-thumb {
-    background-color: var(--border);
-  }
-  .tree-list::-webkit-scrollbar-thumb:hover {
-    background-color: var(--ink-faint);
   }
   .no-match {
     padding: 24px;

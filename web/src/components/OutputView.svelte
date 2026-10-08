@@ -452,10 +452,13 @@
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-color: transparent transparent;
     border-right: 1px solid var(--border);
     padding: 4px 0;
     overscroll-behavior: contain;
+  }
+  .outline:hover {
+    scrollbar-color: var(--border) transparent;
   }
   .outline-row {
     display: flex;
@@ -514,8 +517,11 @@
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-color: transparent transparent;
     padding: 10px 14px 24px;
+  }
+  .doc-scroll:hover {
+    scrollbar-color: var(--border) transparent;
   }
   .doc-spacer {
     width: max-content;

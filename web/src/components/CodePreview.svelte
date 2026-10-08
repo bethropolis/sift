@@ -263,10 +263,13 @@
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
     scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-color: transparent transparent;
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 1.6;
+  }
+  .code-scroll:hover {
+    scrollbar-color: var(--border) transparent;
   }
   .code-row {
     display: flex;
