@@ -25,14 +25,22 @@
   let highlightedTheme = $derived(THEMES[highlightedIndex] || THEMES[0]);
   let isLight = $derived(highlightedTheme.category === 'light');
 
-  // Sync index when the modal opens or the theme changes elsewhere.
+  // Sync the highlight when the modal opens or the theme changes elsewhere
+  // (settings modal, system switch). It must never react to browsing: reading
+  // highlightedIndex here would resubscribe on every hover/arrow press and
+  // yank the highlight back to the selected theme.
+  let wasOpen = false;
+  let syncedTheme: string | null = null;
   $effect(() => {
-    if (isOpen) {
-      const idx = THEMES.findIndex((t) => t.id === currentTheme);
-      if (idx >= 0 && idx !== highlightedIndex) {
-        highlightedIndex = idx;
-        followKeyboard = true;
-      }
+    const opened = isOpen && !wasOpen;
+    const external = isOpen && syncedTheme !== null && syncedTheme !== currentTheme;
+    wasOpen = isOpen;
+    if (!isOpen || (!opened && !external)) return;
+    syncedTheme = currentTheme;
+    const idx = THEMES.findIndex((t) => t.id === currentTheme);
+    if (idx >= 0) {
+      highlightedIndex = idx;
+      followKeyboard = true;
     }
   });
 
