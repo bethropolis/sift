@@ -8,6 +8,8 @@
 
 import { api, type ApiMeta } from './api';
 
+let started = false;
+
 export const appState = $state({
   /** True when the window was opened by `sift serve --app`. */
   appMode: false,
@@ -46,6 +48,10 @@ export async function exchangeLaunchToken(token: string): Promise<boolean> {
  * browser's own EventSource retry.
  */
 export function startHeartbeat(): void {
+  // One stream per window: refreshAuth runs on mount, after login, and after
+  // a token exchange, and each of those must not open a second stream.
+  if (started) return;
+  started = true;
   let attempts = 0;
   let wasOpen = false;
   const MAX_ATTEMPTS = 5;

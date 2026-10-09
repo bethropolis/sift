@@ -129,7 +129,6 @@ import { clearHashQuery } from './lib/router.svelte';
       // rather than a route that would only 401.
       if (!ok && routeState.route !== 'login') navigate('/login');
       launchPending = false;
-      if (ok) startHeartbeat();
     })();
   });
 
@@ -139,6 +138,11 @@ import { clearHashQuery } from './lib/router.svelte';
       meta = data;
       applyMeta(data);
       if (!data.authenticated) return;
+      // The heartbeat is what keeps an --app server alive, and the launch
+      // token is one-time: after a refresh there is no token to exchange, so
+      // an authenticated app window must (re)start the stream here, or the
+      // server's grace timer exits 15s after the reload.
+      if (data.app) startHeartbeat();
       try {
         const s = await api.getSettings();
         lastSettings = s;
