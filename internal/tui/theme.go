@@ -260,7 +260,9 @@ func init() {
 		catalogTheme("github-dark", "GitHub Dark", "GitHub", "Dark", true, "#58a6ff", "#d2a8ff", "#8b949e", "#0d1117", "#21262d", "#3fb950", "#d29922", "#79c0ff", "#f85149"),
 		catalogTheme("github-light", "GitHub Light", "GitHub", "Light", false, "#0969da", "#8250df", "#57606a", "#ffffff", "#f6f8fa", "#1a7f37", "#9a6700", "#0969da", "#cf222e"),
 		catalogTheme("night-owl", "Night Owl", "Night Owl", "Dark", true, "#82aaff", "#addb67", "#637777", "#011627", "#1d3b53", "#ecc48d", "#82aaff", "#7fdbca", "#ef5350"),
-		catalogTheme("poimandres", "Poimandres", "Poimandres", "Dark", true, "#89ddff", "#5de4c7", "#8a9a9a", "#1b1e28", "#2a2f3a", "#5de4c7", "#fffac2", "#89ddff", "#f07178"),
+		catalogTheme("catppuccin-latte", "Catppuccin Latte", "Catppuccin", "Latte", false, "#8839ef", "#1e66f5", "#9ca0b0", "#ccd0da", "#4c4f69", "#1e66f5", "#40a02b", "#df8e1d", "#d20f39"),
+		catalogTheme("tokyo-day", "Tokyo Night Day", "Tokyo Night", "Day", false, "#9854f1", "#2e7de9", "#848cb5", "#e1e2e7", "#3760bf", "#2e7de9", "#587539", "#8c6c3e", "#f52a65"),
+		catalogTheme("rose-pine-dawn", "Rosé Pine Dawn", "Rosé Pine", "Dawn", false, "#907aa9", "#286983", "#9893a5", "#faf4ed", "#575279", "#56949f", "#286983", "#ea9d34", "#b4637a"),		catalogTheme("poimandres", "Poimandres", "Poimandres", "Dark", true, "#89ddff", "#5de4c7", "#8a9a9a", "#1b1e28", "#2a2f3a", "#5de4c7", "#fffac2", "#89ddff", "#f07178"),
 		terminalTheme(),
 	)
 }
