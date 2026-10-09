@@ -17,6 +17,10 @@
   // True only after keyboard navigation: hover and wheel scrolling must never
   // yank the list, or the two fight and the scroll feels broken.
   let followKeyboard = false;
+  // Set by real mouse movement. Hover highlight requires it, so rows sliding
+  // under a static cursor (wheel scroll, smooth-scroll animation) never steal
+  // the highlight or fight the scroll.
+  let mouseMoved = false;
 
   let highlightedTheme = $derived(THEMES[highlightedIndex] || THEMES[0]);
   let isLight = $derived(highlightedTheme.category === 'light');
@@ -45,7 +49,7 @@
 
   function handleWindowKey(e: KeyboardEvent) {
     if (!isOpen) return;
-    if (e.key === 'Escape' || e.key === 'q') {
+    if (e.key === 'Escape' || e.key === 'q' || e.key === 't') {
       e.preventDefault();
       onClose();
     } else if (e.key === 'ArrowDown' || e.key === 'j') {
@@ -66,13 +70,76 @@
     }
   }
 
+  // Keys the picker owns while open. Workspace and App also listen on window
+  // (bubble phase, mounted first), so the picker intercepts these in the
+  // capture phase and stops them there — preventDefault alone cannot shield
+  // same-target listeners, and arrows would drive the explorer behind us.
+  function ownsKey(e: KeyboardEvent): boolean {
+    if (e.metaKey || e.ctrlKey || e.altKey) return false;
+    return (
+      e.key === 'Escape' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'ArrowUp' ||
+      e.key === 'Enter' ||
+      e.key === ' ' ||
+      e.key === 'q' ||
+      e.key === 't' ||
+      e.key === 'j' ||
+      e.key === 'k'
+    );
+  }
+
+  $effect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!ownsKey(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleWindowKey(e);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
+
+  // Focus the list while open so keys unambiguously belong to the picker;
+  // restore focus on close.
+  $effect(() => {
+    if (!isOpen || !listEl) return;
+    const prev = document.activeElement as HTMLElement | null;
+    listEl.focus({ preventScroll: true });
+    return () => {
+      prev?.focus?.({ preventScroll: true });
+    };
+  });
+
+  $effect(() => {
+    if (!isOpen) return;
+    const onMove = () => {
+      mouseMoved = true;
+    };
+    window.addEventListener('mousemove', onMove, { passive: true });
+    return () => window.removeEventListener('mousemove', onMove);
+  });
+
+  function handleHover(index: number) {
+    if (!mouseMoved) return;
+    mouseMoved = false;
+    highlightedIndex = index;
+  }
+
+  function applySelected() {
+    const selected = THEMES[highlightedIndex];
+    if (selected) {
+      onSelectTheme(selected.id);
+      onClose();
+    }
+  }
+
   function applyHighlighted() {
     onSelectTheme(highlightedTheme.id);
     onClose();
   }
 </script>
-
-<svelte:window onkeydown={handleWindowKey} />
 
 {#if isOpen}
   <div class="overlay" onclick={onClose}>
@@ -99,7 +166,7 @@
         </div>
       </div>
 
-      <div bind:this={listEl} class="theme-list">
+      <div bind:this={listEl} class="theme-list" tabindex="-1">
         {#each THEMES as theme, index (theme.id)}
           {@const isHighlighted = index === highlightedIndex}
           {@const isSelected = theme.id === currentTheme}
@@ -107,10 +174,9 @@
             data-theme-item
             onclick={() => {
               highlightedIndex = index;
-              onSelectTheme(theme.id);
-              onClose();
             }}
-            onmouseenter={() => (highlightedIndex = index)}
+            ondblclick={applySelected}
+            onmouseenter={() => handleHover(index)}
             role="option"
             aria-selected={isSelected}
             tabindex="-1"
@@ -188,7 +254,7 @@
           class="preview-foot"
           style:border-color={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}
         >
-          <span>↑/↓ move · Enter/Space apply · Esc/q close</span>
+          <span>↑/↓ move · Click previews · Enter applies · Esc closes</span>
           <button
             onclick={applyHighlighted}
             class="apply-btn"
@@ -279,6 +345,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    outline: none;
   }
   /* scrollIntoView defaults to this; instant under reduced motion. */
   @media (prefers-reduced-motion: no-preference) {
