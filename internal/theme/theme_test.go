@@ -1,6 +1,8 @@
 package theme
 
 import (
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -66,4 +68,43 @@ func TestWebThemeIDsResolveInTUI(t *testing.T) {
 			t.Errorf("web theme %q resolves to TUI preset %q", id, ThemePresets[idx].ID)
 		}
 	}
+}
+
+// TestCursorPairContrast pins the everforest-class bug: CursorFg doubles as
+// the syntax type color, so a background value in that slot renders types
+// (and cursor text) nearly invisible. Every hex cursor pair must clear a
+// 3:1 WCAG contrast ratio in either direction. ANSI-named palettes
+// (classic, terminal) are skipped.
+func TestCursorPairContrast(t *testing.T) {
+	for _, p := range ThemePresets {
+		bg, fg := string(p.CursorBg), string(p.CursorFg)
+		if len(bg) != 7 || bg[0] != '#' || len(fg) != 7 || fg[0] != '#' {
+			continue
+		}
+		ratio := contrastRatio(bg, fg)
+		if ratio < 3.0 {
+			t.Errorf("theme %q cursor pair %s on %s has contrast %.2f, want >= 3.0", p.ID, fg, bg, ratio)
+		}
+	}
+}
+
+func contrastRatio(a, b string) float64 {
+	la, lb := relativeLuminance(a), relativeLuminance(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
+func relativeLuminance(hex string) float64 {
+	var r, g, b int
+	_, _ = fmt.Sscanf(hex[1:], "%02x%02x%02x", &r, &g, &b)
+	lin := func(c int) float64 {
+		v := float64(c) / 255.0
+		if v <= 0.03928 {
+			return v / 12.92
+		}
+		return math.Pow((v+0.055)/1.055, 2.4)
+	}
+	return 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b)
 }
