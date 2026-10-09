@@ -33,6 +33,16 @@ type userThemeSpec struct {
 	ModeSkip    string `toml:"mode_skip"`
 }
 
+// overridesColors reports whether the spec changes any color field.
+func (s userThemeSpec) overridesColors() bool {
+	for _, v := range []string{s.Border, s.Title, s.Muted, s.CursorBg, s.CursorFg, s.Selected, s.Notice, s.ModeFull, s.ModeSig, s.ModeSkip} {
+		if v != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // LoadUserThemes loads and validates custom picker themes from a TOML file.
 // Inheriting themes are resolved against built-ins and earlier definitions.
 func LoadUserThemes(path string) ([]ThemePreset, error) {
@@ -105,11 +115,27 @@ func resolveUserTheme(spec userThemeSpec, byID map[string]ThemePreset) (ThemePre
 	setColor(&preset.ModeFull, spec.ModeFull)
 	setColor(&preset.ModeSig, spec.ModeSig)
 	setColor(&preset.ModeSkip, spec.ModeSkip)
+	if spec.overridesColors() {
+		resetDerivedRoles(&preset, base)
+	}
 	if spec.Border != "" || spec.Title != "" || spec.Muted != "" {
 		preset.Highlight = hlPalette(string(preset.Title), string(preset.ModeFull), string(preset.ModeSig), string(preset.Muted), string(preset.CursorFg))
 		preset.Syntax = semanticPalette(string(preset.Title), string(preset.ModeFull), string(preset.ModeSig), string(preset.Muted), string(preset.CursorFg), string(preset.Border), string(preset.Selected), string(preset.Title), string(preset.Muted))
 	}
 	return Normalize(preset), nil
+}
+
+// resetDerivedRoles clears the UI and status roles so Normalize re-derives
+// them from the overridden legacy colors. Catalog presets fill every role,
+// so without this an override like border = "#ff0000" would be shadowed by
+// the base theme's UI.Border. Surfaces have no legacy source and are kept.
+func resetDerivedRoles(preset *ThemePreset, base ThemePreset) {
+	preset.UI = UIColors{
+		Background: base.UI.Background,
+		Surface:    base.UI.Surface,
+		SurfaceAlt: base.UI.SurfaceAlt,
+	}
+	preset.Status = StatusColors{}
 }
 
 func setString(dst *string, value string) {

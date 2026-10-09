@@ -32,7 +32,7 @@ title = "#abcdef"
 	if len(themes) != 2 || themes[0].ID != "midnight" || themes[1].ID != "midnight-soft" {
 		t.Fatalf("loaded themes = %+v", themes)
 	}
-	if themes[0].Border != "#112233" || themes[0].Title != ThemePresets[0].Title {
+	if themes[0].Border != "#112233" || themes[0].Title != ThemePresets[IndexOf(ThemePresets, "catppuccin-mocha")].Title {
 		t.Errorf("inheritance lost fields: %+v", themes[0])
 	}
 	if themes[1].Border != "#112233" || themes[1].Title != "#abcdef" {

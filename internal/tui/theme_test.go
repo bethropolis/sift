@@ -48,7 +48,7 @@ func TestThemeCloseKeys(t *testing.T) {
 
 func TestThemeSelectAppliesPreset(t *testing.T) {
 	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{})
-	idx := 1 // e.g. Tokyo Night
+	idx := theme.IndexOf(theme.ThemePresets, "tokyo-night")
 	m = updateKey(m, tea.KeyRunes, 't')
 	if !m.themeOpen {
 		t.Fatal("theme did not open")
@@ -65,8 +65,8 @@ func TestThemeSelectAppliesPreset(t *testing.T) {
 		t.Error("Enter did not close theme modal")
 	}
 	p := theme.ThemePresets[idx]
-	if m.styles.border != p.Border {
-		t.Errorf("border color = %q, want %q", m.styles.border, p.Border)
+	if m.styles.border != p.UI.Border {
+		t.Errorf("border color = %q, want %q", m.styles.border, p.UI.Border)
 	}
 	if m.styles.accent != p.Title {
 		t.Errorf("accent color = %q, want %q", m.styles.accent, p.Title)
@@ -91,7 +91,7 @@ func TestThemeSwitchReusesCachedDocument(t *testing.T) {
 	content := []byte("func greet() { return true }")
 	m := newModel(BuildTree([]Item{{Path: "main.go", Content: content}}), Options{Highlight: true, UITheme: "classic"})
 	first := m.syntaxCache.Get("main.go", content, m.highlight)
-	m.applyTheme(theme.ThemePresets[1])
+	m.applyTheme(theme.ThemePresets[theme.IndexOf(theme.ThemePresets, "tokyo-night")])
 	second := m.syntaxCache.Get("main.go", content, m.highlight)
 	if first != second {
 		t.Fatal("theme switch reparsed cached document")
@@ -105,12 +105,13 @@ func TestThemeSwitchReusesCachedDocument(t *testing.T) {
 }
 
 func TestPersistedThemeInitializesModel(t *testing.T) {
-	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{UITheme: theme.ThemePresets[1].Name})
-	if m.themeIndex != 1 || m.themeCursor != 1 {
-		t.Fatalf("theme indexes = (%d, %d), want (1, 1)", m.themeIndex, m.themeCursor)
+	idx := theme.IndexOf(theme.ThemePresets, "tokyo-night")
+	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{UITheme: theme.ThemePresets[idx].Name})
+	if m.themeIndex != idx || m.themeCursor != idx {
+		t.Fatalf("theme indexes = (%d, %d), want (%d, %d)", m.themeIndex, m.themeCursor, idx, idx)
 	}
-	if m.styles.border != theme.ThemePresets[1].Border {
-		t.Errorf("initial border = %q, want %q", m.styles.border, theme.ThemePresets[1].Border)
+	if m.styles.border != theme.ThemePresets[idx].UI.Border {
+		t.Errorf("initial border = %q, want %q", m.styles.border, theme.ThemePresets[idx].UI.Border)
 	}
 }
 
@@ -139,7 +140,7 @@ func TestThemeApplyIsInstanceLocal(t *testing.T) {
 	m2 := newModel(BuildTree([]Item{{Path: "b.go"}}), Options{})
 
 	before := m2.styles.title.Render("x")
-	m1.applyTheme(theme.ThemePresets[1])
+	m1.applyTheme(theme.ThemePresets[theme.IndexOf(theme.ThemePresets, "tokyo-night")])
 	if after := m2.styles.title.Render("x"); after != before {
 		t.Error("theme change on one model leaked into another model's title style")
 	}
@@ -149,10 +150,11 @@ func TestThemeSelectionPersistsStableID(t *testing.T) {
 	var got string
 	m := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{OnThemeChange: func(id string) error { got = id; return nil }})
 	m = updateKey(m, tea.KeyRunes, 't')
+	initial := m.themeCursor
 	m = updateKey(m, tea.KeyUp)
 	m = updateKey(m, tea.KeyEnter)
-	if got != theme.IDAt(theme.ThemePresets, 5) {
-		t.Fatalf("persisted theme = %q, want %q", got, theme.IDAt(theme.ThemePresets, 5))
+	if want := theme.IDAt(theme.ThemePresets, initial-1); got != want {
+		t.Fatalf("persisted theme = %q, want %q", got, want)
 	}
 }
 
@@ -259,7 +261,7 @@ func TestThemeApplySetsHighlightPalette(t *testing.T) {
 		t.Errorf("classic highlight = %q, want legacy keyword code", got)
 	}
 
-	m.applyTheme(theme.ThemePresets[1]) // Tokyo Night
+	m.applyTheme(theme.ThemePresets[theme.IndexOf(theme.ThemePresets, "tokyo-night")])
 	if m.highlight.Palette == nil {
 		t.Fatal("applied theme left highlight palette nil")
 	}
@@ -275,7 +277,7 @@ func TestThemeApplySetsHighlightPalette(t *testing.T) {
 func TestThemeApplyIsInstanceLocalForHighlight(t *testing.T) {
 	m1 := newModel(BuildTree([]Item{{Path: "a.go"}}), Options{Highlight: true})
 	m2 := newModel(BuildTree([]Item{{Path: "b.go"}}), Options{Highlight: true})
-	m1.applyTheme(theme.ThemePresets[2]) // Dracula
+	m1.applyTheme(theme.ThemePresets[theme.IndexOf(theme.ThemePresets, "dracula")])
 	got := highlight.RenderLine("b.go", "func x() {}", m2.highlight)
 	if !strings.Contains(got, "\033[1;34mfunc\033[0m") {
 		t.Errorf("theme change leaked into another model: %q", got)
