@@ -7,6 +7,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/highlight"
 	"github.com/bethropolis/sift/internal/selection"
+	"github.com/bethropolis/sift/internal/theme"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -89,7 +90,7 @@ type model struct {
 	windowTitle     string
 	projectPath     string
 	styles          uiStyles
-	themes          []ThemePreset
+	themes          []theme.ThemePreset
 	prompt          string
 	selectionTuning selection.Tuning
 
@@ -173,7 +174,7 @@ type Options struct {
 	Highlight         bool
 	Theme             string
 	UITheme           string
-	UserThemes        []ThemePreset
+	UserThemes        []theme.ThemePreset
 	HighlightMaxBytes int
 	WindowTitle       string
 	ProjectPath       string
@@ -203,9 +204,9 @@ type Options struct {
 	OnRescan func() (Stream, error)
 }
 
-func containsThemeID(themes []ThemePreset, id string) bool {
-	for _, theme := range themes {
-		if theme.ID == id {
+func containsThemeID(themes []theme.ThemePreset, id string) bool {
+	for _, preset := range themes {
+		if preset.ID == id {
 			return true
 		}
 	}
@@ -213,7 +214,7 @@ func containsThemeID(themes []ThemePreset, id string) bool {
 }
 
 func newModel(root *TreeNode, opts Options) model {
-	themes := append([]ThemePreset(nil), ThemePresets...)
+	themes := append([]theme.ThemePreset(nil), theme.ThemePresets...)
 	for _, userTheme := range opts.UserThemes {
 		if !containsThemeID(themes, userTheme.ID) {
 			themes = append(themes, userTheme)
@@ -238,8 +239,8 @@ func newModel(root *TreeNode, opts Options) model {
 		projectPath:      opts.ProjectPath,
 		styles:           defaultStyles(),
 		themes:           themes,
-		themeIndex:       themeIndexIn(themes, opts.UITheme),
-		themeCursor:      themeIndexIn(themes, opts.UITheme),
+		themeIndex:       theme.IndexOf(themes, opts.UITheme),
+		themeCursor:      theme.IndexOf(themes, opts.UITheme),
 		onThemeChange:    opts.OnThemeChange,
 		prompt:           opts.Prompt,
 		selectionTuning:  opts.SelectionTuning,

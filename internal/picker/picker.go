@@ -18,6 +18,7 @@ import (
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/state"
+	"github.com/bethropolis/sift/internal/theme"
 	"github.com/bethropolis/sift/internal/tui"
 	"github.com/bethropolis/sift/internal/walker"
 )
@@ -101,9 +102,9 @@ func (s *service) run(ctx context.Context) (Result, error) {
 	}
 	preferredModes = <-modesCh
 
-	var userThemes []tui.ThemePreset
+	var userThemes []theme.ThemePreset
 	if s.cfg.UIThemeFile != "" {
-		userThemes, err = tui.LoadUserThemes(s.cfg.UIThemeFile)
+		userThemes, err = theme.LoadUserThemes(s.cfg.UIThemeFile)
 		if err != nil {
 			return Result{}, err
 		}

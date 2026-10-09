@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/bethropolis/sift/internal/app"
+	"github.com/bethropolis/sift/internal/theme"
 )
 
 // updateMouse routes mouse events to the pane under the cursor: the wheel
@@ -183,7 +184,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.themeIndex = m.themeCursor
 			m.applyTheme(m.themes[m.themeCursor])
 			if m.onThemeChange != nil {
-				if err := m.onThemeChange(themeIDIn(m.themes, m.themeIndex)); err != nil {
+				if err := m.onThemeChange(theme.IDAt(m.themes, m.themeIndex)); err != nil {
 					m.setNotice(fmt.Sprintf("theme not saved: %v", err))
 				}
 			}

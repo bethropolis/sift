@@ -1,4 +1,4 @@
-package tui
+package theme
 
 import (
 	"fmt"
@@ -109,7 +109,7 @@ func resolveUserTheme(spec userThemeSpec, byID map[string]ThemePreset) (ThemePre
 		preset.Highlight = hlPalette(string(preset.Title), string(preset.ModeFull), string(preset.ModeSig), string(preset.Muted), string(preset.CursorFg))
 		preset.Syntax = semanticPalette(string(preset.Title), string(preset.ModeFull), string(preset.ModeSig), string(preset.Muted), string(preset.CursorFg), string(preset.Border), string(preset.Selected), string(preset.Title), string(preset.Muted))
 	}
-	return normalizeTheme(preset), nil
+	return Normalize(preset), nil
 }
 
 func setString(dst *string, value string) {

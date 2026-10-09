@@ -106,8 +106,8 @@ func TestFollowRejects(t *testing.T) {
 	root := followFixture(t, goFiles())
 	tree := buildFollowTree(t, root, goFiles())
 	for name, seed := range map[string]string{
-		"missing":   "nope.go",
-		"directory": "sub",
+		"missing":    "nope.go",
+		"directory":  "sub",
 		"no scanner": "go.mod",
 	} {
 		// go.mod has content but no import scanner; the others fail earlier.
