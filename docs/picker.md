@@ -129,7 +129,9 @@ Wave/Dragon/Lotus, Everforest Dark and Light, One Dark, Solarized Dark and
 Light, Monokai, GitHub Dark and Light, Night Owl, Poimandres, Classic/default,
 and Terminal (Emulator). Terminal (Emulator) uses the configured ANSI palette
 (including the terminal's foreground/background colors) instead of fixed RGB
-colors. Your selection applies immediately and is saved for future sessions. The
+colors. Your selection applies immediately and is saved for future sessions. A
+theme picked in the web UI follows into an open picker within a second, since
+both frontends share the same preferences file. The
 theme also recolors preview syntax highlighting to match,
 so keywords, strings, comments, diffs, and markup follow the same palette as
 the rest of the picker.

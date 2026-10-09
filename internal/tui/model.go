@@ -280,9 +280,9 @@ func (m *model) node() *TreeNode {
 
 func (m model) Init() tea.Cmd {
 	if m.windowTitle == "" {
-		return m.listenStream()
+		return tea.Batch(m.listenStream(), pollThemeCmd())
 	}
-	return tea.Batch(m.listenStream(), tea.SetWindowTitle(m.windowTitle))
+	return tea.Batch(m.listenStream(), pollThemeCmd(), tea.SetWindowTitle(m.windowTitle))
 }
 
 func currentColorProfile() highlight.ColorProfile {
@@ -310,6 +310,9 @@ func sanitizeWindowTitle(title string) string {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case themePollMsg:
+		m.syncExternalTheme(msg.id)
+		return m, pollThemeCmd()
 	case clearNoticeMsg:
 		if msg.id == m.noticeID {
 			m.notice = ""
