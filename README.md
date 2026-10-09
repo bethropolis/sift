@@ -1,6 +1,6 @@
 # Sift
 
-[![CodeFactor](https://www.codefactor.io/repository/github/bethropolis/sift/badge/main)](https://www.codefactor.io/repository/github/bethropolis/sift/overview/main)
+[![CodeFactor](https://www.codefactor.io/repository/github/bethropolis/sift/badge)](https://www.codefactor.io/repository/github/bethropolis/sift)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/bethropolis/sift?style=flat-square&labelColor=1e1e2e&color=89b4fa)](https://github.com/bethropolis/sift/releases/latest)
 [![GitHub license](https://img.shields.io/github/license/bethropolis/sift?style=flat-square&labelColor=1e1e2e&color=cba6f7)](https://github.com/bethropolis/sift/blob/main/LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bethropolis/sift.svg)](https://pkg.go.dev/github.com/bethropolis/sift/)
