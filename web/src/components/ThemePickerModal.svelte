@@ -182,8 +182,8 @@
             data-theme-item
             onclick={() => {
               highlightedIndex = index;
+              applySelected();
             }}
-            ondblclick={applySelected}
             onmouseenter={() => handleHover(index)}
             role="option"
             aria-selected={isSelected}
@@ -262,7 +262,7 @@
           class="preview-foot"
           style:border-color={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}
         >
-          <span>↑/↓ move · Click previews · Enter applies · Esc closes</span>
+          <span>↑/↓ move · Click/Enter applies · Esc closes</span>
           <button
             onclick={applyHighlighted}
             class="apply-btn"
