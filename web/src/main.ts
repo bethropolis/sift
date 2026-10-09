@@ -1,4 +1,5 @@
 import './app.css';
+import './themes-generated.css';
 import App from './App.svelte';
 import { mount } from 'svelte';
 import { applyFavicon } from './lib/favicon';

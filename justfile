@@ -79,6 +79,10 @@ sig:
 web:
   sh scripts/build-web.sh
 
+# Regenerate the web theme data + CSS from internal/theme (single source).
+gen-themes:
+  go run ./internal/theme/genweb
+
 # Dev server for the web UI with /api proxied to a local `sift serve` (live)
 web-dev:
   cd web && VITE_MOCK=false bun run dev
