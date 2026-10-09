@@ -14,6 +14,9 @@
   let initialIdx = THEMES.findIndex((t) => t.id === currentTheme);
   let highlightedIndex = $state(initialIdx >= 0 ? initialIdx : 0);
   let listEl: HTMLDivElement | null = $state(null);
+  // True only after keyboard navigation: hover and wheel scrolling must never
+  // yank the list, or the two fight and the scroll feels broken.
+  let followKeyboard = false;
 
   let highlightedTheme = $derived(THEMES[highlightedIndex] || THEMES[0]);
   let isLight = $derived(highlightedTheme.category === 'light');
@@ -22,16 +25,22 @@
   $effect(() => {
     if (isOpen) {
       const idx = THEMES.findIndex((t) => t.id === currentTheme);
-      if (idx >= 0) highlightedIndex = idx;
+      if (idx >= 0 && idx !== highlightedIndex) {
+        highlightedIndex = idx;
+        followKeyboard = true;
+      }
     }
   });
 
-  // Keep the highlighted item in view.
+  // Keep the keyboard-highlighted item in view. Hover/wheel never scroll.
   $effect(() => {
     if (!isOpen || !listEl) return;
+    const idx = highlightedIndex;
+    if (!followKeyboard) return;
+    followKeyboard = false;
     const items = listEl.querySelectorAll('[data-theme-item]');
-    const active = items[highlightedIndex] as HTMLElement | undefined;
-    active?.scrollIntoView({ block: 'nearest' });
+    const active = items[idx] as HTMLElement | undefined;
+    active?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   });
 
   function handleWindowKey(e: KeyboardEvent) {
@@ -41,9 +50,11 @@
       onClose();
     } else if (e.key === 'ArrowDown' || e.key === 'j') {
       e.preventDefault();
+      followKeyboard = true;
       highlightedIndex = (highlightedIndex + 1) % THEMES.length;
     } else if (e.key === 'ArrowUp' || e.key === 'k') {
       e.preventDefault();
+      followKeyboard = true;
       highlightedIndex = (highlightedIndex - 1 + THEMES.length) % THEMES.length;
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -263,10 +274,17 @@
   .theme-list {
     max-height: 260px;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 6px;
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+  /* scrollIntoView defaults to this; instant under reduced motion. */
+  @media (prefers-reduced-motion: no-preference) {
+    .theme-list {
+      scroll-behavior: smooth;
+    }
   }
   .theme-row {
     display: flex;
