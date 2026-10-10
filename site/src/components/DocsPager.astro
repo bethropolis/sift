@@ -1,0 +1,30 @@
+---
+import { docNeighbors } from '../data/docs';
+import { toBase } from '../lib/site';
+
+interface Props {
+  slug: string;
+}
+
+const { slug } = Astro.props;
+const { prev, next } = docNeighbors(slug);
+---
+
+{(prev || next) && (
+  <nav class="pager" aria-label="Previous and next article">
+    {prev ? (
+      <a class="pager-card" href={toBase(`/docs/${prev.slug}/`)}>
+        <span>← PREVIOUS</span>
+        {prev.title}
+      </a>
+    ) : (
+      <div />
+    )}
+    {next && (
+      <a class="pager-card" href={toBase(`/docs/${next.slug}/`)}>
+        <span>NEXT →</span>
+        {next.title}
+      </a>
+    )}
+  </nav>
+)}

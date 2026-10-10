@@ -1,0 +1,52 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import DocsNav from '../../components/DocsNav.astro';
+import DocsPager from '../../components/DocsPager.astro';
+import { toBase } from '../../lib/site';
+
+export async function getStaticPaths() {
+  const docs = await getCollection('docs');
+  return docs
+    .filter((doc) => doc.id.replace(/\.md$/, '') !== 'index')
+    .map((doc) => ({
+      params: { slug: doc.id.replace(/\.md$/, '') },
+      props: { doc },
+    }));
+}
+
+const { doc } = Astro.props;
+const { Content } = await render(doc);
+const slug = doc.id.replace(/\.md$/, '');
+---
+
+<Base title={doc.data.title} description={doc.data.description}>
+  <main class="container docs-shell" id="main">
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href={toBase('/')}>sift</a>
+      <span aria-hidden="true">/</span>
+      <a href={toBase('/docs/')}>Docs</a>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page">{doc.data.title}</span>
+    </nav>
+
+    <div class="docs-grid">
+      <aside class="docs-sidebar">
+        <nav aria-label="Documentation">
+          <DocsNav active={slug} />
+        </nav>
+      </aside>
+      <details class="docs-mobile">
+        <summary>Documentation</summary>
+        <nav aria-label="Documentation">
+          <DocsNav active={slug} />
+        </nav>
+      </details>
+      <article class="docs-content">
+        <h1>{doc.data.title}</h1>
+        <Content />
+        <DocsPager slug={slug} />
+      </article>
+    </div>
+  </main>
+</Base>

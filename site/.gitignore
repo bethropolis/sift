@@ -1,7 +1,5 @@
-_site/
-_docs/
-.jekyll-cache/
-.jekyll-metadata
-.bundle/
-vendor/
-Gemfile.lock
+node_modules/
+dist/
+.astro/
+src/content/docs/
+public/assets/docs/

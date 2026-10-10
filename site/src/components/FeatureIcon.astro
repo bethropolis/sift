@@ -1,0 +1,30 @@
+---
+type Kind = 'rank' | 'signature' | 'budget' | 'secret' | 'picker' | 'delta';
+
+interface Props {
+  kind: Kind;
+}
+
+const { kind } = Astro.props;
+
+const paths: Record<Kind, string> = {
+  rank: '<path d="M5 5v16M3 18l2 3 2-3M11 5h11M11 10h8M11 15h5M11 20h3" />',
+  signature: '<path d="M9 4H5v18h16V10l-6-6H9M15 4v6h6M9 14h8M9 18h5" />',
+  budget: '<path d="M3 7h20M3 13h20M3 19h20M9 4v6M17 10v6M7 16v6" />',
+  secret: '<rect x="5" y="11" width="16" height="12" rx="2" /><path d="M8 11V8a5 5 0 0 1 10 0v3M13 16v3" />',
+  picker: '<rect x="3" y="4" width="20" height="18" rx="2" /><path d="M12 4v18M6 9l2 2 2-2M15 9h5M15 14h5M6 16h4" />',
+  delta: '<path d="M20 8a8 8 0 1 0 1 9M20 3v5h-5M13 8v6l4 2" />',
+};
+---
+
+<svg
+  class="feature-icon"
+  viewBox="0 0 26 26"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.8"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  aria-hidden="true"
+  set:html={paths[kind]}
+/>

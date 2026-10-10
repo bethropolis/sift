@@ -1,0 +1,72 @@
+---
+import CodeBlock from './CodeBlock.astro';
+import { INSTALL_METHODS } from '../data/install';
+---
+
+<div data-install-tabs>
+  <div class="tabs-list" role="tablist" aria-label="Installation method">
+    {INSTALL_METHODS.map((method, i) => (
+      <button
+        id={`install-tab-${i}`}
+        type="button"
+        role="tab"
+        aria-selected={i === 0 ? 'true' : 'false'}
+        aria-controls={`install-panel-${i}`}
+        tabindex={i === 0 ? 0 : -1}
+        data-tab={i}
+      >
+        {method.name}
+      </button>
+    ))}
+  </div>
+  {INSTALL_METHODS.map((method, i) => (
+    <section
+      class="install-panel"
+      id={`install-panel-${i}`}
+      role="tabpanel"
+      aria-labelledby={`install-tab-${i}`}
+      tabindex={0}
+      hidden={i !== 0}
+      data-panel={i}
+    >
+      <h2>{method.name}</h2>
+      <CodeBlock code={method.command} />
+      {method.note && (
+        <aside class="note">
+          <p set:html={method.note.replace(/`([^`]+)`/g, '<code>$1</code>')} />
+        </aside>
+      )}
+    </section>
+  ))}
+</div>
+
+<script>
+  document.querySelectorAll('[data-install-tabs]').forEach((root) => {
+    if (!(root instanceof HTMLElement)) return;
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-tab]')];
+    const panels = [...root.querySelectorAll<HTMLElement>('[data-panel]')];
+    const select = (next: number, focus = false) => {
+      tabs.forEach((t, i) => {
+        t.setAttribute('aria-selected', String(i === next));
+        t.tabIndex = i === next ? 0 : -1;
+      });
+      panels.forEach((p, i) => {
+        p.hidden = i !== next;
+      });
+      if (focus) tabs[next]?.focus();
+    };
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => select(i));
+      tab.addEventListener('keydown', (e) => {
+        let next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i + tabs.length - 1) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        else return;
+        e.preventDefault();
+        select(next, true);
+      });
+    });
+  });
+</script>

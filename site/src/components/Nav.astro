@@ -1,0 +1,56 @@
+---
+import { toBase } from '../lib/site';
+
+const path = Astro.url.pathname;
+const isDocs = path.includes('/docs');
+const isInstall = path.includes('/install');
+---
+
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-nav">
+  <div class="container nav-inner">
+    <a class="brand" href={toBase('/')} aria-label="sift home">
+      <span class="brand-mark" aria-hidden="true"></span>
+      sift
+    </a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href={path === toBase('/') ? '#what-it-does' : toBase('/#what-it-does')}>What it does</a>
+      <a href={toBase('/docs/')} class={isDocs ? 'nav-active' : ''}>Docs</a>
+      <a href={toBase('/install/')} class={isInstall ? 'nav-active' : ''}>Install</a>
+      <a href="https://github.com/bethropolis/sift" target="_blank" rel="noopener noreferrer" class="external">GitHub</a>
+      <a class="button" href={toBase('/install/')}>Get sift</a>
+    </nav>
+    <details class="mobile-menu" id="mobile-menu">
+      <summary aria-label="Toggle navigation">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M3 5h14M3 10h14M3 15h14"></path>
+        </svg>
+      </summary>
+      <nav class="mobile-panel" aria-label="Mobile navigation">
+        <a href={path === toBase('/') ? '#what-it-does' : toBase('/#what-it-does')}>What it does</a>
+        <a href={toBase('/docs/')} class={isDocs ? 'nav-active' : ''}>Docs</a>
+        <a href={toBase('/install/')} class={isInstall ? 'nav-active' : ''}>Install</a>
+        <a href="https://github.com/bethropolis/sift" target="_blank" rel="noopener noreferrer" class="external">GitHub</a>
+        <a class="button" href={toBase('/install/')}>Get sift</a>
+      </nav>
+    </details>
+  </div>
+</header>
+
+<script>
+  const menu = document.getElementById('mobile-menu');
+  if (menu instanceof HTMLDetailsElement) {
+    const close = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && menu.open) {
+        menu.open = false;
+        menu.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('keydown', close);
+    menu
+      .querySelector('.mobile-panel')
+      ?.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('a')) menu.open = false;
+      });
+  }
+</script>

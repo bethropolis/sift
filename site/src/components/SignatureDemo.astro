@@ -1,0 +1,105 @@
+---
+const fullSnippet = `// Rank orders files by git relevance, highest first.
+func Rank(files []File, opts Options) []File {
+	scores := make(map[string]float64, len(files))
+	for _, f := range files {
+		scores[f.Path] = score(f, opts)
+	}
+	sort.SliceStable(files, func(i, j int) bool {
+		return scores[files[i].Path] > scores[files[j].Path]
+	})
+	return files
+}`;
+
+const sigsSnippet = `// Rank orders files by git relevance, highest first.
+func Rank(files []File, opts Options) []File { /* ... */ }`;
+
+function highlight(code: string): string {
+  return code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .split(/(\/\/[^\n]*|\/\*[\s\S]*?\*\/|\b(?:func|make|map|for|range|return|int|bool|float64|string)\b)/g)
+    .map((part) => {
+      if (part.startsWith('//') || part.startsWith('/*')) {
+        return `<span class="syntax-comment">${part}</span>`;
+      }
+      if (/^(func|make|map|for|range|return|int|bool|float64|string)$/.test(part)) {
+        return `<span class="syntax-keyword">${part}</span>`;
+      }
+      return part;
+    })
+    .join('');
+}
+---
+
+<div data-signature-demo data-full={fullSnippet} data-sigs={sigsSnippet}>
+  <div class="segment" role="group" aria-label="Compression mode">
+    <button type="button" aria-pressed="true" data-mode="FULL">FULL</button>
+    <button type="button" aria-pressed="false" data-mode="SIGS">SIGS</button>
+  </div>
+  <div class="signature-code">
+    <div class="code-block">
+      <pre><code data-code set:html={highlight(fullSnippet)}></code></pre>
+      <button type="button" class="copy-button" data-copy-btn data-copy={fullSnippet} aria-live="polite">copy</button>
+    </div>
+  </div>
+  <p class="signature-readout" aria-live="polite" data-readout>{fullSnippet.split('\n').length} lines</p>
+</div>
+
+<script>
+  function highlight(code: string): string {
+    return code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .split(/(\/\/[^\n]*|\/\*[\s\S]*?\*\/|\b(?:func|make|map|for|range|return|int|bool|float64|string)\b)/g)
+      .map((part) => {
+        if (part.startsWith('//') || part.startsWith('/*')) {
+          return `<span class="syntax-comment">${part}</span>`;
+        }
+        if (/^(func|make|map|for|range|return|int|bool|float64|string)$/.test(part)) {
+          return `<span class="syntax-keyword">${part}</span>`;
+        }
+        return part;
+      })
+      .join('');
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-signature-demo]').forEach((demo) => {
+    const full = demo.dataset.full ?? '';
+    const sigs = demo.dataset.sigs ?? '';
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>('[data-mode]')];
+    const code = demo.querySelector('[data-code]');
+    const copyBtn = demo.querySelector<HTMLButtonElement>('[data-copy-btn]');
+    const readout = demo.querySelector('[data-readout]');
+    const crossfade = () => {
+      const block = demo.querySelector('.code-block');
+      if (!(block instanceof HTMLElement) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      block.classList.remove('code-crossfade');
+      void block.offsetWidth;
+      block.classList.add('code-crossfade');
+    };
+    const apply = (mode: string) => {
+      const snippet = mode === 'FULL' ? full : sigs;
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+      if (code) code.innerHTML = highlight(snippet);
+      if (copyBtn) copyBtn.dataset.copy = snippet;
+      if (readout) readout.textContent = `${snippet.split('\n').length} lines`;
+      crossfade();
+    };
+    buttons.forEach((b) => b.addEventListener('click', () => apply(b.dataset.mode ?? 'FULL')));
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    copyBtn?.addEventListener('click', async () => {
+      if (!copyBtn) return;
+      try {
+        await navigator.clipboard.writeText(copyBtn.dataset.copy ?? '');
+      } catch {
+        return;
+      }
+      copyBtn.textContent = 'copied';
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        copyBtn.textContent = 'copy';
+      }, 1600);
+    });
+  });
+</script>

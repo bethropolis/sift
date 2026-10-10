@@ -1,0 +1,59 @@
+---
+const rows: [string, string][] = [
+  ['Navigate rows', 'j / k'],
+  ['Cycle FULL → SIGS → SKIP', 'space'],
+  ['Filter files / fuzzy search', '/'],
+  ['Render context document', 'enter'],
+  ['Toggle help overlay', '?'],
+];
+---
+
+<div class="shortcuts-overlay" id="shortcuts-overlay" hidden>
+  <div
+    class="shortcuts-card"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Keyboard Shortcuts"
+  >
+    <div class="shortcuts-head">
+      <span><span class="brand-word">sift</span> keyboard cheatsheet</span>
+      <button type="button" class="shortcuts-close" id="shortcuts-close" aria-label="Close shortcuts overlay">
+        esc
+      </button>
+    </div>
+    <div class="shortcuts-rows">
+      {rows.map(([label, key]) => (
+        <div class="shortcuts-row">
+          <span>{label}</span>
+          <span class={`shortcuts-key${key === 'enter' ? ' accent' : ''}`}>{key}</span>
+        </div>
+      ))}
+    </div>
+    <p class="shortcuts-foot">
+      Press <kbd>esc</kbd> or <kbd>?</kbd> to dismiss.
+    </p>
+  </div>
+</div>
+
+<script>
+  const overlay = document.getElementById('shortcuts-overlay');
+  const closeBtn = document.getElementById('shortcuts-close');
+  const setOpen = (open: boolean) => {
+    if (!overlay) return;
+    overlay.hidden = !open;
+  };
+  overlay?.addEventListener('click', (e) => {
+    if (e.target === overlay) setOpen(false);
+  });
+  closeBtn?.addEventListener('click', () => setOpen(false));
+  document.addEventListener('keydown', (e) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+    if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+      e.preventDefault();
+      if (overlay) setOpen(overlay.hidden);
+    } else if (e.key === 'Escape' && overlay && !overlay.hidden) {
+      setOpen(false);
+    }
+  });
+</script>

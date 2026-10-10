@@ -1,0 +1,43 @@
+---
+import Base from '../layouts/Base.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+import InstallTabs from '../components/InstallTabs.astro';
+import { repoUrl } from '../lib/site';
+---
+
+<Base
+  title="Install sift"
+  description="Get sift running: a single self-contained binary for macOS, Linux, Windows, and FreeBSD, or build from Go source."
+>
+  <main id="main">
+    <header class="page-header container">
+      <h1>Get sift running</h1>
+      <p class="lede">
+        A single self-contained binary. No runtime dependencies for the prebuilt releases; building from source needs Go 1.26 or newer.
+      </p>
+    </header>
+    <div class="container install-body">
+      <InstallTabs />
+      <section class="install-followup">
+        <h2>Check the install</h2>
+        <CodeBlock code={'sift version\nsift dump . --output -'} />
+        <p>Check the installed version, then render the current project to standard output.</p>
+      </section>
+      <section class="install-followup">
+        <h2>Staying current</h2>
+        <p>Re-running the install command upgrades sift. Config and state live under the app config directory and survive upgrades.</p>
+        <p>
+          <a href={`${repoUrl}/releases/latest`} target="_blank" rel="noopener noreferrer" class="text-link external">
+            Prebuilt releases for Linux, Windows, macOS, and FreeBSD
+          </a>
+        </p>
+      </section>
+      <section class="install-followup">
+        <h2>Removing sift</h2>
+        <CodeBlock code={'rm -f ~/.local/bin/sift\nbrew uninstall bethropolis/tap/sift\nscoop uninstall sift'} />
+        <p>Use the command for your install method. Optionally remove config and state:</p>
+        <CodeBlock code={'rm -rf ~/.config/sift'} />
+      </section>
+    </div>
+  </main>
+</Base>

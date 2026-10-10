@@ -1,0 +1,42 @@
+---
+interface Props {
+  code: string;
+}
+
+const { code } = Astro.props;
+---
+
+<div class="code-block">
+  <pre><code>{code}</code></pre>
+  <button type="button" class="copy-button" data-copy={code} aria-live="polite">copy</button>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('button[data-copy]').forEach((btn) => {
+    if (btn.dataset.bound) return;
+    btn.dataset.bound = 'true';
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.copy ?? '';
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        document.body.append(area);
+        area.select();
+        const ok = document.execCommand('copy');
+        area.remove();
+        if (!ok) return;
+      }
+      btn.textContent = 'copied';
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        btn.textContent = 'copy';
+      }, 1600);
+    });
+  });
+</script>

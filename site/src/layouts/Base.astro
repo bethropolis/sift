@@ -1,0 +1,48 @@
+---
+import '../styles/global.css';
+import '@fontsource/ibm-plex-mono/500.css';
+import '@fontsource/ibm-plex-mono/600.css';
+import '@fontsource/ibm-plex-sans/400.css';
+import '@fontsource/ibm-plex-sans/500.css';
+import '@fontsource/ibm-plex-sans/600.css';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import ShortcutsOverlay from '../components/ShortcutsOverlay.astro';
+import { toBase } from '../lib/site';
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const fullTitle = title === 'sift' ? 'sift — Sift the repo. Keep the signal.' : `${title} — sift`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href={toBase('/favicon.svg')} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content={toBase('/assets/img/og.png')} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+  </head>
+  <body>
+    <div class="app-shell">
+      <Nav />
+      <main>
+        <slot />
+      </main>
+      <Footer />
+      <ShortcutsOverlay />
+    </div>
+  </body>
+</html>

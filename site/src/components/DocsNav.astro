@@ -1,0 +1,25 @@
+---
+import { DOC_NAV } from '../data/docs';
+import { toBase } from '../lib/site';
+
+interface Props {
+  active?: string;
+}
+
+const { active } = Astro.props;
+---
+
+{DOC_NAV.map((group) => (
+  <div class="docs-nav-group">
+    <h2>{group.group}</h2>
+    {group.pages.map((item) => (
+      <a
+        href={toBase(`/docs/${item.slug}/`)}
+        class={item.slug === active ? 'active' : ''}
+        aria-current={item.slug === active ? 'page' : undefined}
+      >
+        {item.title}
+      </a>
+    ))}
+  </div>
+))}

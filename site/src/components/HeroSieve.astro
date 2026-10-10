@@ -1,0 +1,121 @@
+---
+const beforeRows: [string, boolean][] = [
+  ['node_modules/lodash/index.js', false],
+  ['vendor/github.com/pkg/errors/errors.go', false],
+  ['.git/objects/3f/91a2…', false],
+  ['dist/bundle.min.js', false],
+  ['package-lock.json', false],
+  ['internal/api/handler.go', true],
+  ['internal/api/router.go', true],
+  ['coverage/lcov.info', false],
+  ['README.md', true],
+  ['testdata/fixture_003.json', false],
+  ['+ 204 more', false],
+];
+
+const afterRows: [string, string][] = [
+  ['internal/api/handler.go', 'FULL'],
+  ['internal/api/router.go', 'FULL'],
+  ['internal/api/middleware.go', 'SIGS'],
+  ['cmd/api/main.go', 'FULL'],
+  ['internal/store/postgres.go', 'SIGS'],
+  ['README.md', 'FULL'],
+  ['internal/store/query.go', 'SIGS'],
+  ['go.mod', 'FULL'],
+  ['+ 34 more, budget-fit', ''],
+  ['internal/legacy/parser.go', 'SKIP (budget)'],
+];
+
+let keep = 0;
+
+function badgeClass(mode: string): string {
+  if (mode.startsWith('SIGS')) return 'badge sigs';
+  if (mode.startsWith('SKIP')) return 'badge skip';
+  return 'badge';
+}
+---
+
+<div class="sieve-wrap" data-sieve>
+  <div
+    class="sieve-panel"
+    role="img"
+    aria-label="A raw repository tree with noise dimmed out on the left, narrowed to a small, ranked, token-budgeted set of files on the right."
+  >
+    <div class="sieve-pane">
+      <div class="pane-header">
+        <span>your-project/</span>
+        <span>214 files</span>
+      </div>
+      {beforeRows.map(([name, isKeep], i) => {
+        const keepIdx = isKeep ? keep++ : 0;
+        return (
+          <div
+            class={`sieve-row ${isKeep ? 'keep' : 'noise'}`}
+            style={`--row: ${i}; --keep: ${keepIdx};`}
+          >
+            <span class="file-name">{name}</span>
+          </div>
+        );
+      })}
+    </div>
+
+    <div class="sieve-mesh" aria-hidden="true">
+      <svg viewBox="0 0 24 30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 5h18l-7 10v9l-4-2v-7L3 5Z"></path>
+      </svg>
+    </div>
+
+    <div class="sieve-pane">
+      <div class="pane-header">
+        <span>codebase.md</span>
+        <span>42 files · 58,940 tok</span>
+      </div>
+      {afterRows.map(([name, mode], i) => (
+        <div
+          class={`sieve-row after-row${i === 6 || i === 7 ? ' dim' : ''}${i === 8 ? ' dimmest' : ''}${mode.startsWith('SKIP') ? ' skipped' : ''}`}
+          style={`--row: ${i};`}
+        >
+          <span class="file-name">{name}</span>
+          {mode && <span class={badgeClass(mode)}>{mode}</span>}
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class="sieve-under">
+    <p class="sieve-caption">
+      Noise stays gray and drops out. Everything else gets ranked, then rendered full or as signatures until the budget runs out.
+    </p>
+    <button class="text-button replay" type="button" data-sieve-replay aria-label="Replay sieve animation">
+      replay
+    </button>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('[data-sieve]').forEach((wrap) => {
+    const panel = wrap.querySelector('.sieve-panel');
+    const replay = wrap.querySelector('[data-sieve-replay]');
+    if (!(panel instanceof HTMLElement)) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let runs = 0;
+    const play = () => {
+      runs += 1;
+      panel.classList.remove('sieve-running');
+      void panel.offsetWidth;
+      panel.classList.add('sieve-running');
+      setTimeout(() => panel.classList.remove('sieve-running'), 1450);
+    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          play();
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.25 },
+    );
+    observer.observe(wrap);
+    replay?.addEventListener('click', play);
+  });
+</script>

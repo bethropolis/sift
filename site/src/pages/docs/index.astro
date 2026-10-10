@@ -1,0 +1,49 @@
+---
+import Base from '../../layouts/Base.astro';
+import DocsNav from '../../components/DocsNav.astro';
+import { DOC_NAV } from '../../data/docs';
+import { toBase } from '../../lib/site';
+---
+
+<Base title="Documentation" description="sift documentation: installation, usage, the interactive picker, configuration, output formats, deltas, dependencies, and the MCP server.">
+  <main class="container docs-shell" id="main">
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href={toBase('/')}>sift</a>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page">Docs</span>
+    </nav>
+
+    <div class="docs-grid">
+      <aside class="docs-sidebar">
+        <nav aria-label="Documentation">
+          <DocsNav />
+        </nav>
+      </aside>
+      <details class="docs-mobile">
+        <summary>Documentation</summary>
+        <nav aria-label="Documentation">
+          <DocsNav />
+        </nav>
+      </details>
+      <article class="docs-content">
+        <h1>Documentation</h1>
+        {DOC_NAV.map((group) => (
+          <section>
+            <h2>{group.group}</h2>
+            <div class="doc-card-grid">
+              {group.pages.map((item) => (
+                <a class="doc-card" href={toBase(`/docs/${item.slug}/`)}>
+                  <h3>
+                    {item.title}
+                    <span aria-hidden="true">→</span>
+                  </h3>
+                  <p>{item.desc}</p>
+                </a>
+              ))}
+            </div>
+          </section>
+        ))}
+      </article>
+    </div>
+  </main>
+</Base>

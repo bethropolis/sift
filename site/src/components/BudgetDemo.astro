@@ -1,0 +1,111 @@
+---
+import { BUDGET_FILES } from '../data/budget';
+---
+
+<div data-budget-demo>
+  <div class="budget-controls">
+    <div class="budget-readouts">
+      <label for="budget">budget: <span data-budget-value>12,000</span> tok</label>
+      <output aria-live="polite">used: <span data-budget-used>0</span> tok</output>
+    </div>
+    <input
+      id="budget"
+      type="range"
+      min="2000"
+      max="45000"
+      step="500"
+      value="12000"
+      aria-label="Token budget"
+    />
+    <div class="usage-bar" aria-hidden="true">
+      <div class="usage-fill" data-budget-fill style="width: 0%"></div>
+    </div>
+  </div>
+
+  <div class="table-scroll">
+    <table class="budget-table">
+      <thead>
+        <tr>
+          <th scope="col">Rank</th>
+          <th scope="col">File</th>
+          <th scope="col">Mode</th>
+          <th scope="col">Tokens</th>
+        </tr>
+      </thead>
+      <tbody data-budget-rows>
+        {BUDGET_FILES.map((file, i) => (
+          <tr data-rank={file.rank}>
+            <td>{String(i + 1).padStart(2, '0')}</td>
+            <td>{file.path}</td>
+            <td><span class="badge" data-mode></span></td>
+            <td data-tokens></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="footnote">Illustrative. Real token counts depend on your files and model.</p>
+</div>
+
+<script>
+  const FILES = [
+    { rank: 1, path: 'internal/api/handler.go', full: 4200, sigs: 600 },
+    { rank: 2, path: 'internal/api/router.go', full: 2100, sigs: 380 },
+    { rank: 3, path: 'cmd/api/main.go', full: 1800, sigs: 300 },
+    { rank: 4, path: 'internal/api/middleware.go', full: 3400, sigs: 520 },
+    { rank: 5, path: 'internal/store/postgres.go', full: 7800, sigs: 900 },
+    { rank: 6, path: 'README.md', full: 2600, sigs: null },
+    { rank: 7, path: 'internal/store/query.go', full: 5900, sigs: 700 },
+    { rank: 8, path: 'internal/legacy/parser.go', full: 11400, sigs: 1300 },
+    { rank: 9, path: 'go.mod', full: 400, sigs: null },
+    { rank: 10, path: 'internal/config/load.go', full: 3100, sigs: 450 },
+  ] as { rank: number; path: string; full: number; sigs: number | null }[];
+
+  const format = (n: number) => n.toLocaleString('en-US');
+
+  document.querySelectorAll('[data-budget-demo]').forEach((demo) => {
+    if (!(demo instanceof HTMLElement)) return;
+    const input = demo.querySelector<HTMLInputElement>('input[type="range"]');
+    const valueEl = demo.querySelector('[data-budget-value]');
+    const usedEl = demo.querySelector('[data-budget-used]');
+    const fill = demo.querySelector<HTMLElement>('[data-budget-fill]');
+    const rows = [...demo.querySelectorAll('tbody tr')];
+    if (!input || !valueEl || !usedEl || !fill) return;
+
+    const render = () => {
+      const budget = Number(input.value);
+      let remaining = budget;
+      let totalUsed = 0;
+      for (const file of FILES) {
+        const row = rows[file.rank - 1];
+        const badge = row?.querySelector('[data-mode]');
+        const tokens = row?.querySelector('[data-tokens]');
+        if (!row || !badge || !tokens) continue;
+        let status: 'FULL' | 'SIGS' | 'SKIP' = 'SKIP';
+        let used = 0;
+        if (file.full <= remaining) {
+          remaining -= file.full;
+          used = file.full;
+          status = 'FULL';
+        } else if (file.sigs !== null && file.sigs <= remaining) {
+          remaining -= file.sigs;
+          used = file.sigs;
+          status = 'SIGS';
+        }
+        totalUsed += used;
+        badge.className = `badge${status === 'SIGS' ? ' sigs' : status === 'SKIP' ? ' skip' : ''}`;
+        badge.textContent = status;
+        tokens.textContent = `${format(used)} tok`;
+        row.classList.toggle('skip-row', status === 'SKIP');
+      }
+      valueEl.textContent = format(budget);
+      usedEl.textContent = format(totalUsed);
+      input.setAttribute('aria-valuetext', `${format(budget)} tokens`);
+      fill.style.width = `${Math.min(100, (totalUsed / budget) * 100)}%`;
+    };
+
+    input.addEventListener('input', render);
+    render();
+  });
+</script>

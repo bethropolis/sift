@@ -1,0 +1,14 @@
+---
+import Base from '../layouts/Base.astro';
+import { toBase } from '../lib/site';
+---
+
+<Base title="404 Not Found" description="This file didn't make the cut.">
+  <main id="main" class="not-found container">
+    <div>
+      <h1>404</h1>
+      <p>This file didn&apos;t make the cut.</p>
+      <a href={toBase('/')} class="button">Back to sift</a>
+    </div>
+  </main>
+</Base>

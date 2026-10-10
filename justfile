@@ -101,20 +101,19 @@ install: web
 uninstall args="":
   bash scripts/uninstall.sh {{ args }}
 
-# Sync docs/*.md into a site source dir as the /docs/ collection (default: site/)
-docs-site dest="site":
-  bash scripts/sync-docs.sh {{ dest }}
+# Sync repo docs/*.md into the Astro docs collection (gitignored build input)
+docs-site:
+  bun site/scripts/sync-docs.mjs
 
 # Serve the site locally, mirroring the Pages build (sync docs + installer)
-site-serve:
-  rm -rf .site-preview
-  mkdir -p .site-preview
-  cp -R site/. .site-preview/
-  rm -rf .site-preview/vendor .site-preview/_site
-  bash scripts/sync-docs.sh .site-preview
-  cp scripts/install-online.sh .site-preview/install.sh
-  chmod 755 .site-preview/install.sh
-  cd .site-preview && BUNDLE_GEMFILE="$PWD/Gemfile" BUNDLE_PATH="{{ justfile_directory() }}/site/vendor/bundle" bundle exec jekyll serve --host 0.0.0.0 --port 3000
+site-serve: docs-site
+  cd site && bun run dev --host 0.0.0.0 --port 3000
+
+# Build the static site exactly like Pages does (sync docs, astro build, installer)
+site-build: docs-site
+  cd site && bun run build
+  cp scripts/install-online.sh site/dist/install.sh
+  chmod 755 site/dist/install.sh
 
 # Remove the built binary
 clean:

@@ -1,0 +1,281 @@
+---
+---
+
+<div class="tui-shot">
+      <svg
+        viewBox="0 0 960 445"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        class="w-full h-auto block select-none"
+        
+        role="img"
+        aria-label="sift interactive dual-pane TUI picker in zinc dark theme"
+      >
+        <!-- Background (Zinc 950) -->
+        <rect width="960" height="445" fill="#09090b" />
+
+        <!-- ======================================================== -->
+        <!-- TOP STATUS BAR                                           -->
+        <!-- ======================================================== -->
+        <text x="18" y="24" fill="#f4f4f5" font-size="13" font-weight="600" letter-spacing="-0.01em">
+          sift pick <tspan fill="#71717a" font-weight="400">· ~/code/api</tspan>
+        </text>
+        <text x="942" y="24" text-anchor="end" fill="#a1a1aa" font-size="12">
+          budget 60k · <tspan fill="#e3a63f" font-weight="600">41,820 tok</tspan>
+        </text>
+
+        <!-- ======================================================== -->
+        <!-- LEFT PANE: EXPLORER                                       -->
+        <!-- ======================================================== -->
+        <rect
+          x="16"
+          y="36"
+          width="412"
+          height="365"
+          rx="6"
+          fill="#111216"
+          stroke="#27272a"
+          stroke-width="1"
+        />
+
+        <!-- Explorer Header: Title left, count cleanly right-aligned -->
+        <text x="32" y="56" fill="#f4f4f5" font-size="12" font-weight="600">
+          Explorer
+        </text>
+        <text x="412" y="56" text-anchor="end" fill="#71717a" font-size="11">
+          9 files in scope
+        </text>
+
+        <!-- Header Separator -->
+        <line x1="16" y1="66" x2="428" y2="66" stroke="#1f2025" stroke-width="1" />
+
+        <!-- Tree Rows -->
+        <g font-size="11.5" letter-spacing="-0.01em">
+          <!-- Row 1: ▾ cmd/ -->
+          <text x="32" y="88" fill="#a1a1aa" font-weight="600">▾ cmd/</text>
+
+          <!-- Row 2: main.go FULL -->
+          <text x="48" y="112" fill="#71717a">✓</text>
+          <text x="64" y="112" fill="#e4e4e7">main.go</text>
+          <rect x="296" y="101" width="46" height="15" rx="3" fill="rgba(166,227,161,0.12)" stroke="rgba(166,227,161,0.28)" stroke-width="1" />
+          <text x="319" y="112" text-anchor="middle" fill="#a6e3a1" font-size="10" font-weight="600">FULL</text>
+          <text x="412" y="112" text-anchor="end" fill="#71717a">1,800</text>
+
+          <!-- Row 3: ▾ internal/ -->
+          <text x="32" y="136" fill="#a1a1aa" font-weight="600">▾ internal/</text>
+
+          <!-- Row 4: ▾ api/ -->
+          <text x="48" y="160" fill="#a1a1aa">▾ api/</text>
+
+          <!-- Row 5: handler.go FULL (ACTIVE CURSOR HIGHLIGHT) -->
+          <rect x="17" y="172" width="410" height="24" fill="rgba(227,166,63,0.08)" />
+          <line x1="17" y1="172" x2="17" y2="196" stroke="#e3a63f" stroke-width="2.5" />
+          <text x="22" y="188" fill="#e3a63f" font-size="11" font-weight="bold">▸</text>
+          <text x="64" y="188" fill="#a6e3a1">✓</text>
+          <text x="78" y="188" fill="#ffffff" font-weight="600">handler.go</text>
+          <rect x="296" y="177" width="46" height="15" rx="3" fill="rgba(166,227,161,0.18)" stroke="rgba(166,227,161,0.4)" stroke-width="1" />
+          <text x="319" y="188" text-anchor="middle" fill="#a6e3a1" font-size="10" font-weight="700">FULL</text>
+          <text x="412" y="188" text-anchor="end" fill="#e3a63f" font-weight="600">4,200</text>
+
+          <!-- Row 6: router.go FULL -->
+          <text x="64" y="212" fill="#71717a">✓</text>
+          <text x="78" y="212" fill="#e4e4e7">router.go</text>
+          <rect x="296" y="201" width="46" height="15" rx="3" fill="rgba(166,227,161,0.12)" stroke="rgba(166,227,161,0.28)" stroke-width="1" />
+          <text x="319" y="212" text-anchor="middle" fill="#a6e3a1" font-size="10" font-weight="600">FULL</text>
+          <text x="412" y="212" text-anchor="end" fill="#71717a">2,100</text>
+
+          <!-- Row 7: middleware.go SIGS -->
+          <text x="64" y="236" fill="#e3a63f">◐</text>
+          <text x="78" y="236" fill="#d4d4d8">middleware.go</text>
+          <rect x="296" y="225" width="46" height="15" rx="3" fill="rgba(227,166,63,0.12)" stroke="rgba(227,166,63,0.3)" stroke-width="1" />
+          <text x="319" y="236" text-anchor="middle" fill="#e3a63f" font-size="10" font-weight="600">SIGS</text>
+          <text x="412" y="236" text-anchor="end" fill="#71717a">520</text>
+
+          <!-- Row 8: ▾ store/ -->
+          <text x="48" y="260" fill="#a1a1aa">▾ store/</text>
+
+          <!-- Row 9: postgres.go SIGS -->
+          <text x="64" y="284" fill="#e3a63f">◐</text>
+          <text x="78" y="284" fill="#d4d4d8">postgres.go</text>
+          <rect x="296" y="273" width="46" height="15" rx="3" fill="rgba(227,166,63,0.12)" stroke="rgba(227,166,63,0.3)" stroke-width="1" />
+          <text x="319" y="284" text-anchor="middle" fill="#e3a63f" font-size="10" font-weight="600">SIGS</text>
+          <text x="412" y="284" text-anchor="end" fill="#71717a">900</text>
+
+          <!-- Row 10: legacy/parser.go SKIP -->
+          <text x="64" y="308" fill="#f38ba8">✗</text>
+          <text x="78" y="308" fill="#f38ba8">legacy/parser.go</text>
+          <rect x="296" y="297" width="46" height="15" rx="3" fill="rgba(243,139,168,0.12)" stroke="rgba(243,139,168,0.3)" stroke-width="1" />
+          <text x="319" y="308" text-anchor="middle" fill="#f38ba8" font-size="10" font-weight="600" text-decoration="line-through">SKIP</text>
+          <text x="412" y="308" text-anchor="end" fill="#52525b">0</text>
+
+          <!-- Row 11: README.md FULL -->
+          <text x="32" y="334" fill="#71717a">✓</text>
+          <text x="48" y="334" fill="#e4e4e7">README.md</text>
+          <rect x="296" y="323" width="46" height="15" rx="3" fill="rgba(166,227,161,0.12)" stroke="rgba(166,227,161,0.28)" stroke-width="1" />
+          <text x="319" y="334" text-anchor="middle" fill="#a6e3a1" font-size="10" font-weight="600">FULL</text>
+          <text x="412" y="334" text-anchor="end" fill="#71717a">2,600</text>
+
+          <!-- Row 12: go.mod FULL -->
+          <text x="32" y="358" fill="#71717a">✓</text>
+          <text x="48" y="358" fill="#e4e4e7">go.mod</text>
+          <rect x="296" y="347" width="46" height="15" rx="3" fill="rgba(166,227,161,0.12)" stroke="rgba(166,227,161,0.28)" stroke-width="1" />
+          <text x="319" y="358" text-anchor="middle" fill="#a6e3a1" font-size="10" font-weight="600">FULL</text>
+          <text x="412" y="358" text-anchor="end" fill="#71717a">400</text>
+        </g>
+
+        <!-- ======================================================== -->
+        <!-- RIGHT PANE: CODE PREVIEW                                 -->
+        <!-- ======================================================== -->
+        <rect
+          x="442"
+          y="36"
+          width="502"
+          height="365"
+          rx="6"
+          fill="#111216"
+          stroke="#27272a"
+          stroke-width="1"
+        />
+
+        <!-- Clean Vector File Icon -->
+        <path
+          d="M458 46 H466 L472 52 V62 H458 Z"
+          fill="none"
+          stroke="#8b949e"
+          stroke-width="1.2"
+          stroke-linejoin="round"
+        />
+        <path d="M466 46 V52 H472" fill="none" stroke="#8b949e" stroke-width="1.2" />
+
+        <!-- Preview Title -->
+        <text x="478" y="56" fill="#f4f4f5" font-size="12" font-weight="500">
+          Preview: internal/api/handler.go
+        </text>
+
+        <!-- Subtitle Line -->
+        <text x="458" y="73" fill="#71717a" font-size="11">
+          Go · <tspan fill="#a6e3a1" font-weight="600">FULL</tspan> · 4,200 tokens · <tspan fill="#e3a63f">full source view</tspan>
+        </text>
+
+        <!-- Preview Header Separator -->
+        <line x1="442" y1="82" x2="944" y2="82" stroke="#1f2025" stroke-width="1" />
+
+        <!-- Gutter vertical line -->
+        <line x1="480" y1="92" x2="480" y2="390" stroke="#1f2025" stroke-width="1" />
+
+        <!-- Line Numbers Column -->
+        <g fill="#52525b" font-size="11" text-anchor="end">
+          <text x="474" y="106">1</text>
+          <text x="474" y="126">2</text>
+          <text x="474" y="146">3</text>
+          <text x="474" y="166">4</text>
+          <text x="474" y="186">5</text>
+          <text x="474" y="206">6</text>
+          <text x="474" y="226">7</text>
+          <text x="474" y="246">8</text>
+          <text x="474" y="266">9</text>
+          <text x="474" y="286">10</text>
+          <text x="474" y="306">11</text>
+          <text x="474" y="326">12</text>
+          <text x="474" y="346">13</text>
+          <text x="474" y="366">14</text>
+        </g>
+
+        <!-- Code Content -->
+        <g font-size="10.8" xml:space="preserve">
+          <!-- L1 -->
+          <text x="490" y="106">
+            <tspan fill="#e3a63f">package</tspan> <tspan fill="#f4f4f5">api</tspan>
+          </text>
+
+          <!-- L2 -->
+          <text x="490" y="126"> </text>
+
+          <!-- L3 -->
+          <text x="490" y="146" fill="#71717a" font-style="italic">
+            // Handler dispatches incoming context pack requests.
+          </text>
+
+          <!-- L4 -->
+          <text x="490" y="166">
+            <tspan fill="#e3a63f">type</tspan> <tspan fill="#f4f4f5">Handler</tspan> <tspan fill="#e3a63f">struct</tspan> <tspan fill="#f4f4f5">&#123;</tspan>
+          </text>
+
+          <!-- L5 -->
+          <text x="490" y="186">
+            <tspan fill="#f4f4f5">    store   *store.Postgres</tspan>
+          </text>
+
+          <!-- L6 -->
+          <text x="490" y="206">
+            <tspan fill="#f4f4f5">    budget  </tspan><tspan fill="#e3a63f">int</tspan>
+          </text>
+
+          <!-- L7 -->
+          <text x="490" y="226">
+            <tspan fill="#f4f4f5">&#125;</tspan>
+          </text>
+
+          <!-- L8 -->
+          <text x="490" y="246"> </text>
+
+          <!-- L9 -->
+          <text x="490" y="266" fill="#71717a" font-style="italic">
+            // ServeHTTP renders the ranked document within token limit.
+          </text>
+
+          <!-- L10 - fits comfortably without overflow -->
+          <text x="490" y="286">
+            <tspan fill="#e3a63f">func</tspan> <tspan fill="#f4f4f5">(h *Handler) </tspan><tspan fill="#e3a63f">ServeHTTP</tspan><tspan fill="#f4f4f5">(w http.ResponseWriter, r *http.Request) &#123;</tspan>
+          </text>
+
+          <!-- L11 -->
+          <text x="490" y="306">
+            <tspan fill="#f4f4f5">    doc := sift.</tspan><tspan fill="#e3a63f">RankAndPack</tspan><tspan fill="#f4f4f5">(r.Context(), h.budget)</tspan>
+          </text>
+
+          <!-- L12 -->
+          <text x="490" y="326">
+            <tspan fill="#f4f4f5">    json.NewEncoder(w).Encode(doc)</tspan>
+          </text>
+
+          <!-- L13 -->
+          <text x="490" y="346">
+            <tspan fill="#f4f4f5">&#125;</tspan>
+          </text>
+
+          <!-- L14: signature fold note -->
+          <text x="490" y="366">
+            <tspan fill="#e3a63f">func</tspan> <tspan fill="#f4f4f5">Route(mux *http.ServeMux) &#123; </tspan><tspan fill="#71717a">/* ... */</tspan><tspan fill="#f4f4f5"> &#125;</tspan>
+          </text>
+        </g>
+
+        <!-- Subtle Zinc Scrollbar on right pane -->
+        <line x1="932" y1="94" x2="932" y2="385" stroke="#1c1d22" stroke-width="2" stroke-linecap="round" />
+        <line x1="932" y1="120" x2="932" y2="200" stroke="#383a42" stroke-width="2" stroke-linecap="round" />
+
+        <!-- ======================================================== -->
+        <!-- BOTTOM STATUS & KEYBINDINGS BAR                          -->
+        <!-- ======================================================== -->
+        <!-- Left Status Text -->
+        <text x="18" y="425" fill="#a1a1aa" font-size="11.5">
+          41,820 tokens · Style: <tspan fill="#f4f4f5">markdown</tspan>
+        </text>
+
+        <!-- Progress bar with comfortable 20px clearance after 'markdown' text -->
+        <line x1="250" y1="421" x2="306" y2="421" stroke="#27272a" stroke-width="3" stroke-linecap="round" />
+        <line x1="250" y1="421" x2="289" y2="421" stroke="#e3a63f" stroke-width="3" stroke-linecap="round" />
+        <text x="314" y="425" fill="#71717a" font-size="11">70%</text>
+
+        <!-- Keybindings on right -->
+        <g font-size="11.5" text-anchor="end">
+          <text x="942" y="425">
+            <tspan fill="#e3a63f" font-weight="600">Space</tspan> <tspan fill="#71717a">Select · </tspan>
+            <tspan fill="#e3a63f" font-weight="600">/</tspan> <tspan fill="#71717a">Filter · </tspan>
+            <tspan fill="#e3a63f" font-weight="600">s</tspan> <tspan fill="#71717a">Smart · </tspan>
+            <tspan fill="#e3a63f" font-weight="600">Enter</tspan> <tspan fill="#71717a">Render · </tspan>
+            <tspan fill="#e3a63f" font-weight="600">?</tspan> <tspan fill="#71717a">Help</tspan>
+          </text>
+        </g>
+      </svg>
+    </div>
