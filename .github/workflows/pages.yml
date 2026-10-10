@@ -27,13 +27,15 @@ jobs:
           bun-version: '1.4.2'
 
       - name: Install site dependencies
-        run: bun install --cwd site
+        working-directory: site
+        run: bun install
 
       - name: Sync docs into the site
         run: bun site/scripts/sync-docs.mjs
 
       - name: Build Astro site
-        run: bun --cwd site run build
+        working-directory: site
+        run: bun run build
 
       - name: Stage installer alongside the site
         run: |
