@@ -33,8 +33,8 @@ export const INSTALL_METHODS: InstallMethod[] = [
   {
     id: 'mise',
     name: 'mise',
-    command: 'mise use -g ubi:bethropolis/sift',
-    note: 'Installs the prebuilt GitHub release binary through the mise ubi backend. Works anywhere mise runs; tracks the latest stable release.',
+    command: 'mise use -g github:bethropolis/sift',
+    note: 'Installs the prebuilt GitHub release binary through the mise GitHub backend. Works anywhere mise runs; tracks the latest stable release.',
   },
   {
     id: 'go',
