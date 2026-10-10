@@ -19,10 +19,22 @@ export const INSTALL_METHODS: InstallMethod[] = [
     note: 'Official Homebrew tap for macOS and Linux. Prebuilt binaries include tree-sitter signature mode.',
   },
   {
+    id: 'aur',
+    name: 'Arch (AUR)',
+    command: 'yay -S sift-context-bin',
+    note: 'Prebuilt binary from the AUR. paru users: paru -S sift-context-bin. The package provides and conflicts with `sift`, so remove other installs first.',
+  },
+  {
     id: 'scoop',
     name: 'Windows (Scoop)',
     command: 'scoop bucket add bethropolis https://github.com/bethropolis/scoop-bucket\nscoop install sift',
     note: 'Installs sift into your Scoop apps directory and shims the binary onto your PATH.',
+  },
+  {
+    id: 'mise',
+    name: 'mise',
+    command: 'mise use -g ubi:bethropolis/sift',
+    note: 'Installs the prebuilt GitHub release binary through the mise ubi backend. Works anywhere mise runs; tracks the latest stable release.',
   },
   {
     id: 'go',

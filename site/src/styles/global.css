@@ -1521,3 +1521,58 @@ tbody tr:hover {
 .shortcuts-overlay[hidden] {
   display: none;
 }
+
+/* Markdown article elements (Astro content collections render bare tags). */
+.docs-content a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.docs-content strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.docs-content ol {
+  padding-left: 22px;
+  color: var(--ink-soft);
+}
+.docs-content li {
+  margin: 8px 0;
+}
+.docs-content li::marker {
+  color: var(--accent);
+}
+.docs-content hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 32px 0;
+}
+.docs-content img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+/* Shiki sets its own background inline, so the override needs the hammer to
+   keep fenced blocks on the site surface. Token colors stay Shiki's. */
+.docs-content pre.astro-code {
+  background-color: var(--code-bg) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin: 20px 0;
+  overflow-x: auto;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.docs-content pre.astro-code code {
+  font-size: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.docs-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
