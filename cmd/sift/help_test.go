@@ -100,6 +100,54 @@ func TestSubcommandHelpShowsCommandSpecificOptions(t *testing.T) {
 	}
 }
 
+func TestServeHelpShowsAppAndCommandOptions(t *testing.T) {
+	var buf bytes.Buffer
+	serveCmd.SetOut(&buf)
+	serveCmd.SetErr(&buf)
+
+	renderHelp(serveCmd, nil)
+	out := buf.String()
+
+	if !strings.Contains(out, "COMMAND OPTIONS:") {
+		t.Fatalf("serve help missing COMMAND OPTIONS section:\n%s", out)
+	}
+
+	for _, opt := range []string{"--app", "--open", "--listen", "--root", "--allow-remote"} {
+		if !strings.Contains(out, opt) {
+			t.Errorf("serve help missing option %q:\n%s", opt, out)
+		}
+	}
+
+	if !strings.Contains(out, "sift serve --app") {
+		t.Errorf("serve help missing 'sift serve --app' example:\n%s", out)
+	}
+}
+
+func TestDeltaHelpShowsPatchAndSinceAndMultipleExamples(t *testing.T) {
+	var buf bytes.Buffer
+	deltaCmd.SetOut(&buf)
+	deltaCmd.SetErr(&buf)
+
+	renderHelp(deltaCmd, nil)
+	out := buf.String()
+
+	if !strings.Contains(out, "COMMAND OPTIONS:") {
+		t.Fatalf("delta help missing COMMAND OPTIONS section:\n%s", out)
+	}
+
+	for _, opt := range []string{"--patch", "--since"} {
+		if !strings.Contains(out, opt) {
+			t.Errorf("delta help missing option %q:\n%s", opt, out)
+		}
+	}
+
+	for _, ex := range []string{"sift delta --patch", "sift delta --since HEAD~2", "sift delta --budget 40k"} {
+		if !strings.Contains(out, ex) {
+			t.Errorf("delta help missing example %q:\n%s", ex, out)
+		}
+	}
+}
+
 func TestHelpNoAnsiWhenNotTerminal(t *testing.T) {
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)

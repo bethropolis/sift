@@ -317,9 +317,10 @@ func flagArgPlaceholder(f *pflag.Flag) string {
 		return "<path>"
 	case "theme":
 		return "<name>"
-	case "timeout":
+	case "timeout", "idle-timeout":
 		return "<duration>"
-	case "workers", "max-size", "max-depth", "smart-max-tokens", "highlight-max-bytes":
+	case "workers", "max-size", "max-depth", "smart-max-tokens", "highlight-max-bytes",
+		"depth", "full-depth", "follow-depth", "follow-full-depth":
 		return "<int>"
 	case "log-level":
 		return "<level>"
@@ -331,6 +332,18 @@ func flagArgPlaceholder(f *pflag.Flag) string {
 		return "<file>"
 	case "branch":
 		return "<branch>"
+	case "since":
+		return "<ref>"
+	case "direction", "follow-direction":
+		return "<direction>"
+	case "listen":
+		return "<addr>"
+	case "root", "deny":
+		return "<path>"
+	case "password-file", "tls-cert", "tls-key":
+		return "<file>"
+	case "allowed-host":
+		return "<host>"
 	case "port":
 		return "<port>"
 	case "host":
@@ -375,6 +388,17 @@ var primaryFlagOrder = map[string]int{
 	"help":      15,
 }
 
+var cmdSpecificPriority = map[string]int{
+	// serve
+	"app": 1, "open": 2, "keep-alive": 3, "listen": 4, "root": 5, "allow-remote": 6, "password-file": 7,
+	// delta
+	"patch": 1, "since": 2,
+	// clone & follow
+	"branch": 1, "depth": 2, "here": 3, "direction": 1, "full-depth": 3,
+	// select
+	"print-selection": 1, "selection-only": 2, "selection-format": 3, "include-skipped": 4, "follow": 5,
+}
+
 func renderFocusedOptions(w io.Writer, cmd *cobra.Command, allItems []flagItem, isRoot bool, t helpTheme) {
 	// For subcommands: separate local/custom flags from shared common flags
 	localFlags := cmd.LocalFlags()
@@ -389,6 +413,21 @@ func renderFocusedOptions(w io.Writer, cmd *cobra.Command, allItems []flagItem, 
 			commonItems = append(commonItems, item)
 		}
 	}
+
+	sort.SliceStable(cmdSpecific, func(i, j int) bool {
+		pi := cmdSpecificPriority[cmdSpecific[i].Flag.Name]
+		pj := cmdSpecificPriority[cmdSpecific[j].Flag.Name]
+		if pi > 0 && pj > 0 {
+			return pi < pj
+		}
+		if pi > 0 {
+			return true
+		}
+		if pj > 0 {
+			return false
+		}
+		return cmdSpecific[i].Flag.Name < cmdSpecific[j].Flag.Name
+	})
 
 	sort.SliceStable(commonItems, func(i, j int) bool {
 		oi := primaryFlagOrder[commonItems[i].Flag.Name]
@@ -421,15 +460,56 @@ func renderFocusedOptions(w io.Writer, cmd *cobra.Command, allItems []flagItem, 
 	fmt.Fprintln(w)
 }
 
+var engineFlags = map[string]bool{
+	"dir":                 true,
+	"verbose":             true,
+	"quiet":               true,
+	"log-level":           true,
+	"concurrent":          true,
+	"workers":             true,
+	"max-size":            true,
+	"hidden":              true,
+	"git":                 true,
+	"ignore":              true,
+	"ext":                 true,
+	"binary":              true,
+	"smart":               true,
+	"smart-max-tokens":    true,
+	"no-color":            true,
+	"highlight":           true,
+	"no-highlight":        true,
+	"theme":               true,
+	"ui-theme-file":       true,
+	"highlight-max-bytes": true,
+	"window-title":        true,
+	"no-window-title":     true,
+	"output":              true,
+	"progress":            true,
+	"timeout":             true,
+	"show-skipped":        true,
+	"version":             true,
+	"json":                true,
+	"markdown":            true,
+	"style":               true,
+	"format":              true,
+	"no-nerd-fonts":       true,
+	"profile":             true,
+	"target":              true,
+	"budget":              true,
+	"tokenize-model":      true,
+	"mode":                true,
+	"max-depth":           true,
+	"prompt":              true,
+	"secrets":             true,
+	"force-secrets":       true,
+	"clipboard":           true,
+	"copy-on-generate":    true,
+	"all":                 true,
+	"help":                true,
+}
+
 func isCommandSpecificFlag(name string) bool {
-	switch name {
-	case "print-selection", "selection-format", "selection-only", "include-skipped",
-		"follow", "follow-direction", "follow-depth", "follow-full-depth",
-		"branch", "install", "uninstall", "patch", "interval", "debounce", "port", "host", "open":
-		return true
-	default:
-		return false
-	}
+	return !engineFlags[name]
 }
 
 func renderCategorizedOptions(w io.Writer, cmd *cobra.Command, allItems []flagItem, t helpTheme) {
@@ -538,9 +618,10 @@ func getCommandExamples(cmd *cobra.Command) []exampleItem {
 			{"sift dump --clipboard", "Copy dump directly to system clipboard"},
 			{"sift select --budget 50k", "Auto-select most relevant files using git signals"},
 			{"sift diff HEAD~1", "Render files modified in the last commit"},
+			{"sift delta --patch", "Dump incremental unified diff since last dump"},
 			{"sift follow cmd/sift/main.go", "Render file plus its import-graph dependencies"},
+			{"sift serve --app", "Launch browser UI in a dedicated chromeless window"},
 			{"sift copy", "Copy the last generated document to clipboard"},
-			{"sift serve", "Launch browser file picker UI (localhost:5173)"},
 		}
 	case "dump":
 		return []exampleItem{
@@ -552,67 +633,101 @@ func getCommandExamples(cmd *cobra.Command) []exampleItem {
 			{"sift dump -p \"Review security\"", "Prepend task instructions to output"},
 			{"sift dump --clipboard", "Copy output directly to clipboard"},
 			{"sift dump -o -", "Write document directly to stdout"},
+			{"sift dump --smart", "Skip minified, lockfile, and oversized files"},
 		}
 	case "pick":
 		return []exampleItem{
 			{"sift pick", "Open interactive file picker TUI"},
 			{"sift pick ./src", "Open picker rooted at ./src"},
-			{"sift pick --budget 64000", "Open picker with 64k token budget meter"},
-			{"sift pick --theme dark", "Open picker with dark theme"},
+			{"sift pick --budget 64k", "Open picker with 64,000 token budget meter"},
+			{"sift pick --theme dark", "Open picker with dark syntax highlighting theme"},
+			{"sift pick -f xml", "Pick files and render output as XML"},
+			{"sift pick --no-nerd-fonts", "Use plain ASCII glyphs instead of Nerd Fonts"},
 		}
 	case "select":
 		return []exampleItem{
 			{"sift select", "Auto-select files using git relevance signals"},
-			{"sift select --budget 50000", "Fill context up to 50k tokens"},
-			{"sift select --print-selection", "Print selection decisions table"},
-			{"sift select --selection-only", "Print decisions without rendering document"},
-			{"sift select --follow main.go", "Trace dependencies from seed file"},
+			{"sift select --budget 50k", "Fill context up to 50,000 tokens"},
+			{"sift select --print-selection", "Display automatic full/signatures/skip decisions"},
+			{"sift select --selection-only", "Print decisions without generating codebase document"},
+			{"sift select --selection-format json", "Output selection decisions as JSON"},
+			{"sift select --follow main.go", "Restrict candidates to seed file dependencies"},
+			{"sift select --ext go,ts --clipboard", "Select Go/TS files and copy directly to clipboard"},
 		}
 	case "diff":
 		return []exampleItem{
 			{"sift diff HEAD~1", "Dump files changed in the previous commit"},
 			{"sift diff main", "Dump files changed compared to main branch"},
 			{"sift diff v1.0.0", "Dump files changed since release tag v1.0.0"},
+			{"sift diff HEAD~2 --budget 60k", "Dump recent commit changes within 60k token budget"},
+			{"sift diff main -f xml --clipboard", "Dump branch diff as XML directly to clipboard"},
+			{"sift diff origin/main --mode signatures", "Extract signatures for modified files"},
 		}
 	case "delta":
 		return []exampleItem{
 			{"sift delta", "Dump files modified since last sift dump"},
-			{"sift delta --output patch.diff", "Output delta changes to a specific file"},
+			{"sift delta --patch", "Output a raw unified diff patch instead of full file contents"},
+			{"sift delta --patch --clipboard", "Copy delta patch directly to system clipboard"},
+			{"sift delta --since HEAD~2", "Compare against git revision instead of last dump"},
+			{"sift delta --since main -f xml", "Compare against main branch and format as XML"},
+			{"sift delta -o patch.diff", "Save delta changes to a specific file"},
+			{"sift delta --budget 40k", "Fit delta changes within a 40k token budget"},
 		}
 	case "follow":
 		return []exampleItem{
-			{"sift follow cmd/sift/main.go", "Render file plus its import dependencies"},
-			{"sift follow main.go --max-depth 3", "Expand dependency graph 3 hops deep"},
+			{"sift follow cmd/sift/main.go", "Render seed file plus its direct import dependencies"},
+			{"sift follow main.go --direction deps", "Only follow imported dependencies"},
+			{"sift follow main.go --direction dependents", "Only follow files that import this file"},
+			{"sift follow main.go --direction both", "Follow both dependencies and dependents"},
+			{"sift follow main.go --depth 3", "Traverse imports up to 3 hops away"},
+			{"sift follow main.go --full-depth 1", "Render 1 hop in full and deeper hops as signatures"},
+			{"sift follow main.go -f xml --budget 80k", "Dump import graph as XML within 80k token budget"},
 		}
 	case "clone":
 		return []exampleItem{
-			{"sift clone github.com/user/repo", "Shallow-clone repository and dump context"},
+			{"sift clone github.com/user/repo", "Shallow-clone repository and dump its context"},
 			{"sift clone https://github.com/... -b v1.2", "Clone specific branch or tag"},
+			{"sift clone github.com/user/repo --depth 5", "Clone with git history depth of 5 commits"},
+			{"sift clone github.com/user/repo --here", "Clone into current directory instead of temporary folder"},
+			{"sift clone github.com/user/repo -f xml", "Clone and output context directly as XML"},
+			{"sift clone github.com/user/repo --budget 100k", "Clone and pack repository within 100k tokens"},
 		}
 	case "copy":
 		return []exampleItem{
 			{"sift copy", "Copy last generated context document to clipboard"},
 			{"sift copy codebase.xml", "Copy specific file to clipboard"},
+			{"sift copy custom/context.txt", "Copy context from custom path"},
 		}
 	case "serve":
 		return []exampleItem{
 			{"sift serve", "Start browser file picker UI on localhost:5173"},
-			{"sift serve --port 8080", "Serve on port 8080"},
-			{"sift serve --open", "Start server and open in browser"},
+			{"sift serve --app", "Open in chromeless app window and stop server on close"},
+			{"sift serve --open", "Start server and automatically open default browser"},
+			{"sift serve --listen :8080", "Bind server to port 8080 on loopback"},
+			{"sift serve --listen 0.0.0.0:8080 --allow-remote", "Bind to all interfaces for remote access"},
+			{"sift serve --password-file ./pw --tls-self-signed", "Secure remote instance with TLS and password"},
+			{"sift serve --root /path/to/project", "Restrict allowed filesystem roots"},
+			{"sift serve --app --keep-alive", "Keep server running even after app window closes"},
 		}
 	case "watch":
 		return []exampleItem{
 			{"sift watch", "Re-render context document on file changes"},
 			{"sift watch ./src -f xml", "Watch ./src and update codebase.xml"},
+			{"sift watch --clipboard", "Copy updated context to clipboard on every change"},
+			{"sift watch --ext go,ts", "Only monitor and update Go and TypeScript files"},
+			{"sift watch -o -", "Stream updated context directly to stdout"},
 		}
 	case "mcp":
 		return []exampleItem{
-			{"sift mcp", "Start Model Context Protocol server over stdio"},
+			{"sift mcp", "Start Model Context Protocol server over stdio for LLM agents"},
+			{"sift mcp ./src", "Start MCP server scoped to ./src directory"},
+			{"sift mcp --budget 120k", "Start MCP server with default 120k token limit"},
 		}
 	case "desktop":
 		return []exampleItem{
-			{"sift desktop --install", "Install desktop launcher and application icon"},
-			{"sift desktop --uninstall", "Remove desktop launcher"},
+			{"sift desktop install", "Install desktop launcher and application icon"},
+			{"sift desktop uninstall", "Remove desktop launcher"},
+			{"sift desktop status", "Check whether desktop launcher is installed"},
 		}
 	default:
 		return nil
