@@ -17,6 +17,7 @@ type App struct {
 	cfg    *config.Config
 	log    *logger.Logger
 	output io.Writer
+	outMu  sync.Mutex
 
 	// outputPath is the absolute path of the output file, or "" for stdout.
 	// Files matching it are excluded from the walk so the dump never contains
@@ -55,17 +56,19 @@ func (a *App) Config() *config.Config { return a.cfg }
 func (a *App) EnablePickerVisibility() { a.pickerVisibility = true }
 
 // New creates a new App instance. It resolves color usage from the terminal
-// and output destination and opens the configured output file; an error is
-// returned when the output file cannot be created. Color decisions are passed
-// explicitly to the logger and renderer rather than mutating global state.
+// and output destination and determines the configured output destination.
+// Output file creation is deferred until output is actually rendered so the
+// disk is never touched prematurely. Color decisions are passed explicitly to
+// the logger and renderer rather than mutating global state.
 func New(cfg *config.Config) (*App, error) {
 	cfg.ResolveColors()
+	cfg.ResolveOutputFile()
 
-	// written to a file (codebase.md by default). Relative paths resolve
-	// against the scanned root so the dump lands next to the codebase.
-	var output io.Writer = os.Stdout
+	var output io.Writer
 	var outputPath string
-	if cfg.OutputFile != "" && cfg.OutputFile != "-" {
+	if cfg.OutputFile == "" || cfg.OutputFile == "-" {
+		output = os.Stdout
+	} else {
 		outputPath = cfg.OutputFile
 		if !filepath.IsAbs(outputPath) {
 			base := cfg.RootDir
@@ -77,11 +80,6 @@ func New(cfg *config.Config) (*App, error) {
 			}
 		}
 		outputPath, _ = filepath.Abs(outputPath)
-		file, err := os.Create(outputPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create output file: %w", err)
-		}
-		output = file
 	}
 
 	log := logger.New(os.Stderr, cfg.Verbose, cfg.UseColors)
@@ -101,9 +99,33 @@ func New(cfg *config.Config) (*App, error) {
 	}, nil
 }
 
+// ensureOutput opens the configured output destination lazily on first access.
+func (a *App) ensureOutput() (io.Writer, error) {
+	a.outMu.Lock()
+	defer a.outMu.Unlock()
+
+	if a.output != nil {
+		return a.output, nil
+	}
+	if a.outputPath == "" || a.cfg.OutputFile == "-" {
+		a.output = os.Stdout
+		return a.output, nil
+	}
+	file, err := os.Create(a.outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create output file: %w", err)
+	}
+	a.output = file
+	return a.output, nil
+}
+
 func (a *App) Close() {
+	a.outMu.Lock()
+	defer a.outMu.Unlock()
+
 	if f, ok := a.output.(*os.File); ok && f != os.Stdout && f != os.Stderr {
 		f.Close()
+		a.output = nil
 	}
 }
 
@@ -127,5 +149,10 @@ func (a *App) OutputPath() string {
 // configured output file or stdout. Callers that produce output outside the
 // standard render path (e.g. delta patches) reuse it to honor --output.
 func (a *App) Output() io.Writer {
-	return a.output
+	w, err := a.ensureOutput()
+	if err != nil {
+		a.log.Error("failed to create output file: %v", err)
+		return io.Discard
+	}
+	return w
 }

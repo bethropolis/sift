@@ -205,7 +205,7 @@ func overlay(dst, src Profile) Profile {
 // Apply overlays the profile onto c, without overriding any flag the user
 // explicitly set on the command line.
 func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
-	if p.Style != "" && !fs.Changed("style") {
+	if p.Style != "" && !isStyleChanged(fs) {
 		c.Style = p.Style
 	}
 	if p.TokenizeModel != "" && !fs.Changed("tokenize-model") {
@@ -219,6 +219,7 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	}
 	if p.Output != "" && !fs.Changed("output") {
 		c.OutputFile = p.Output
+		c.OutputFileExplicit = true
 	}
 	if p.Prompt != "" && !fs.Changed("prompt") {
 		c.Prompt = p.Prompt

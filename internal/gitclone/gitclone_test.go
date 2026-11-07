@@ -197,6 +197,7 @@ func TestCloneProgressAndEnv(t *testing.T) {
 }
 
 func TestCloneInteractiveKeepsPrompts(t *testing.T) {
+	t.Setenv("GIT_TERMINAL_PROMPT", "")
 	fakeGit(t, `exit 0`)
 	dest := filepath.Join(t.TempDir(), "repo")
 	if err := Clone(context.Background(), Options{URL: "https://example.com/o/r", Depth: 1, Dest: dest, Interactive: true}); err != nil {

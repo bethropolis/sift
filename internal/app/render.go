@@ -187,19 +187,29 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 		var buf bytes.Buffer
 		if renderErr := a.renderDocumentTo(files, prompt, &buf, nil); renderErr != nil {
 			writeErr = fmt.Errorf("render output: %w", renderErr)
-		} else if _, err := a.output.Write(buf.Bytes()); err != nil {
-			writeErr = fmt.Errorf("write output: %w", err)
-		} else if err := clipboard.Copy(buf.Bytes()); err != nil {
-			writeErr = fmt.Errorf("copy generated output to clipboard: %w", err)
+		} else {
+			out, err := a.ensureOutput()
+			if err != nil {
+				writeErr = err
+			} else if _, err := out.Write(buf.Bytes()); err != nil {
+				writeErr = fmt.Errorf("write output: %w", err)
+			} else if err := clipboard.Copy(buf.Bytes()); err != nil {
+				writeErr = fmt.Errorf("copy generated output to clipboard: %w", err)
+			}
 		}
 	} else {
-		// Buffer the render: renderers emit one fmt.Fprintf per line/fence,
-		// which would otherwise be a write syscall per call on large dumps.
-		bufw := bufio.NewWriterSize(a.output, 256<<10)
-		if renderErr := a.renderDocumentTo(files, prompt, bufw, nil); renderErr != nil {
-			writeErr = fmt.Errorf("render output: %w", renderErr)
-		} else if flushErr := bufw.Flush(); flushErr != nil {
-			writeErr = fmt.Errorf("write output: %w", flushErr)
+		out, err := a.ensureOutput()
+		if err != nil {
+			writeErr = err
+		} else {
+			// Buffer the render: renderers emit one fmt.Fprintf per line/fence,
+			// which would otherwise be a write syscall per call on large dumps.
+			bufw := bufio.NewWriterSize(out, 256<<10)
+			if renderErr := a.renderDocumentTo(files, prompt, bufw, nil); renderErr != nil {
+				writeErr = fmt.Errorf("render output: %w", renderErr)
+			} else if flushErr := bufw.Flush(); flushErr != nil {
+				writeErr = fmt.Errorf("write output: %w", flushErr)
+			}
 		}
 	}
 

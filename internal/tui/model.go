@@ -92,6 +92,7 @@ type model struct {
 	styles          uiStyles
 	themes          []theme.ThemePreset
 	prompt          string
+	outputFile      string
 	selectionTuning selection.Tuning
 
 	// genBusy guards the background generate/copy path: exactly one job may
@@ -180,6 +181,7 @@ type Options struct {
 	ProjectPath       string
 	OnThemeChange     func(string) error
 	Prompt            string
+	OutputFile        string
 	SelectionTuning   selection.Tuning
 	OnCopy            func([]Selection) error
 	OnCopyPrompt      func([]Selection, string) error
@@ -226,6 +228,10 @@ func newModel(root *TreeNode, opts Options) model {
 	}
 	nodeIndex := make(map[string]*TreeNode, 256)
 	indexTree(root, nodeIndex)
+	outputFile := opts.OutputFile
+	if outputFile == "" {
+		outputFile = "codebase.md"
+	}
 	m := model{
 		root:             root,
 		height:           24,
@@ -243,6 +249,7 @@ func newModel(root *TreeNode, opts Options) model {
 		themeCursor:      theme.IndexOf(themes, opts.UITheme),
 		onThemeChange:    opts.OnThemeChange,
 		prompt:           opts.Prompt,
+		outputFile:       outputFile,
 		selectionTuning:  opts.SelectionTuning,
 		onCopy:           opts.OnCopy,
 		onCopyPrompt:     opts.OnCopyPrompt,

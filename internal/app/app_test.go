@@ -32,17 +32,79 @@ func TestNewStdoutOutput(t *testing.T) {
 	}
 }
 
-// TestNewOutputFileError verifies a construction error surfaces when the
-// output file cannot be created, instead of exiting the process.
+// TestNewOutputFileError verifies an error surfaces when the output file cannot
+// be created upon write, instead of silently failing or exiting the process.
 func TestNewOutputFileError(t *testing.T) {
 	cfg := config.New()
 	cfg.RootDir = t.TempDir()
 	cfg.OutputFile = filepath.Join(t.TempDir(), "missing", "dir", "out.md")
 
 	a, err := New(cfg)
-	if err == nil {
-		a.Close()
-		t.Fatal("expected error for uncreatable output file")
+	if err != nil {
+		t.Fatalf("unexpected New() error: %v", err)
+	}
+	defer a.Close()
+
+	if _, err := a.ensureOutput(); err == nil {
+		t.Fatal("expected error when opening uncreatable output file")
+	}
+}
+
+// TestNewDoesNotCreateOutputFileBeforeDump verifies that calling New does not
+// create or truncate the output file before Render or Output().Write is called.
+func TestNewDoesNotCreateOutputFileBeforeDump(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(root, "out.md")
+
+	cfg := config.New()
+	cfg.RootDir = root
+	cfg.OutputFile = out
+
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify file does NOT exist yet
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatalf("New() prematurely created output file: %v", err)
+	}
+
+	// Now write to output, which should trigger creation
+	if _, err := a.Output().Write([]byte("dumped")); err != nil {
+		t.Fatal(err)
+	}
+	a.Close()
+
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "dumped" {
+		t.Errorf("output file content = %q, want dumped", string(data))
+	}
+}
+
+// TestClipboardDoesNotCreateOutputFile verifies that with --clipboard, no output
+// file is ever created on disk.
+func TestClipboardDoesNotCreateOutputFile(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(root, "out.md")
+
+	cfg := config.New()
+	cfg.RootDir = root
+	cfg.OutputFile = out
+	cfg.Clipboard = true
+
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+
+	_ = a.Render([]format.FileEntry{}, nil, 0, nil)
+
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatal("Render with Clipboard=true created output file on disk")
 	}
 }
 
@@ -188,12 +250,11 @@ func TestRenderFinalToBuffer(t *testing.T) {
 	if !strings.Contains(string(buf), "file: main.go") || !strings.Contains(string(buf), "do the thing") {
 		t.Errorf("buffer missing expected content:\n%s", buf)
 	}
-	// The output file must remain untouched (empty - not yet written to).
-	data, err := os.ReadFile(cfg.OutputFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(data) != 0 {
-		t.Errorf("output file written by RenderFinalToBuffer: %q, want untouched", data)
+	// The output file must remain untouched (not created or written to).
+	if _, err := os.Stat(cfg.OutputFile); !os.IsNotExist(err) {
+		data, _ := os.ReadFile(cfg.OutputFile)
+		if len(data) != 0 {
+			t.Errorf("output file written by RenderFinalToBuffer: %q, want untouched", data)
+		}
 	}
 }

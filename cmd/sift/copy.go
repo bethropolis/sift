@@ -16,12 +16,19 @@ func init() { rootCmd.AddCommand(copyCmd) }
 var copyCmd = &cobra.Command{
 	Use:   "copy [file]",
 	Short: "Copy a context document to the clipboard",
-	Long:  "Copy the generated codebase.md document to the clipboard so it can be pasted as text. An alternate file can be provided.",
+	Long:  "Copy the generated context document (codebase.md, codebase.xml, etc.) to the clipboard so it can be pasted as text. An alternate file can be provided.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		path := "codebase.md"
 		if len(args) > 0 {
 			path = args[0]
+		} else if _, err := os.Stat(path); os.IsNotExist(err) {
+			for _, candidate := range []string{"codebase.xml", "codebase.json", "codebase.txt"} {
+				if _, err := os.Stat(candidate); err == nil {
+					path = candidate
+					break
+				}
+			}
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {

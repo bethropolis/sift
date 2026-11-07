@@ -171,6 +171,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		WindowTitle:       pickerWindowTitle(s.cfg),
 		ProjectPath:       s.cfg.RootDir,
 		Prompt:            s.cfg.Prompt,
+		OutputFile:        s.cfg.OutputFile,
 		OnThemeChange: func(name string) error {
 			s.cfg.UITheme = name
 			return state.SetTheme(name)

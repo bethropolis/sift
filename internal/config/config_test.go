@@ -73,6 +73,86 @@ func TestRegisterFlagsBindsValues(t *testing.T) {
 	}
 }
 
+func TestDefaultOutputFile(t *testing.T) {
+	tests := []struct {
+		style string
+		want  string
+	}{
+		{"xml", "codebase.xml"},
+		{"XML", "codebase.xml"},
+		{"json", "codebase.json"},
+		{"plain", "codebase.txt"},
+		{"text", "codebase.txt"},
+		{"markdown", "codebase.md"},
+		{"unknown", "codebase.md"},
+	}
+	for _, tc := range tests {
+		if got := DefaultOutputFile(tc.style); got != tc.want {
+			t.Errorf("DefaultOutputFile(%q) = %q, want %q", tc.style, got, tc.want)
+		}
+	}
+}
+
+func TestFormatAndOutputAliases(t *testing.T) {
+	c := New()
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c, fs)
+
+	if err := fs.Parse([]string{"-f", "xml", "-o", "custom.xml"}); err != nil {
+		t.Fatal(err)
+	}
+	if c.Style != "xml" {
+		t.Errorf("Style = %q, want xml from -f", c.Style)
+	}
+	if c.OutputFile != "custom.xml" {
+		t.Errorf("OutputFile = %q, want custom.xml from -o", c.OutputFile)
+	}
+}
+
+func TestResolveOutputFileFromStyle(t *testing.T) {
+	// Style XML without explicit output flag should resolve to codebase.xml
+	c := New()
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c, fs)
+	if err := fs.Parse([]string{"--style", "xml"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ResolveConfig(c, fs); err != nil {
+		t.Fatal(err)
+	}
+	if c.OutputFile != "codebase.xml" {
+		t.Errorf("OutputFile = %q, want codebase.xml for xml style", c.OutputFile)
+	}
+
+	// Format alias
+	c2 := New()
+	fs2 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c2, fs2)
+	if err := fs2.Parse([]string{"--format", "json"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ResolveConfig(c2, fs2); err != nil {
+		t.Fatal(err)
+	}
+	if c2.OutputFile != "codebase.json" {
+		t.Errorf("OutputFile = %q, want codebase.json for --format json", c2.OutputFile)
+	}
+
+	// Explicit output flag is preserved
+	c3 := New()
+	fs3 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c3, fs3)
+	if err := fs3.Parse([]string{"--style", "xml", "-o", "mycode.md"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ResolveConfig(c3, fs3); err != nil {
+		t.Fatal(err)
+	}
+	if c3.OutputFile != "mycode.md" {
+		t.Errorf("OutputFile = %q, want mycode.md when explicitly specified", c3.OutputFile)
+	}
+}
+
 func TestRegisterFlagsSmart(t *testing.T) {
 	c := New()
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)

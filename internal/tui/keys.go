@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -608,7 +609,7 @@ func (m *model) generateAndCopy() tea.Cmd {
 		if err := onGenerateCopy(sel, prompt); err != nil {
 			return "Generate and copy failed: " + err.Error()
 		}
-		return "Generated and copied codebase.md"
+		return fmt.Sprintf("Generated and copied %s", filepath.Base(m.outputFile))
 	})
 }
 

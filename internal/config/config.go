@@ -37,13 +37,14 @@ type Config struct {
 	Theme       string
 	// UITheme is the persisted interactive picker palette. It is separate
 	// from Theme, which controls syntax highlighting.
-	UITheme           string
-	UIThemeFile       string
-	HighlightMaxBytes int
-	WindowTitle       string
-	NoWindowTitle     bool
-	OutputFile        string
-	ShowSkipped       bool
+	UITheme            string
+	UIThemeFile        string
+	HighlightMaxBytes  int
+	WindowTitle        string
+	NoWindowTitle      bool
+	OutputFile         string
+	OutputFileExplicit bool
+	ShowSkipped        bool
 
 	// Processing settings
 	Concurrent    bool
@@ -138,6 +139,30 @@ func (c *Config) EffectiveStyle() string {
 	}
 }
 
+// DefaultOutputFile returns the default output filename for a given style.
+func DefaultOutputFile(style string) string {
+	switch strings.ToLower(style) {
+	case "xml":
+		return "codebase.xml"
+	case "json":
+		return "codebase.json"
+	case "plain", "text":
+		return "codebase.txt"
+	default:
+		return "codebase.md"
+	}
+}
+
+// ResolveOutputFile sets OutputFile to the default filename for the effective style
+// unless an explicit output file was configured or set via flags.
+func (c *Config) ResolveOutputFile() {
+	if !c.OutputFileExplicit && c.OutputFile != "-" {
+		if c.OutputFile == "" || strings.HasPrefix(c.OutputFile, "codebase.") {
+			c.OutputFile = DefaultOutputFile(c.EffectiveStyle())
+		}
+	}
+}
+
 // ResolveColors determines whether colored output should be used.
 func (c *Config) ResolveColors() {
 	terminalOutput := c.OutputFile == "" || c.OutputFile == "-"
@@ -148,8 +173,8 @@ func (c *Config) ResolveColors() {
 // values as flag defaults.
 func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.StringVar(&c.RootDir, "dir", c.RootDir, "The root directory to scan")
-	fs.BoolVar(&c.Verbose, "verbose", c.Verbose, "Enable verbose logging (DEBUG, WARN, ERROR)")
-	fs.BoolVar(&c.Quiet, "quiet", c.Quiet, "Suppress INFO messages (only show WARN, ERROR)")
+	fs.BoolVarP(&c.Verbose, "verbose", "v", c.Verbose, "Enable verbose debug logging")
+	fs.BoolVarP(&c.Quiet, "quiet", "q", c.Quiet, "Quiet mode - minimal output")
 	fs.StringVar(&c.LogLevel, "log-level", c.LogLevel, "Set the logging level (DEBUG, INFO, WARN, ERROR)")
 	fs.BoolVar(&c.Concurrent, "concurrent", c.Concurrent, "Enable concurrent file processing")
 	fs.IntVar(&c.MaxWorkers, "workers", c.MaxWorkers, "Max number of concurrent workers (defaults to number of CPU cores)")
@@ -169,7 +194,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.IntVar(&c.HighlightMaxBytes, "highlight-max-bytes", c.HighlightMaxBytes, "Maximum file bytes to syntax-highlight")
 	fs.StringVar(&c.WindowTitle, "window-title", c.WindowTitle, "Terminal title for the interactive picker")
 	fs.BoolVar(&c.NoWindowTitle, "no-window-title", c.NoWindowTitle, "Disable interactive terminal title updates")
-	fs.StringVar(&c.OutputFile, "output", c.OutputFile, "Output file (default \"codebase.md\", use \"-\" for stdout)")
+	fs.StringVarP(&c.OutputFile, "output", "o", c.OutputFile, "Output file (use \"-\" for stdout)")
 	fs.BoolVar(&c.ShowProgress, "progress", c.ShowProgress, "Show progress information")
 	fs.DurationVar(&c.Timeout, "timeout", c.Timeout, "Maximum execution time (e.g., '30s', '5m')")
 	fs.BoolVar(&c.ShowSkipped, "show-skipped", c.ShowSkipped, "Show a list of skipped files/directories and reasons at the end")
@@ -179,6 +204,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 
 	// Output style, profiles, and LLM context settings
 	fs.StringVar(&c.Style, "style", c.Style, "Output style: plain, markdown, json, xml")
+	fs.StringVarP(&c.Style, "format", "f", c.Style, "Output style: plain, markdown, json, xml (alias for --style)")
 	fs.BoolVar(&c.NoNerdFonts, "no-nerd-fonts", c.NoNerdFonts, "Use plain ASCII glyphs in the interactive picker")
 	fs.StringVar(&c.Profile, "profile", c.Profile, "Config profile to use (see config.toml)")
 	fs.StringVar(&c.Target, "target", c.Target, "Target to use from .sift.toml (see [[targets]])")

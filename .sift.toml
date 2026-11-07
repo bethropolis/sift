@@ -11,7 +11,7 @@ default_profile = "signatures"
 
 [sift]
 style = "xml"
-output = "codebase.md"
+output = "codebase.xml"
 compress_mode = "signatures"
 budget = 200000
 smart_filter = true
@@ -153,7 +153,7 @@ skip_roles = ["test", "fixture", "mock", "generated", "vendor", "example"]
 [[targets]]
 name = "codebase"
 profile = "full"
-output = "codebase.md"
+output = "codebase.xml"
 style = "xml"
 
 [[targets]]

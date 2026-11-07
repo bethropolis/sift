@@ -157,6 +157,13 @@ func (s *SiftDefaults) applyTo(c *Config) {
 	}
 }
 
+func isStyleChanged(fs *pflag.FlagSet) bool {
+	if fs == nil {
+		return false
+	}
+	return fs.Changed("style") || fs.Changed("format") || fs.Changed("json") || fs.Changed("markdown")
+}
+
 func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 	if t == nil {
 		return
@@ -167,7 +174,7 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 		}
 		return fs.Changed(name)
 	}
-	if t.Style != "" && !changed("style") {
+	if t.Style != "" && !isStyleChanged(fs) {
 		c.Style = t.Style
 	}
 	if t.TokenizeModel != "" && !changed("tokenize-model") {
@@ -181,6 +188,7 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 	}
 	if t.Output != "" && !changed("output") {
 		c.OutputFile = t.Output
+		c.OutputFileExplicit = true
 	}
 	if t.Prompt != "" && !changed("prompt") {
 		c.Prompt = t.Prompt
@@ -442,6 +450,16 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	// Also handle Prompts referenced via target's prompt field? No — prompts
 	// are selected via --prompt-ref or WithPromptRef; targets use inline prompt/prompt_file.
 
+	if fs != nil && fs.Changed("output") {
+		c.OutputFileExplicit = true
+	}
+	if isStyleChanged(fs) && (fs == nil || !fs.Changed("output")) {
+		if strings.HasPrefix(filepath.Base(c.OutputFile), "codebase.") {
+			c.OutputFileExplicit = false
+		}
+	}
+	c.ResolveOutputFile()
+
 	return nil
 }
 
@@ -452,7 +470,7 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) {
 		}
 		return fs.Changed(name)
 	}
-	if s.Style != "" && !changed("style") {
+	if s.Style != "" && !isStyleChanged(fs) {
 		c.Style = s.Style
 	}
 	if s.TokenizeModel != "" && !changed("tokenize-model") {
@@ -466,6 +484,7 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) {
 	}
 	if s.Output != "" && !changed("output") {
 		c.OutputFile = s.Output
+		c.OutputFileExplicit = true
 	}
 	if s.Prompt != "" && !changed("prompt") {
 		c.Prompt = s.Prompt
