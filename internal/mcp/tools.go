@@ -13,6 +13,7 @@ import (
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/selection"
 	"github.com/bethropolis/sift/internal/state"
+	embedded "github.com/bethropolis/sift/skills"
 )
 
 // Statelessness rule: sift delta's baseline (~/.config/sift/state.json) is
@@ -64,6 +65,13 @@ func toolDefinitions() []Tool {
 				"ignore": str("Extra ignore patterns (comma-separated, gitignore syntax)."),
 			}},
 		},
+		{
+			Name:        "get_skill",
+			Description: "Retrieve instructions and guidelines for an embedded Sift agent skill (e.g. 'sift-project-dotfile' for authoring .sift.toml).",
+			InputSchema: Schema{Type: "object", Properties: map[string]Property{
+				"name": str("Name of the skill to retrieve (e.g. 'sift-project-dotfile'). Empty retrieves the default dotfile skill."),
+			}},
+		},
 	}
 }
 
@@ -81,6 +89,9 @@ func callTool(ctx context.Context, name string, args map[string]any, cfg *config
 		return text, err, true
 	case "list_tree":
 		text, err := handleListTree(ctx, args, cfg)
+		return text, err, true
+	case "get_skill":
+		text, err := handleGetSkill(args)
 		return text, err, true
 	default:
 		return "", nil, false
@@ -351,4 +362,17 @@ func handleListTree(ctx context.Context, args map[string]any, cfg *config.Config
 	}
 	fmt.Fprintf(&b, "\n%d files, %d dirs", len(metas), len(dirs))
 	return b.String(), nil
+}
+
+func handleGetSkill(args map[string]any) (string, error) {
+	name := "sift-project-dotfile"
+	stringArg(args, "name", &name)
+	if name == "" {
+		name = "sift-project-dotfile"
+	}
+	content, err := embedded.ReadSkill(name)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
 }

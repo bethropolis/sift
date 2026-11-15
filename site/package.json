@@ -8,6 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "sync-docs": "bun scripts/sync-docs.mjs",
+    "sync-skills": "bun scripts/sync-skills.mjs",
     "lint": "astro check"
   },
   "dependencies": {

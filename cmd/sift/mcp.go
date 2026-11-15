@@ -18,9 +18,10 @@ func init() {
 	config.RegisterFlags(cfg, mcpCmd.Flags())
 }
 
-// mcpCmd starts a stateless MCP server over stdio for coding agents: three
-// tools (pack_context, pack_diff, list_tree), hand-rolled JSON-RPC, no new
-// dependencies. It never reads or writes the delta baseline.
+// mcpCmd starts a stateless MCP server over stdio for coding agents: tools
+// (pack_context, pack_diff, pack_follow, list_tree, get_skill), prompts, and
+// resources, hand-rolled JSON-RPC, no new dependencies. It never reads or
+// writes the delta baseline.
 var mcpCmd = &cobra.Command{
 	Use:   "mcp [path]",
 	Short: "Start an MCP server over stdio",

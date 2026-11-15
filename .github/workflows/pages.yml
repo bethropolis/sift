@@ -33,6 +33,9 @@ jobs:
       - name: Sync docs into the site
         run: bun site/scripts/sync-docs.mjs
 
+      - name: Sync skills for npx skills distribution
+        run: bun site/scripts/sync-skills.mjs
+
       - name: Build Astro site
         working-directory: site
         run: bun run build

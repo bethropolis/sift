@@ -2,8 +2,7 @@ package mcp
 
 import "encoding/json"
 
-// Protocol surfaces: initialize, notifications/initialized, tools/list,
-// tools/call. resources/* and prompts/* are deferred to v2.
+// Protocol surfaces: initialize, notifications/initialized, tools/*, prompts/*, resources/*.
 
 const protocolVersion = "2024-11-05"
 
@@ -62,11 +61,14 @@ type InitializeResult struct {
 	ProtocolVersion string       `json:"protocolVersion"`
 	Capabilities    Capabilities `json:"capabilities"`
 	ServerInfo      ServerInfo   `json:"serverInfo"`
+	Instructions    string       `json:"instructions,omitempty"`
 }
 
-// Capabilities advertises exactly the tool surface; nothing else.
+// Capabilities advertises the server capabilities.
 type Capabilities struct {
-	Tools map[string]any `json:"tools"`
+	Tools     map[string]any `json:"tools"`
+	Prompts   map[string]any `json:"prompts"`
+	Resources map[string]any `json:"resources"`
 }
 
 // ServerInfo identifies this server to clients.
@@ -96,4 +98,71 @@ type CallResult struct {
 type ContentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
+}
+
+// Prompt describes one available prompt template for prompts/list.
+type Prompt struct {
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Arguments   []PromptArgument `json:"arguments,omitempty"`
+}
+
+// PromptArgument describes an argument for a prompt template.
+type PromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+// PromptsListResult wraps prompts/list output.
+type PromptsListResult struct {
+	Prompts []Prompt `json:"prompts"`
+}
+
+// PromptGetParams are the prompts/get parameters.
+type PromptGetParams struct {
+	Name      string            `json:"name"`
+	Arguments map[string]string `json:"arguments,omitempty"`
+}
+
+// PromptGetResult is the response payload for prompts/get.
+type PromptGetResult struct {
+	Description string          `json:"description,omitempty"`
+	Messages    []PromptMessage `json:"messages"`
+}
+
+// PromptMessage is one message in a prompt result.
+type PromptMessage struct {
+	Role    string       `json:"role"`
+	Content ContentBlock `json:"content"`
+}
+
+// Resource describes an inspectable resource for resources/list.
+type Resource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MIMEType    string `json:"mimeType,omitempty"`
+}
+
+// ResourcesListResult wraps resources/list output.
+type ResourcesListResult struct {
+	Resources []Resource `json:"resources"`
+}
+
+// ResourceReadParams are the resources/read parameters.
+type ResourceReadParams struct {
+	URI string `json:"uri"`
+}
+
+// ResourceReadResult is the response payload for resources/read.
+type ResourceReadResult struct {
+	Contents []ResourceContent `json:"contents"`
+}
+
+// ResourceContent contains the data of a read resource.
+type ResourceContent struct {
+	URI      string `json:"uri"`
+	MIMEType string `json:"mimeType,omitempty"`
+	Text     string `json:"text,omitempty"`
 }

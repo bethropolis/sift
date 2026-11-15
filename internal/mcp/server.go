@@ -60,8 +60,13 @@ func dispatch(ctx context.Context, req Request, cfg *config.Config) *Response {
 	case "initialize":
 		return reply(InitializeResult{
 			ProtocolVersion: protocolVersion,
-			Capabilities:    Capabilities{Tools: map[string]any{}},
-			ServerInfo:      ServerInfo{Name: "sift", Version: cfg.Version},
+			Capabilities: Capabilities{
+				Tools:     map[string]any{},
+				Prompts:   map[string]any{},
+				Resources: map[string]any{},
+			},
+			ServerInfo:   ServerInfo{Name: "sift", Version: cfg.Version},
+			Instructions: "Sift packs repository context for LLMs. If you need to author or update a .sift.toml configuration file for this project, use the 'sift-project-dotfile' prompt or call the 'get_skill' tool.",
 		})
 	case "tools/list":
 		return reply(ToolsListResult{Tools: toolDefinitions()})
@@ -83,6 +88,40 @@ func dispatch(ctx context.Context, req Request, cfg *config.Config) *Response {
 		if toolErr != nil {
 			res.Content[0].Text = toolErr.Error()
 			res.IsError = true
+		}
+		return reply(res)
+	case "prompts/list":
+		return reply(PromptsListResult{Prompts: promptDefinitions()})
+	case "prompts/get":
+		var params PromptGetParams
+		if len(req.Params) > 0 {
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				return fail(-32602, "invalid params: "+err.Error())
+			}
+		}
+		if params.Name == "" {
+			return fail(-32602, "missing prompt name")
+		}
+		res, err := handleGetPrompt(params.Name)
+		if err != nil {
+			return fail(-32602, err.Error())
+		}
+		return reply(res)
+	case "resources/list":
+		return reply(ResourcesListResult{Resources: resourceDefinitions()})
+	case "resources/read":
+		var params ResourceReadParams
+		if len(req.Params) > 0 {
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				return fail(-32602, "invalid params: "+err.Error())
+			}
+		}
+		if params.URI == "" {
+			return fail(-32602, "missing resource URI")
+		}
+		res, err := handleReadResource(params.URI)
+		if err != nil {
+			return fail(-32602, err.Error())
 		}
 		return reply(res)
 	default:

@@ -45,6 +45,7 @@ Go, Rust, JavaScript/TypeScript (including TSX), Python, PHP, Java, Kotlin, C#, 
 | `follow` | Render a file plus its import-graph neighbors     |
 | `watch`  | Re-render whenever files change                   |
 | `serve`  | Run sift from a browser                           |
+| `skill`  | Install and manage agent skills for AI tools      |
 
 Running `sift` with no command opens the picker.
 
@@ -74,6 +75,21 @@ Details: [docs/serve.md](docs/serve.md).
 ```bash
 sift delta --patch --clipboard
 sift delta --since main
+```
+
+## Agent Skills
+
+Sift bundles agent skills (including `sift-project-dotfile` for authoring optimized `.sift.toml` configurations) for tools like OpenCode, Antigravity, Claude Code, Codex, and standard `.agents/` setups.
+
+Install with Sift:
+```bash
+sift skill install          # auto-detects installed coding tools
+sift skill install --local  # installs to .agents/skills in current repo
+```
+
+Or install via `npx skills`:
+```bash
+npx skills add https://bethropolis.github.io/sift
 ```
 
 ## Installation
@@ -143,6 +159,7 @@ sift delta [path]   # only changes since the last recorded dump
 sift follow <file>  # render a file plus its import-graph neighbors
 sift watch [path]   # re-render on file changes
 sift serve          # browser picker at http://127.0.0.1:7777
+sift skill install  # install Sift skill into detected AI tools
 ```
 
 <details>

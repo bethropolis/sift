@@ -1,0 +1,11 @@
+{
+  "skills": [
+    {
+      "name": "sift-project-dotfile",
+      "description": "Inspect a software repository and create or revise a project-specific .sift.toml that produces useful, safe, budget-aware context dumps for coding agents. Use when asked to configure Sift for a codebase, create a Sift project dotfile, or improve an existing .sift.toml.",
+      "files": [
+        "SKILL.md"
+      ]
+    }
+  ]
+}

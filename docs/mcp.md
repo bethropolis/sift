@@ -259,6 +259,7 @@ Via Cline's MCP settings UI, or `cline_mcp_settings.json` directly:
 | `pack_diff` | `from` (git ref; omit/empty for uncommitted working-tree changes), `patch` (bool, default `false`) | Packs only what changed since `from`, either as full file contents or a raw unified patch (`patch: true`). |
 | `pack_follow` | `file` (seed file, required), `direction` (`"deps"` \| `"dependents"` \| `"both"`, default `"dependents"`), `depth` (int, default `2`, `-1` unlimited), `full_depth` (int, default `1`), `budget` (int, tokens), `mode` (`"full"` \| `"signatures"`) | Packs one file plus its import-graph neighbors: dependents show what could break, deps show what the file needs. |
 | `list_tree` | `ext` (comma-separated string), `ignore` (comma-separated string) | Lists the repository structure — paths only, no content. Cheap way to orient before calling `pack_context`. |
+| `get_skill` | `name` (string, optional, default `"sift-project-dotfile"`) | Retrieves instructions and guidelines for an embedded Sift agent skill (e.g. for authoring `.sift.toml`). |
 
 There is no separate `get_file_signatures` tool — call `pack_context` with
 `mode: "signatures"` and narrow with `ext` if you only want, say, Go or
@@ -296,17 +297,13 @@ Response (truncated — a tree, then one fenced block per file):
 
 ## Protocol surface
 
-Only these methods are implemented:
+These methods are implemented:
 
-- `initialize`
+- `initialize` (advertises `tools`, `prompts`, and `resources` capabilities)
 - `notifications/initialized`
-- `tools/list`
-- `tools/call`
-
-`resources/*` and `prompts/*` are explicitly deferred — the server returns
-a "method not found" error rather than an empty result, so a well-behaved
-client should recognize sift as tools-only rather than retrying those
-calls in a loop.
+- `tools/list` & `tools/call`
+- `prompts/list` & `prompts/get` (exposes embedded skills like `sift-project-dotfile`)
+- `resources/list` & `resources/read` (exposes readable skills via `skill://<name>`)
 
 ## Statelessness
 

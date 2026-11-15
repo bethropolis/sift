@@ -104,6 +104,7 @@ uninstall args="":
 # Sync repo docs/*.md into the Astro docs collection (gitignored build input)
 docs-site:
   bun site/scripts/sync-docs.mjs
+  bun site/scripts/sync-skills.mjs
 
 # Serve the site locally, mirroring the Pages build (sync docs + installer)
 site-serve: docs-site
