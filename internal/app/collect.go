@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/ignore"
 	"github.com/bethropolis/sift/internal/rank"
@@ -193,11 +194,14 @@ func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
 	if cache == nil {
 		cache = scan.NewContentCache()
 	}
+	needCompress := mode == collectPicker ||
+		(mode == collectBlocking && (a.cfg.Mode == "signatures" || a.cfg.FallbackMode == "signatures" || (a.cfg != nil && len(a.cfg.Modes.Signatures) > 0)))
+
 	processor, err := scan.New(scan.Options{
 		TokenizeModel:  a.cfg.TokenizeModel,
 		SmartFilter:    a.cfg.SmartFilter,
 		SmartMaxTokens: a.cfg.SmartMaxTokens,
-		Compress:       mode == collectPicker || (mode == collectBlocking && a.cfg.Mode == "signatures"),
+		Compress:       needCompress,
 		Logger:         a.log,
 		Cache:          cache,
 		Evaluator:      a.sharedEvaluator(),
@@ -210,6 +214,8 @@ func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
 	}
 	if a.cfg.Mode == "signatures" {
 		a.log.Debug("Compression mode: signatures (tree-sitter)")
+	} else if a.cfg.FallbackMode == "signatures" {
+		a.log.Debug("Compression mode: fallback signatures (threshold %.2f)", a.cfg.FallbackThreshold)
 	}
 	return processor, nil
 }
@@ -258,6 +264,27 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 		case collectBlocking:
 			if a.cfg.Mode == "signatures" {
 				procMode = scan.ModeSignatures
+			} else if a.cfg.FallbackMode == "signatures" {
+				procMode = scan.ModePicker
+			}
+		}
+
+		if mm := a.getModesMatcher(); mm != nil {
+			switch mm.Match(relativePath) {
+			case config.ModeDecisionSkip:
+				a.log.Debug("Modes filter skipping %s", relativePath)
+				smartMu.Lock()
+				*smartSkipped = append(*smartSkipped, walker.SkippedItem{Path: relativePath, Reason: walker.ReasonFilteredPath})
+				smartMu.Unlock()
+				return nil
+			case config.ModeDecisionSignatures:
+				procMode = scan.ModeSignatures
+			case config.ModeDecisionFull:
+				if a.cfg.FallbackMode == "signatures" {
+					procMode = scan.ModePicker
+				} else {
+					procMode = scan.ModeFull
+				}
 			}
 		}
 
@@ -272,6 +299,9 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 			}
 			a.log.Warn("Processing %s failed: %v", relativePath, err)
 			return nil
+		}
+		if mode == collectBlocking && procMode == scan.ModePicker {
+			entry.Tokens = entry.TokensFull
 		}
 		if mode == collectPicker && matcher != nil {
 			visibility := matcher.ClassifyVisibility(relativePath, false)
@@ -320,6 +350,18 @@ func (a *App) SkeletonPicker(ctx context.Context) ([]walker.FileMeta, []walker.S
 			// check so skeleton and enrichment agree on which files survive.
 			if skip, _ := smartEvaluator.ShouldSkipMeta(m.Path, int(m.Size/4)); skip {
 				skipped = append(skipped, walker.SkippedItem{Path: m.Path, Reason: walker.ReasonSkippedSmart})
+				continue
+			}
+			kept = append(kept, m)
+		}
+		metas = kept
+	}
+
+	if mm := a.getModesMatcher(); mm != nil {
+		kept := metas[:0]
+		for _, m := range metas {
+			if mm.Match(m.Path) == config.ModeDecisionSkip {
+				skipped = append(skipped, walker.SkippedItem{Path: m.Path, Reason: walker.ReasonFilteredPath})
 				continue
 			}
 			kept = append(kept, m)
@@ -494,7 +536,9 @@ func (a *App) applyRank(ctx context.Context, mode collectMode, absRootDir string
 	// Serve follows the same split. Do not unify them here.
 	r := NewRankerWithContext(ctx, absRootDir, rank.DefaultWeights())
 	if r.Available() {
-		a.log.Debug("Ranking %d files by git relevance", len(*files))
+		if a.log != nil {
+			a.log.Debug("Ranking %d files by git relevance", len(*files))
+		}
 		r.Rank(*files)
 	} else if mode == collectPicker {
 		for i := range *files {

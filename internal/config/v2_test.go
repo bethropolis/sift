@@ -501,4 +501,154 @@ style = "markdown"
 	}
 }
 
+func TestCustomConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	customPath := filepath.Join(dir, "custom.toml")
+	if err := os.WriteFile(customPath, []byte("[sift]\nbudget = \"75k\"\nstyle = \"json\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	localPath := filepath.Join(dir, ".sift.toml")
+	if err := os.WriteFile(localPath, []byte("[sift]\nbudget = \"10k\"\nstyle = \"xml\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := New()
+	c.RootDir = dir
+	c.ConfigFile = customPath
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c, fs)
+	if err := ResolveConfig(c, fs); err != nil {
+		t.Fatal(err)
+	}
+	if c.Budget != 75000 {
+		t.Errorf("Budget = %d, want 75000 from custom config", c.Budget)
+	}
+	if c.Style != "json" {
+		t.Errorf("Style = %q, want json from custom config", c.Style)
+	}
+
+	// Test non-existent custom config file returns error
+	c2 := New()
+	c2.ConfigFile = filepath.Join(dir, "non-existent.toml")
+	fs2 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c2, fs2)
+	if err := ResolveConfig(c2, fs2); err == nil {
+		t.Error("expected error for non-existent custom config, got nil")
+	}
+}
+
+func TestProfileIgnoreInheritance(t *testing.T) {
+	dir := t.TempDir()
+	tomlPath := filepath.Join(dir, ".sift.toml")
+	tomlContent := `
+[sift]
+ignore = ["**/build/**", "**/.gradle/**"]
+
+[profiles.inherited]
+ignore = ["**/*_test.go"]
+
+[profiles.override]
+override_ignore = true
+ignore = ["node_modules/**"]
+
+[profiles.override_blank]
+override_ignore = true
+
+[[targets]]
+name = "tgt_inherited"
+ignore = ["docs/**"]
+
+[[targets]]
+name = "tgt_override"
+override_ignore = true
+ignore = ["vendor/**"]
+`
+	if err := os.WriteFile(tomlPath, []byte(tomlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Inherited profile should combine [sift].ignore + profile.ignore
+	c1 := New()
+	c1.RootDir = dir
+	c1.Profile = "inherited"
+	fs1 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c1, fs1)
+	if err := ResolveConfig(c1, fs1); err != nil {
+		t.Fatal(err)
+	}
+	want1 := "**/build/**,**/.gradle/**,**/*_test.go"
+	if c1.CustomIgnore != want1 {
+		t.Errorf("inherited profile: CustomIgnore = %q, want %q", c1.CustomIgnore, want1)
+	}
+
+	// 2. Override profile should replace [sift].ignore
+	c2 := New()
+	c2.RootDir = dir
+	c2.Profile = "override"
+	fs2 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c2, fs2)
+	if err := ResolveConfig(c2, fs2); err != nil {
+		t.Fatal(err)
+	}
+	want2 := "node_modules/**"
+	if c2.CustomIgnore != want2 {
+		t.Errorf("override profile: CustomIgnore = %q, want %q", c2.CustomIgnore, want2)
+	}
+
+	// 3. Override blank profile should clear ignore
+	c3 := New()
+	c3.RootDir = dir
+	c3.Profile = "override_blank"
+	fs3 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c3, fs3)
+	if err := ResolveConfig(c3, fs3); err != nil {
+		t.Fatal(err)
+	}
+	if c3.CustomIgnore != "" {
+		t.Errorf("override_blank profile: CustomIgnore = %q, want empty", c3.CustomIgnore)
+	}
+
+	// 4. Target inherited should combine [sift].ignore + target.ignore
+	c4 := New()
+	c4.RootDir = dir
+	fs4 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c4, fs4)
+	if err := ResolveConfig(c4, fs4, WithTarget("tgt_inherited")); err != nil {
+		t.Fatal(err)
+	}
+	want4 := "**/build/**,**/.gradle/**,docs/**"
+	if c4.CustomIgnore != want4 {
+		t.Errorf("inherited target: CustomIgnore = %q, want %q", c4.CustomIgnore, want4)
+	}
+
+	// 5. Target override should replace [sift].ignore
+	c5 := New()
+	c5.RootDir = dir
+	fs5 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c5, fs5)
+	if err := ResolveConfig(c5, fs5, WithTarget("tgt_override")); err != nil {
+		t.Fatal(err)
+	}
+	want5 := "vendor/**"
+	if c5.CustomIgnore != want5 {
+		t.Errorf("override target: CustomIgnore = %q, want %q", c5.CustomIgnore, want5)
+	}
+
+	// 6. Explicit CLI flag wins
+	c6 := New()
+	c6.RootDir = dir
+	c6.Profile = "inherited"
+	fs6 := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c6, fs6)
+	if err := fs6.Parse([]string{"--ignore", "cli/**"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ResolveConfig(c6, fs6); err != nil {
+		t.Fatal(err)
+	}
+	if c6.CustomIgnore != "cli/**" {
+		t.Errorf("cli flag wins: CustomIgnore = %q, want cli/**", c6.CustomIgnore)
+	}
+}
+
 func unusedPathImport_v2() { _ = filepath.Join }

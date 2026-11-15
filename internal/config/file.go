@@ -14,8 +14,11 @@ type StringList []string
 type SiftDefaults struct {
 	Style             string     `toml:"style"`
 	TokenizeModel     string     `toml:"tokenize_model"`
-	Budget            int        `toml:"budget"`
+	BudgetRaw         any        `toml:"budget"`
+	Budget            int        `toml:"-"`
 	Mode              string     `toml:"compress_mode"`
+	FallbackMode      string     `toml:"fallback_mode"`
+	FallbackThreshold *float64   `toml:"fallback_threshold"`
 	Output            string     `toml:"output"`
 	Prompt            string     `toml:"prompt"`
 	PromptFile        string     `toml:"prompt_file"`
@@ -34,8 +37,9 @@ type SiftDefaults struct {
 	HighlightMaxBytes int        `toml:"highlight_max_bytes"`
 	WindowTitle       string     `toml:"window_title"`
 	NoWindowTitle     *bool      `toml:"no_window_title"`
-	CopyOnGenerate    *bool      `toml:"copy_on_generate"`
-	Scoring           *Scoring   `toml:"scoring"`
+	CopyOnGenerate    *bool        `toml:"copy_on_generate"`
+	Scoring           *Scoring     `toml:"scoring"`
+	Modes             *ModesConfig `toml:"modes"`
 }
 
 // PromptRef holds either inline text or a file path for a prompt.
@@ -62,9 +66,12 @@ type Target struct {
 	Output         string     `toml:"output"`
 	Style          string     `toml:"style"`
 	TokenizeModel  string     `toml:"tokenize_model"`
-	Budget         int        `toml:"budget"`
-	Mode           string     `toml:"compress_mode"`
-	Prompt         string     `toml:"prompt"`
+	BudgetRaw      any        `toml:"budget"`
+	Budget         int        `toml:"-"`
+	Mode              string     `toml:"compress_mode"`
+	FallbackMode      string     `toml:"fallback_mode"`
+	FallbackThreshold *float64   `toml:"fallback_threshold"`
+	Prompt            string     `toml:"prompt"`
 	PromptFile     string     `toml:"prompt_file"`
 	SecretScan     *bool      `toml:"secret_scan"`
 	ForceSecrets   *bool      `toml:"force_secrets"`
@@ -72,9 +79,11 @@ type Target struct {
 	IgnoreGit      *bool      `toml:"ignore_git"`
 	Extensions     StringList `toml:"extensions"`
 	Ignore         StringList `toml:"ignore"`
-	SmartFilter    *bool      `toml:"smart_filter"`
-	SmartMaxTokens int        `toml:"smart_max_tokens"`
-	Scoring        *Scoring   `toml:"scoring"`
+	OverrideIgnore bool       `toml:"override_ignore"`
+	SmartFilter    *bool        `toml:"smart_filter"`
+	SmartMaxTokens int          `toml:"smart_max_tokens"`
+	Scoring        *Scoring     `toml:"scoring"`
+	Modes          *ModesConfig `toml:"modes"`
 }
 
 // Automation holds optional declarative automation hints.
@@ -89,6 +98,7 @@ type Automation struct {
 type configFile struct {
 	DefaultProfile string               `toml:"default_profile"`
 	Sift           *SiftDefaults        `toml:"sift"`
+	Modes          *ModesConfig         `toml:"modes"`
 	Profiles       map[string]Profile   `toml:"profiles"`
 	Targets        []Target             `toml:"targets"`
 	Prompts        map[string]PromptRef `toml:"prompts"`

@@ -66,6 +66,9 @@ func readConfigFile(path string) (configFile, error) {
 	if err := toml.Unmarshal(data, &cf); err != nil {
 		return cf, err
 	}
+	if err := cf.normalize(); err != nil {
+		return cf, err
+	}
 	if cf.Profiles == nil {
 		cf.Profiles = map[string]Profile{}
 	}
@@ -155,6 +158,9 @@ func (s *SiftDefaults) applyTo(c *Config) {
 	if s.Scoring != nil {
 		c.Scoring.Merge(*s.Scoring)
 	}
+	if s.Modes != nil {
+		c.Modes = *s.Modes
+	}
 }
 
 func isStyleChanged(fs *pflag.FlagSet) bool {
@@ -186,6 +192,12 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 	if t.Mode != "" && !changed("mode") {
 		c.Mode = t.Mode
 	}
+	if t.FallbackMode != "" && !changed("fallback-mode") {
+		c.FallbackMode = t.FallbackMode
+	}
+	if t.FallbackThreshold != nil && !changed("fallback-threshold") {
+		c.FallbackThreshold = *t.FallbackThreshold
+	}
 	if t.Output != "" && !changed("output") {
 		c.OutputFile = t.Output
 		c.OutputFileExplicit = true
@@ -213,8 +225,25 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 	if len(t.Extensions) > 0 && !changed("ext") {
 		c.Extensions = strings.Join([]string(t.Extensions), ",")
 	}
-	if len(t.Ignore) > 0 && !changed("ignore") {
+	if t.OverrideIgnore && !changed("ignore") {
 		c.CustomIgnore = strings.Join([]string(t.Ignore), ",")
+	} else if len(t.Ignore) > 0 && !changed("ignore") {
+		if c.CustomIgnore == "" {
+			c.CustomIgnore = strings.Join([]string(t.Ignore), ",")
+		} else {
+			base := strings.Split(c.CustomIgnore, ",")
+			merged := append(base, []string(t.Ignore)...)
+			seen := make(map[string]bool, len(merged))
+			unique := make([]string, 0, len(merged))
+			for _, pat := range merged {
+				pat = strings.TrimSpace(pat)
+				if pat != "" && !seen[pat] {
+					seen[pat] = true
+					unique = append(unique, pat)
+				}
+			}
+			c.CustomIgnore = strings.Join(unique, ",")
+		}
 	}
 	if t.SmartFilter != nil && !changed("smart") {
 		c.SmartFilter = *t.SmartFilter
@@ -224,6 +253,9 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 	}
 	if t.Scoring != nil {
 		c.Scoring.Merge(*t.Scoring)
+	}
+	if t.Modes != nil {
+		c.Modes = *t.Modes
 	}
 }
 
@@ -360,12 +392,17 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	localPath := ""
 	if ro.localSet {
 		localPath = ro.localPath
+	} else if c.ConfigFile != "" {
+		if _, err := os.Stat(c.ConfigFile); err != nil {
+			return fmt.Errorf("config file %q: %w", c.ConfigFile, err)
+		}
+		localPath = c.ConfigFile
 	} else {
 		localPath = localConfigPathFor(c)
 	}
 	localCF, err := readConfigFile(localPath)
 	if err != nil {
-		return fmt.Errorf("read .sift.toml: %w", err)
+		return fmt.Errorf("read config file: %w", err)
 	}
 
 	// Merge global + local into one view for resolution.
@@ -404,6 +441,10 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	// Top-level [scoring] (when not under [sift]) also applies.
 	if merged.Scoring != nil {
 		c.Scoring.Merge(*merged.Scoring)
+	}
+	// Top-level [modes] also applies.
+	if merged.Modes != nil {
+		c.Modes = *merged.Modes
 	}
 
 	// Apply profile (with extends already expanded), respecting flag guard.
@@ -482,6 +523,12 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) {
 	if s.Mode != "" && !changed("mode") {
 		c.Mode = s.Mode
 	}
+	if s.FallbackMode != "" && !changed("fallback-mode") {
+		c.FallbackMode = s.FallbackMode
+	}
+	if s.FallbackThreshold != nil && !changed("fallback-threshold") {
+		c.FallbackThreshold = *s.FallbackThreshold
+	}
 	if s.Output != "" && !changed("output") {
 		c.OutputFile = s.Output
 		c.OutputFileExplicit = true
@@ -542,6 +589,9 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) {
 	if s.Scoring != nil {
 		c.Scoring.Merge(*s.Scoring)
 	}
+	if s.Modes != nil {
+		c.Modes = *s.Modes
+	}
 }
 
 func findTarget(targets []Target, name string) *Target {
@@ -593,6 +643,12 @@ func mergeConfigFiles(global, local configFile) configFile {
 			}
 			if ls.Mode != "" {
 				s.Mode = ls.Mode
+			}
+			if ls.FallbackMode != "" {
+				s.FallbackMode = ls.FallbackMode
+			}
+			if ls.FallbackThreshold != nil {
+				s.FallbackThreshold = ls.FallbackThreshold
 			}
 			if ls.Output != "" {
 				s.Output = ls.Output
@@ -652,8 +708,16 @@ func mergeConfigFiles(global, local configFile) configFile {
 					s.Scoring.Merge(*ls.Scoring)
 				}
 			}
+			if ls.Modes != nil {
+				s.Modes = ls.Modes
+			}
 			out.Sift = &s
 		}
+	}
+	if local.Modes != nil {
+		out.Modes = local.Modes
+	} else if global.Modes != nil {
+		out.Modes = global.Modes
 	}
 	for k, v := range local.Profiles {
 		if existing, ok := out.Profiles[k]; ok {

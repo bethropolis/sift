@@ -55,6 +55,8 @@ TOML keys are **snake_case** and do not always match the flag spelling:
 | `smart_max_tokens` | `--smart-max-tokens` | Per-file token ceiling |
 | `copy_on_generate` | `--clipboard` | Name differs from the flag |
 | `tokenize_model` | `--tokenize-model` | e.g. `cl100k_base` |
+| `fallback_mode` | `--fallback-mode` | Fallback compression mode when budget exceeded (e.g. `signatures`) |
+| `fallback_threshold` | `--fallback-threshold` | Budget threshold fraction before fallback activates (default: `1.0`) |
 | `ui_theme_file` | `--ui-theme-file` | Picker themes only |
 
 ### Inverted booleans
@@ -166,6 +168,98 @@ default_profile = "review"   # parsed as profiles.review.default_profile!
 There is no error — the profile just never activates, and `[sift]` values are
 used as if you had not configured a default. Put top-level keys at the top of
 the file.
+
+### Ignore inheritance and `override_ignore`
+
+Profiles automatically inherit ignore rules configured in `[sift].ignore`. To opt out and start with a blank slate, set `override_ignore = true`:
+
+```toml
+[sift]
+ignore = ["**/build/**", "**/.gradle/**"]
+
+[profiles.tests]
+# Automatically inherits build and .gradle ignores, plus adds test filters:
+ignore = ["**/*_test.go"]
+
+[profiles.raw]
+# Starts with a clean slate (does not inherit [sift].ignore):
+override_ignore = true
+ignore = ["node_modules/**"]
+```
+
+## Path-Based Compression Mapping (`[modes]`)
+
+Support glob-based compression rules in `.sift.toml` for deterministic, automated dumps without manual picking:
+
+```toml
+[modes]
+full = [
+  "**/data/**",
+  "**/repo/**",
+  "**/domain/model/**",
+  "docs/**"
+]
+signatures = [
+  "**/ui/**",
+  "**/components/**"
+]
+skip = [
+  "**/test/**",
+  "**/*_test.go"
+]
+```
+
+- `skip`: Paths matching these globs are skipped.
+- `full`: Paths matching these globs are rendered in full fidelity.
+- `signatures`: Paths matching these globs are compressed using tree-sitter signatures (stripping function/method bodies while keeping structure and types).
+
+## Progressive Fallback Compression (`fallback_mode`)
+
+When dumping a codebase against a token budget, `compress_mode = "full"` ordinarily drops remaining files completely once the budget ceiling is hit. Setting `fallback_mode = "signatures"` automatically converts overflowing and remaining files to tree-sitter signatures:
+
+```toml
+[sift]
+budget = "200k"
+compress_mode = "full"
+fallback_mode = "signatures"
+fallback_threshold = 1.0   # switch to signatures when 100% of budget is hit (default)
+```
+
+To reserve budget headroom for high-priority architecture while ensuring broad repository coverage, tune `fallback_threshold`:
+
+```toml
+fallback_threshold = 0.8   # pack full until ~80% of budget, then signatures
+```
+
+This guarantees maximum file coverage within the token limit while preserving critical code in full fidelity.
+
+## Human-Readable Token Units
+
+Budget values in CLI flags and configuration files accept human-friendly suffixes (`k`/`K` for thousands, `m`/`M` for millions) as well as visual separators:
+
+```bash
+sift dump --budget 200k
+sift dump --budget 1.5M
+sift dump --budget 120_000
+```
+
+In `.sift.toml`:
+
+```toml
+[sift]
+budget = "200k"
+# or budget = "1.5M"
+# or budget = 200_000
+```
+
+## Custom Configuration Flag (`--config`)
+
+Specify an alternative configuration file anywhere on the filesystem without editing the repository's `.sift.toml`:
+
+```bash
+sift dump --config /path/to/custom.toml
+sift pick --config ./configs/benchmark.toml
+```
 
 ## Targets: multiple artifacts from one file
 

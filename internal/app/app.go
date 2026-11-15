@@ -44,6 +44,9 @@ type App struct {
 	// decisions are computed once and memoized across all three.
 	evalOnce  sync.Once
 	smartEval *smart.Evaluator
+
+	// modesMatcher enforces path-based compression and filtering rules.
+	modesMatcher *config.ModesMatcher
 }
 
 // Config returns the resolved application configuration. It is exposed to
@@ -96,7 +99,18 @@ func New(cfg *config.Config) (*App, error) {
 		output:       output,
 		outputPath:   outputPath,
 		contentCache: scan.NewContentCache(),
+		modesMatcher: config.NewModesMatcher(cfg.RootDir, cfg.Modes),
 	}, nil
+}
+
+func (a *App) getModesMatcher() *config.ModesMatcher {
+	if a.modesMatcher != nil {
+		return a.modesMatcher
+	}
+	if a.cfg != nil {
+		a.modesMatcher = config.NewModesMatcher(a.cfg.RootDir, a.cfg.Modes)
+	}
+	return a.modesMatcher
 }
 
 // ensureOutput opens the configured output destination lazily on first access.
@@ -130,13 +144,15 @@ func (a *App) Close() {
 }
 
 func (a *App) infoLog(format string, args ...interface{}) {
-	if !a.cfg.Quiet {
+	if a.log != nil && (a.cfg == nil || !a.cfg.Quiet) {
 		a.log.Info(format, args...)
 	}
 }
 
 func (a *App) LogError(format string, args ...interface{}) {
-	a.log.Error(format, args...)
+	if a.log != nil {
+		a.log.Error(format, args...)
+	}
 }
 
 // OutputPath returns the absolute path of the output file, or "" when writing

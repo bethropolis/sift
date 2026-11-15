@@ -89,3 +89,79 @@ func FitToBudget(files []format.FileEntry, budget int) ([]format.FileEntry, int)
 	}
 	return kept, used
 }
+
+// FitToBudgetWithFallback packs files against budget.
+// Files are packed in full fidelity until threshold * budget is reached (or until a file overflows in full mode).
+// When fallback is active, subsequent files are packed as signatures using their SigContent and TokensSig.
+// Returns the kept files and the total tokens used.
+func FitToBudgetWithFallback(files []format.FileEntry, budget int, threshold float64) ([]format.FileEntry, int) {
+	if budget <= 0 {
+		total := 0
+		for _, f := range files {
+			total += f.Tokens
+		}
+		return files, total
+	}
+
+	if threshold <= 0 || threshold > 1.0 {
+		if threshold > 1.0 && threshold <= 100.0 {
+			threshold = threshold / 100.0
+		} else {
+			threshold = 1.0
+		}
+	}
+
+	thresholdBudget := int(float64(budget) * threshold)
+	kept := make([]format.FileEntry, 0, len(files))
+	used := 0
+	fallbackTriggered := false
+
+	for _, f := range files {
+		if used >= budget {
+			break
+		}
+
+		// If already compressed (e.g. forced via [modes] signatures):
+		if f.IsCompressed {
+			if used+f.Tokens <= budget {
+				kept = append(kept, f)
+				used += f.Tokens
+			}
+			continue
+		}
+
+		if !fallbackTriggered {
+			fullTokens := f.Tokens
+			if fullTokens <= 0 && f.TokensFull > 0 {
+				fullTokens = f.TokensFull
+			}
+			if used+fullTokens <= thresholdBudget && used+fullTokens <= budget {
+				f.Tokens = fullTokens
+				kept = append(kept, f)
+				used += fullTokens
+				continue
+			}
+			fallbackTriggered = true
+		}
+
+		// Fallback active: try to pack as signature
+		sigTokens := f.TokensSig
+		if sigTokens <= 0 {
+			sigTokens = f.Tokens
+		}
+		if used+sigTokens <= budget {
+			if len(f.SigContent) > 0 {
+				f.Content = f.SigContent
+				f.Tokens = sigTokens
+				f.IsCompressed = true
+			} else {
+				f.Tokens = sigTokens
+			}
+			kept = append(kept, f)
+			used += sigTokens
+		}
+	}
+
+	return kept, used
+}
+

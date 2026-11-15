@@ -24,7 +24,8 @@ var Version = "dev"
 // Config holds all application configuration settings.
 type Config struct {
 	// Directory settings
-	RootDir string
+	RootDir    string
+	ConfigFile string
 
 	// Logging settings
 	Verbose     bool
@@ -70,6 +71,9 @@ type Config struct {
 	// NoNerdFonts forces ASCII glyphs in the interactive picker.
 	NoNerdFonts bool
 
+	// Modes holds path-based compression and filtering rules.
+	Modes ModesConfig
+
 	// Scoring tunes the relevance and selection optimizer. Zero fields mean
 	// "use the default"; the shared engine fills them in. Values are loaded
 	// from a [scoring] section and apply to both rank scoring and the utility
@@ -85,6 +89,10 @@ type Config struct {
 	Budget        int
 	TokenizeModel string
 	Mode          string
+	// FallbackMode is the compression mode used when budget is exceeded (e.g. "signatures").
+	FallbackMode string
+	// FallbackThreshold is the fraction of budget (0.0 to 1.0) before fallback compression activates (default: 1.0).
+	FallbackThreshold float64
 	// MaxDepth bounds dependency expansion from the selected set
 	// (0 = disabled, -1 = unlimited).
 	MaxDepth int
@@ -121,6 +129,7 @@ func New() *Config {
 		HighlightMaxBytes: 256 * 1024,
 		WindowTitle:       "",
 		MaxDepth:          2,
+		FallbackThreshold: 1.0,
 	}
 }
 
@@ -173,6 +182,7 @@ func (c *Config) ResolveColors() {
 // values as flag defaults.
 func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.StringVar(&c.RootDir, "dir", c.RootDir, "The root directory to scan")
+	fs.StringVar(&c.ConfigFile, "config", c.ConfigFile, "Path to custom configuration file (overrides .sift.toml)")
 	fs.BoolVarP(&c.Verbose, "verbose", "v", c.Verbose, "Enable verbose debug logging")
 	fs.BoolVarP(&c.Quiet, "quiet", "q", c.Quiet, "Quiet mode - minimal output")
 	fs.StringVar(&c.LogLevel, "log-level", c.LogLevel, "Set the logging level (DEBUG, INFO, WARN, ERROR)")
@@ -208,9 +218,11 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.BoolVar(&c.NoNerdFonts, "no-nerd-fonts", c.NoNerdFonts, "Use plain ASCII glyphs in the interactive picker")
 	fs.StringVar(&c.Profile, "profile", c.Profile, "Config profile to use (see config.toml)")
 	fs.StringVar(&c.Target, "target", c.Target, "Target to use from .sift.toml (see [[targets]])")
-	fs.IntVar(&c.Budget, "budget", c.Budget, "Maximum token budget (0 = no limit)")
+	fs.Var(&budgetFlag{val: &c.Budget}, "budget", "Maximum token budget (0 = no limit, supports '200k', '1.5M')")
 	fs.StringVar(&c.TokenizeModel, "tokenize-model", c.TokenizeModel, "Tokenizer model encoding (default: cl100k_base)")
 	fs.StringVar(&c.Mode, "mode", c.Mode, "Compression mode: full, signatures")
+	fs.StringVar(&c.FallbackMode, "fallback-mode", c.FallbackMode, "Fallback compression mode when budget exceeded (e.g. 'signatures')")
+	fs.Float64Var(&c.FallbackThreshold, "fallback-threshold", c.FallbackThreshold, "Threshold of budget before switching to fallback mode (default: 1.0)")
 	fs.IntVar(&c.MaxDepth, "max-depth", c.MaxDepth, "Dependency expansion depth from selected files (0 = disabled, -1 = unlimited)")
 	fs.StringVarP(&c.Prompt, "prompt", "p", c.Prompt, "Task/instruction directives prepended to the output")
 	fs.BoolVar(&c.SecretScan, "secrets", c.SecretScan, "Scan output for secrets and redact them")

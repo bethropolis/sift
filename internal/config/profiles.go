@@ -14,8 +14,11 @@ import (
 type Profile struct {
 	Style             string     `toml:"style"`
 	TokenizeModel     string     `toml:"tokenize_model"`
-	Budget            int        `toml:"budget"`
+	BudgetRaw         any        `toml:"budget"`
+	Budget            int        `toml:"-"`
 	Mode              string     `toml:"compress_mode"`
+	FallbackMode      string     `toml:"fallback_mode"`
+	FallbackThreshold *float64   `toml:"fallback_threshold"`
 	Output            string     `toml:"output"`
 	Prompt            string     `toml:"prompt"`
 	PromptFile        string     `toml:"prompt_file"`
@@ -25,6 +28,7 @@ type Profile struct {
 	IgnoreGit         *bool      `toml:"ignore_git"`
 	Extensions        StringList `toml:"extensions"`
 	Ignore            StringList `toml:"ignore"`
+	OverrideIgnore    bool       `toml:"override_ignore"`
 	SmartFilter       *bool      `toml:"smart_filter"`
 	SmartMaxTokens    int        `toml:"smart_max_tokens"`
 	Highlight         *bool      `toml:"highlight"`
@@ -33,8 +37,9 @@ type Profile struct {
 	HighlightMaxBytes int        `toml:"highlight_max_bytes"`
 	WindowTitle       string     `toml:"window_title"`
 	NoWindowTitle     *bool      `toml:"no_window_title"`
-	Scoring           *Scoring   `toml:"scoring"`
-	Extends           []string   `toml:"extends"`
+	Scoring           *Scoring     `toml:"scoring"`
+	Modes             *ModesConfig `toml:"modes"`
+	Extends           []string     `toml:"extends"`
 }
 
 type profilesFile struct {
@@ -74,6 +79,9 @@ func readProfilesFile(path string) (profilesFile, error) {
 		return pf, nil
 	}
 	if err := toml.Unmarshal(data, &pf); err != nil {
+		return pf, err
+	}
+	if err := pf.normalize(); err != nil {
 		return pf, err
 	}
 	if pf.Profiles == nil {
@@ -137,6 +145,12 @@ func overlay(dst, src Profile) Profile {
 	if src.Mode != "" {
 		dst.Mode = src.Mode
 	}
+	if src.FallbackMode != "" {
+		dst.FallbackMode = src.FallbackMode
+	}
+	if src.FallbackThreshold != nil {
+		dst.FallbackThreshold = src.FallbackThreshold
+	}
 	if src.Output != "" {
 		dst.Output = src.Output
 	}
@@ -162,7 +176,14 @@ func overlay(dst, src Profile) Profile {
 		dst.Extensions = src.Extensions
 	}
 	if len(src.Ignore) > 0 {
-		dst.Ignore = src.Ignore
+		if src.OverrideIgnore {
+			dst.Ignore = src.Ignore
+		} else {
+			dst.Ignore = append(dst.Ignore, src.Ignore...)
+		}
+	}
+	if src.OverrideIgnore {
+		dst.OverrideIgnore = true
 	}
 	if src.SmartFilter != nil {
 		dst.SmartFilter = src.SmartFilter
@@ -196,6 +217,20 @@ func overlay(dst, src Profile) Profile {
 		}
 		dst.Scoring = &merged
 	}
+	if src.Modes != nil {
+		if dst.Modes == nil {
+			dst.Modes = &ModesConfig{}
+		}
+		if len(src.Modes.Full) > 0 {
+			dst.Modes.Full = src.Modes.Full
+		}
+		if len(src.Modes.Signatures) > 0 {
+			dst.Modes.Signatures = src.Modes.Signatures
+		}
+		if len(src.Modes.Skip) > 0 {
+			dst.Modes.Skip = src.Modes.Skip
+		}
+	}
 	if len(src.Extends) > 0 {
 		dst.Extends = src.Extends
 	}
@@ -216,6 +251,12 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	}
 	if p.Mode != "" && !fs.Changed("mode") {
 		c.Mode = p.Mode
+	}
+	if p.FallbackMode != "" && !fs.Changed("fallback-mode") {
+		c.FallbackMode = p.FallbackMode
+	}
+	if p.FallbackThreshold != nil && !fs.Changed("fallback-threshold") {
+		c.FallbackThreshold = *p.FallbackThreshold
 	}
 	if p.Output != "" && !fs.Changed("output") {
 		c.OutputFile = p.Output
@@ -244,8 +285,25 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	if len(p.Extensions) > 0 && !fs.Changed("ext") {
 		c.Extensions = strings.Join([]string(p.Extensions), ",")
 	}
-	if len(p.Ignore) > 0 && !fs.Changed("ignore") {
+	if p.OverrideIgnore && !fs.Changed("ignore") {
 		c.CustomIgnore = strings.Join([]string(p.Ignore), ",")
+	} else if len(p.Ignore) > 0 && !fs.Changed("ignore") {
+		if c.CustomIgnore == "" {
+			c.CustomIgnore = strings.Join([]string(p.Ignore), ",")
+		} else {
+			base := strings.Split(c.CustomIgnore, ",")
+			merged := append(base, []string(p.Ignore)...)
+			seen := make(map[string]bool, len(merged))
+			unique := make([]string, 0, len(merged))
+			for _, pat := range merged {
+				pat = strings.TrimSpace(pat)
+				if pat != "" && !seen[pat] {
+					seen[pat] = true
+					unique = append(unique, pat)
+				}
+			}
+			c.CustomIgnore = strings.Join(unique, ",")
+		}
 	}
 	if p.SmartFilter != nil && !fs.Changed("smart") {
 		c.SmartFilter = *p.SmartFilter
@@ -273,5 +331,8 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	}
 	if p.Scoring != nil {
 		c.Scoring.Merge(*p.Scoring)
+	}
+	if p.Modes != nil {
+		c.Modes = *p.Modes
 	}
 }

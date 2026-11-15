@@ -72,6 +72,9 @@ func parseConfigBytes(data []byte) (configFile, error) {
 	if err := toml.Unmarshal(data, &cf); err != nil {
 		return cf, err
 	}
+	if err := cf.normalize(); err != nil {
+		return cf, err
+	}
 	if cf.Profiles == nil {
 		cf.Profiles = map[string]Profile{}
 	}

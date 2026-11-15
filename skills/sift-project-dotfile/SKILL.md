@@ -117,14 +117,12 @@ style = "xml"
 default_profile = "full" # This is now inside [profiles.full].
 ```
 
-### 3.2 Profile inheritance and the ignore trap
+### 3.2 Profile inheritance and ignore handling
 
-**Do not assume profiles inherit `ignore` from `[sift]`.** Sift's own repository `.sift.toml` explicitly documents that profiles do not inherit `ignore` from `[sift]`. A default profile can therefore lose the exclusions that appear to be configured globally.
-
-Use a shared base profile instead:
+Profiles automatically inherit base `ignore` rules from `[sift].ignore`, appending their own profile-specific ignores. If a profile genuinely wants to start with a blank slate and ignore nothing from `[sift]`, specify `override_ignore = true`:
 
 ```toml
-[profiles.base]
+[sift]
 ignore = [
   "**/vendor/**",
   "**/build/**",
@@ -134,19 +132,56 @@ ignore = [
 ]
 
 [profiles.full]
-extends = ["base"]
 compress_mode = "full"
+# Inherits [sift].ignore automatically
 
-[profiles.signatures]
-extends = ["base"]
-compress_mode = "signatures"
+[profiles.raw]
+# Starts with a clean slate:
+override_ignore = true
+ignore = ["node_modules/**"]
 ```
 
-Put reusable ignore rules in the base profile and make every profile that needs them extend that base. A profile's own fields override fields from its ancestors. A target may select a profile, then override fields for that one artifact.
+You can also use a shared base profile with `extends = ["base"]` for multi-profile composition.
 
-If a profile must have a different ignore policy, declare that policy explicitly. Never assume that a profile or target has inherited a rule without checking the resolved behavior using a real dump.
+### 3.3 Path-based compression mapping (`[modes]`)
 
-### 3.3 Targets are distinct artifacts
+You can define glob-based rules in `.sift.toml` to partition code into `full`, `signatures`, and `skip`:
+
+```toml
+[modes]
+full = [
+  "**/data/**",
+  "**/repo/**",
+  "**/domain/model/**",
+  "docs/**"
+]
+signatures = [
+  "**/ui/**",
+  "**/components/**"
+]
+skip = [
+  "**/test/**",
+  "**/*_test.go"
+]
+```
+
+This guarantees that core business logic is dumped in full fidelity while UI presentation components are cleanly compressed to signatures without requiring manual selection in the TUI.
+
+### 3.4 Progressive fallback compression (`fallback_mode`)
+
+Instead of all-or-nothing dumps where overflowing a budget silently drops remaining files, use progressive fallback compression:
+
+```toml
+[sift]
+budget = "200k"            # supports human-readable units (200k, 1.5M, 200_000)
+compress_mode = "full"
+fallback_mode = "signatures"
+fallback_threshold = 1.0   # default 1.0 (100%), or 0.8 for 80%
+```
+
+When the budget ceiling (or threshold) is reached, Sift switches remaining files to signatures rather than dropping them. This ensures 100% repository file coverage within the token limit while preserving top-ranked source files in full fidelity.
+
+### 3.5 Targets are distinct artifacts
 
 Use `[[targets]]` when one repository needs more than one repeatable view, such as:
 

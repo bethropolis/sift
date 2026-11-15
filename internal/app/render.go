@@ -161,7 +161,11 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 	if applyBudget && a.cfg.Budget > 0 {
 		a.infoLog("Applying token budget: %d", a.cfg.Budget)
 		var kept []format.FileEntry
-		kept, usedTokens = tokenize.FitToBudget(files, a.cfg.Budget)
+		if a.cfg.FallbackMode == "signatures" {
+			kept, usedTokens = tokenize.FitToBudgetWithFallback(files, a.cfg.Budget, a.cfg.FallbackThreshold)
+		} else {
+			kept, usedTokens = tokenize.FitToBudget(files, a.cfg.Budget)
+		}
 		files = kept
 		if len(files) == 0 {
 			a.log.Warn("Token budget %d is too small for any file.", a.cfg.Budget)
