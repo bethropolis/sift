@@ -164,4 +164,3 @@ func FitToBudgetWithFallback(files []format.FileEntry, budget int, threshold flo
 
 	return kept, used
 }
-

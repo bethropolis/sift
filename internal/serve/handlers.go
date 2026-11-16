@@ -332,12 +332,12 @@ func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type file struct {
-		Path      string  `json:"path"`
-		Size      int     `json:"size"`
-		Tokens    int     `json:"tokens"`
-		Language  string  `json:"language"`
-		Score     float64 `json:"score"`
-		Followable bool   `json:"followable"`
+		Path       string  `json:"path"`
+		Size       int     `json:"size"`
+		Tokens     int     `json:"tokens"`
+		Language   string  `json:"language"`
+		Score      float64 `json:"score"`
+		Followable bool    `json:"followable"`
 	}
 	out := make([]file, 0, len(files))
 	for _, f := range files {

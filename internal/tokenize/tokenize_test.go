@@ -154,4 +154,3 @@ func TestFitToBudgetWithFallback(t *testing.T) {
 		t.Errorf("no budget: kept %d, used %d", len(kept), used)
 	}
 }
-

@@ -280,4 +280,3 @@ func Beta() {
 		t.Errorf("expected signature compression /* ... */ in rendered output:\n%s", rendered)
 	}
 }
-

@@ -19,11 +19,11 @@ import (
 )
 
 var (
-	printSelection  bool
-	selectionFormat string
-	selectionOnly   bool
-	includeSkipped  bool
-	followSeed      string
+	printSelection     bool
+	selectionFormat    string
+	selectionOnly      bool
+	includeSkipped     bool
+	followSeed         string
 	selFollowDirection string
 	selFollowDepth     int
 	selFollowFullDepth int

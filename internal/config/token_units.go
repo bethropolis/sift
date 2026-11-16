@@ -172,4 +172,3 @@ func (pf *profilesFile) normalize() error {
 	}
 	return nil
 }
-

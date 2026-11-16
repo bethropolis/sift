@@ -12,31 +12,31 @@ type StringList []string
 // SiftDefaults holds top-level [sift] defaults. Every field is optional;
 // zero/nil means "use Config.New() default". Mirrors a subset of Config.
 type SiftDefaults struct {
-	Style             string     `toml:"style"`
-	TokenizeModel     string     `toml:"tokenize_model"`
-	BudgetRaw         any        `toml:"budget"`
-	Budget            int        `toml:"-"`
-	Mode              string     `toml:"compress_mode"`
-	FallbackMode      string     `toml:"fallback_mode"`
-	FallbackThreshold *float64   `toml:"fallback_threshold"`
-	Output            string     `toml:"output"`
-	Prompt            string     `toml:"prompt"`
-	PromptFile        string     `toml:"prompt_file"`
-	SecretScan        *bool      `toml:"secret_scan"`
-	ForceSecrets      *bool      `toml:"force_secrets"`
-	IgnoreHidden      *bool      `toml:"ignore_hidden"`
-	IgnoreGit         *bool      `toml:"ignore_git"`
-	Extensions        StringList `toml:"extensions"`
-	Ignore            StringList `toml:"ignore"`
-	SmartFilter       *bool      `toml:"smart_filter"`
-	SmartMaxTokens    int        `toml:"smart_max_tokens"`
-	Highlight         *bool      `toml:"highlight"`
-	NoHighlight       *bool      `toml:"no_highlight"`
-	Theme             string     `toml:"theme"`
-	UIThemeFile       string     `toml:"ui_theme_file"`
-	HighlightMaxBytes int        `toml:"highlight_max_bytes"`
-	WindowTitle       string     `toml:"window_title"`
-	NoWindowTitle     *bool      `toml:"no_window_title"`
+	Style             string       `toml:"style"`
+	TokenizeModel     string       `toml:"tokenize_model"`
+	BudgetRaw         any          `toml:"budget"`
+	Budget            int          `toml:"-"`
+	Mode              string       `toml:"compress_mode"`
+	FallbackMode      string       `toml:"fallback_mode"`
+	FallbackThreshold *float64     `toml:"fallback_threshold"`
+	Output            string       `toml:"output"`
+	Prompt            string       `toml:"prompt"`
+	PromptFile        string       `toml:"prompt_file"`
+	SecretScan        *bool        `toml:"secret_scan"`
+	ForceSecrets      *bool        `toml:"force_secrets"`
+	IgnoreHidden      *bool        `toml:"ignore_hidden"`
+	IgnoreGit         *bool        `toml:"ignore_git"`
+	Extensions        StringList   `toml:"extensions"`
+	Ignore            StringList   `toml:"ignore"`
+	SmartFilter       *bool        `toml:"smart_filter"`
+	SmartMaxTokens    int          `toml:"smart_max_tokens"`
+	Highlight         *bool        `toml:"highlight"`
+	NoHighlight       *bool        `toml:"no_highlight"`
+	Theme             string       `toml:"theme"`
+	UIThemeFile       string       `toml:"ui_theme_file"`
+	HighlightMaxBytes int          `toml:"highlight_max_bytes"`
+	WindowTitle       string       `toml:"window_title"`
+	NoWindowTitle     *bool        `toml:"no_window_title"`
 	CopyOnGenerate    *bool        `toml:"copy_on_generate"`
 	Scoring           *Scoring     `toml:"scoring"`
 	Modes             *ModesConfig `toml:"modes"`
@@ -61,29 +61,29 @@ func (p PromptRef) ResolvedPrompt() (string, error) {
 
 // Target is one named dump artifact declared via [[targets]].
 type Target struct {
-	Name           string     `toml:"name"`
-	Profile        string     `toml:"profile"`
-	Output         string     `toml:"output"`
-	Style          string     `toml:"style"`
-	TokenizeModel  string     `toml:"tokenize_model"`
-	BudgetRaw      any        `toml:"budget"`
-	Budget         int        `toml:"-"`
-	Mode              string     `toml:"compress_mode"`
-	FallbackMode      string     `toml:"fallback_mode"`
-	FallbackThreshold *float64   `toml:"fallback_threshold"`
-	Prompt            string     `toml:"prompt"`
-	PromptFile     string     `toml:"prompt_file"`
-	SecretScan     *bool      `toml:"secret_scan"`
-	ForceSecrets   *bool      `toml:"force_secrets"`
-	IgnoreHidden   *bool      `toml:"ignore_hidden"`
-	IgnoreGit      *bool      `toml:"ignore_git"`
-	Extensions     StringList `toml:"extensions"`
-	Ignore         StringList `toml:"ignore"`
-	OverrideIgnore bool       `toml:"override_ignore"`
-	SmartFilter    *bool        `toml:"smart_filter"`
-	SmartMaxTokens int          `toml:"smart_max_tokens"`
-	Scoring        *Scoring     `toml:"scoring"`
-	Modes          *ModesConfig `toml:"modes"`
+	Name              string       `toml:"name"`
+	Profile           string       `toml:"profile"`
+	Output            string       `toml:"output"`
+	Style             string       `toml:"style"`
+	TokenizeModel     string       `toml:"tokenize_model"`
+	BudgetRaw         any          `toml:"budget"`
+	Budget            int          `toml:"-"`
+	Mode              string       `toml:"compress_mode"`
+	FallbackMode      string       `toml:"fallback_mode"`
+	FallbackThreshold *float64     `toml:"fallback_threshold"`
+	Prompt            string       `toml:"prompt"`
+	PromptFile        string       `toml:"prompt_file"`
+	SecretScan        *bool        `toml:"secret_scan"`
+	ForceSecrets      *bool        `toml:"force_secrets"`
+	IgnoreHidden      *bool        `toml:"ignore_hidden"`
+	IgnoreGit         *bool        `toml:"ignore_git"`
+	Extensions        StringList   `toml:"extensions"`
+	Ignore            StringList   `toml:"ignore"`
+	OverrideIgnore    bool         `toml:"override_ignore"`
+	SmartFilter       *bool        `toml:"smart_filter"`
+	SmartMaxTokens    int          `toml:"smart_max_tokens"`
+	Scoring           *Scoring     `toml:"scoring"`
+	Modes             *ModesConfig `toml:"modes"`
 }
 
 // Automation holds optional declarative automation hints.

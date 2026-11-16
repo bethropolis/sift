@@ -133,4 +133,3 @@ budget = 200_000
 		t.Errorf("Targets[1].Budget = %d, want 200000", cf.Targets[1].Budget)
 	}
 }
-

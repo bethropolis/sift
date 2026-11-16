@@ -12,31 +12,31 @@ import (
 // Profile is a named set of configuration overrides loaded from TOML.
 // Pointer fields distinguish "not set" from an explicit value.
 type Profile struct {
-	Style             string     `toml:"style"`
-	TokenizeModel     string     `toml:"tokenize_model"`
-	BudgetRaw         any        `toml:"budget"`
-	Budget            int        `toml:"-"`
-	Mode              string     `toml:"compress_mode"`
-	FallbackMode      string     `toml:"fallback_mode"`
-	FallbackThreshold *float64   `toml:"fallback_threshold"`
-	Output            string     `toml:"output"`
-	Prompt            string     `toml:"prompt"`
-	PromptFile        string     `toml:"prompt_file"`
-	SecretScan        *bool      `toml:"secret_scan"`
-	ForceSecrets      *bool      `toml:"force_secrets"`
-	IgnoreHidden      *bool      `toml:"ignore_hidden"`
-	IgnoreGit         *bool      `toml:"ignore_git"`
-	Extensions        StringList `toml:"extensions"`
-	Ignore            StringList `toml:"ignore"`
-	OverrideIgnore    bool       `toml:"override_ignore"`
-	SmartFilter       *bool      `toml:"smart_filter"`
-	SmartMaxTokens    int        `toml:"smart_max_tokens"`
-	Highlight         *bool      `toml:"highlight"`
-	NoHighlight       *bool      `toml:"no_highlight"`
-	Theme             string     `toml:"theme"`
-	HighlightMaxBytes int        `toml:"highlight_max_bytes"`
-	WindowTitle       string     `toml:"window_title"`
-	NoWindowTitle     *bool      `toml:"no_window_title"`
+	Style             string       `toml:"style"`
+	TokenizeModel     string       `toml:"tokenize_model"`
+	BudgetRaw         any          `toml:"budget"`
+	Budget            int          `toml:"-"`
+	Mode              string       `toml:"compress_mode"`
+	FallbackMode      string       `toml:"fallback_mode"`
+	FallbackThreshold *float64     `toml:"fallback_threshold"`
+	Output            string       `toml:"output"`
+	Prompt            string       `toml:"prompt"`
+	PromptFile        string       `toml:"prompt_file"`
+	SecretScan        *bool        `toml:"secret_scan"`
+	ForceSecrets      *bool        `toml:"force_secrets"`
+	IgnoreHidden      *bool        `toml:"ignore_hidden"`
+	IgnoreGit         *bool        `toml:"ignore_git"`
+	Extensions        StringList   `toml:"extensions"`
+	Ignore            StringList   `toml:"ignore"`
+	OverrideIgnore    bool         `toml:"override_ignore"`
+	SmartFilter       *bool        `toml:"smart_filter"`
+	SmartMaxTokens    int          `toml:"smart_max_tokens"`
+	Highlight         *bool        `toml:"highlight"`
+	NoHighlight       *bool        `toml:"no_highlight"`
+	Theme             string       `toml:"theme"`
+	HighlightMaxBytes int          `toml:"highlight_max_bytes"`
+	WindowTitle       string       `toml:"window_title"`
+	NoWindowTitle     *bool        `toml:"no_window_title"`
 	Scoring           *Scoring     `toml:"scoring"`
 	Modes             *ModesConfig `toml:"modes"`
 	Extends           []string     `toml:"extends"`
