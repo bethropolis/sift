@@ -83,7 +83,7 @@ Use this map to write the project-specific prompt. Do not copy a package map fro
 
 ## 3. Understand the Sift configuration model
 
-The current config file is `.sift.toml`, located at the root of the directory being scanned. When running `sift dump /path/to/repo`, Sift resolves the config relative to that scanned repository, not simply the caller's current working directory.
+The project config file is `.sift.toml`, located at the root of the directory being scanned. When running `sift dump /path/to/repo`, Sift resolves the config relative to that scanned repository, not simply the caller's current working directory. You can also pass `--config /path/to/file.toml` to select an alternate config explicitly.
 
 Sift configuration has several layers:
 
@@ -117,71 +117,68 @@ style = "xml"
 default_profile = "full" # This is now inside [profiles.full].
 ```
 
-### 3.2 Profile inheritance and ignore handling
+### 3.2 Profile inheritance, `ignore`, and `override_ignore`
 
-Profiles automatically inherit base `ignore` rules from `[sift].ignore`, appending their own profile-specific ignores. If a profile genuinely wants to start with a blank slate and ignore nothing from `[sift]`, specify `override_ignore = true`:
+Profiles automatically inherit ignore patterns from `[sift].ignore`. A profile can add more patterns to that inherited set. It does not need a special base profile merely to retain repository-wide exclusions.
 
 ```toml
 [sift]
 ignore = [
-  "**/vendor/**",
   "**/build/**",
+  "**/.gradle/**",
   "**/*.md",
   "!/README.md",
   "!/AGENTS.md",
 ]
 
-[profiles.full]
-compress_mode = "full"
-# Inherits [sift].ignore automatically
+[profiles.tests]
+# Inherits the root ignore rules and adds a test-specific exclusion.
+ignore = ["**/generated-test-fixtures/**"]
 
 [profiles.raw]
-# Starts with a clean slate:
+# Explicitly discards [sift].ignore and starts a clean ignore list.
 override_ignore = true
 ignore = ["node_modules/**"]
 ```
 
-You can also use a shared base profile with `extends = ["base"]` for multi-profile composition.
+Use `override_ignore = true` only when a profile genuinely needs an isolated filtering policy. Otherwise, let it inherit `[sift].ignore`. This makes root-level filtering rules easier to maintain and avoids duplicating them across profiles.
 
-### 3.3 Path-based compression mapping (`[modes]`)
+`extends` remains useful for composing named profiles: ancestor profiles are overlaid in order, then the profile's own fields win. Use it to share budgets, prompts, compression preferences, or output conventions.
 
-You can define glob-based rules in `.sift.toml` to partition code into `full`, `signatures`, and `skip`:
+### 3.3 Path-based compression mapping with `[modes]`
+
+Use `[modes]` to assign deterministic dump behavior by path glob without manually opening the picker:
 
 ```toml
 [modes]
 full = [
-  "**/data/**",
-  "**/repo/**",
-  "**/domain/model/**",
-  "docs/**"
+  "cmd/**",
+  "internal/core/**",
+  "pkg/domain/**",
+  "**/*_test.go",
 ]
 signatures = [
-  "**/ui/**",
-  "**/components/**"
+  "internal/ui/**",
+  "web/**",
+  "generated/**",
 ]
 skip = [
-  "**/test/**",
-  "**/*_test.go"
+  "**/*.min.js",
+  "**/coverage/**",
 ]
 ```
 
-This guarantees that core business logic is dumped in full fidelity while UI presentation components are cleanly compressed to signatures without requiring manual selection in the TUI.
+- `full`: keep matching files at full fidelity.
+- `signatures`: compress matching files to tree-sitter structural signatures.
+- `skip`: omit matching files entirely.
 
-### 3.4 Progressive fallback compression (`fallback_mode`)
+Use `[modes]` to preserve high-value implementation and test code in full while reducing bulky peripheral areas to signatures. Use `skip` sparingly: skipping tests, fixtures, migrations, protocol definitions, schemas, or generated contracts can remove important behavioral evidence. Never blanket-skip tests just to make the dump smaller unless the user explicitly asks for that trade-off.
 
-Instead of all-or-nothing dumps where overflowing a budget silently drops remaining files, use progressive fallback compression:
+Keep the path lists narrow, repository-specific, and non-overlapping where possible. Do not assume an overlapping glob has a particular precedence unless the installed Sift version's docs or implementation explicitly guarantees it.
 
-```toml
-[sift]
-budget = "200k"            # supports human-readable units (200k, 1.5M, 200_000)
-compress_mode = "full"
-fallback_mode = "signatures"
-fallback_threshold = 1.0   # default 1.0 (100%), or 0.8 for 80%
-```
+`[modes]` is a dump-rendering policy, not a replacement for `ignore` or `extensions`: use `ignore` to exclude unwanted paths from the scan, `extensions` for a deliberately narrow file-type view, and `[modes]` to choose full/signature/skip treatment for paths that are otherwise in scope.
 
-When the budget ceiling (or threshold) is reached, Sift switches remaining files to signatures rather than dropping them. This ensures 100% repository file coverage within the token limit while preserving top-ranked source files in full fidelity.
-
-### 3.5 Targets are distinct artifacts
+### 3.4 Targets are distinct artifacts
 
 Use `[[targets]]` when one repository needs more than one repeatable view, such as:
 
@@ -263,7 +260,7 @@ Do not claim that CI configuration was included if `.github/` was filtered by `i
 
 For this user's established preference, include only the **repository-root** `README.md` and `AGENTS.md` in Markdown-aware dumps. Exclude nested Markdown documents such as `docs/ARCHITECTURE.md`, `docs/README.md`, generated reports, and scratch notes unless the user explicitly requests them.
 
-Use ordered Git-ignore-style rules in the shared base profile:
+Put these ordered Git-ignore-style rules directly in `[sift].ignore`. Sift automatically carries them into profiles unless a profile sets `override_ignore = true`:
 
 ```toml
 ignore = [
@@ -280,7 +277,7 @@ Important caveats:
 - Do not exclude a parent directory and then attempt to re-include a file inside it. Git-ignore semantics cannot re-include a file when its parent directory has already been pruned.
 - These custom patterns do not magically override a separate `.gitignore` rule. If a permitted file is itself Git-ignored, inspect and resolve that conflict deliberately.
 - If the user wants `README.md` and `AGENTS.md` at any depth, remove the leading `/` from the two negations. The default above is root-only.
-- A Markdown-only target still needs both `extensions = ["md"]` and the shared Markdown ignore policy. The extension filter alone includes every Markdown file.
+- A Markdown-only target still needs both `extensions = ["md"]` and the root `[sift].ignore` allowlist. Profiles and targets retain the inherited ignore rules unless explicitly overridden; the extension filter alone includes every Markdown file.
 - If neither permitted file exists, do not pretend the guidance target contains documentation. Omit the target or keep it with an explicit empty-source warning, depending on the user's intended workflow.
 
 ## 5. Set budgets and compression modes
@@ -297,22 +294,42 @@ A Sift budget of `0` means unlimited; do not use `0` when the user requested a b
 
 Use smaller budgets for narrow targets, for example 8,000–20,000 tokens for project guidance. Choose the number based on how much content the target is intended to include, not just because a smaller number looks tidy.
 
-### 5.2 Compression
+### 5.2 Progressive fallback compression
+
+With `compress_mode = "full"`, a dump that reaches its budget normally drops remaining files. Configuring `fallback_mode = "signatures"` allows remaining or overflowing files to be represented by structural signatures instead of disappearing entirely once the configured threshold is reached. This preserves broad architectural coverage while keeping already-packed high-priority code in full fidelity.
+
+```toml
+[sift]
+budget = 150000
+compress_mode = "full"
+fallback_mode = "signatures"
+fallback_threshold = 0.9
+```
+
+`fallback_threshold` is a fraction of the budget; `0.9` (or `"90%"`) starts fallback around 90% usage, while `1.0` waits until the budget is reached. Choose the threshold based on the trade-off: a lower value reserves more room for signatures, while `1.0` maximizes full-fidelity content before fallback begins. Do not claim every file is guaranteed to fit: files without a supported tree-sitter signature parser may not compress as expected, and the total output still remains constrained by the token budget. Verify real output on the target repository.
+
+Fallback is often a good complement to a 150k full-mode dump when the user values seeing more of the repository. It is not mandatory: use it when broad coverage is more valuable than having the overflow files omitted, and explain the fidelity trade-off.
+
+### 5.3 Human-readable token units
+
+Token budgets accept numeric values with separators (`150_000`) or human-readable suffixes (`150k`, `1.5M`) in both the CLI and configuration. Both `budget = 150000` and `budget = "150k"` represent the same intended scale. Prefer the representation the project maintainers find clearest; never confuse token count with bytes or file count.
+
+### 5.4 Compression
 
 Sift supports `full`, `signatures`, and `skip` modes in dump rendering:
 
 - `full` preserves implementation bodies. Prefer it for debugging, security review, refactoring, behavioral analysis, or when the agent must reason about exact control flow.
 - `signatures` retains supported declarations, imports, and useful comments while dropping implementation bodies. Prefer it for architecture orientation or a lower-cost map of a large codebase.
-- `skip` is a per-file picker mode, not the primary project-wide compression setting.
+- `skip` is also available as a path treatment in `[modes].skip`.
 
-For this user, use `compress_mode = "full"` for the main dump. Add a signatures profile/target only when it serves a distinct purpose.
+For this user, use `compress_mode = "full"` for the main dump. Use `[modes]` when the repository has clear high-value full-fidelity paths or bulky peripheral paths worth reducing. Add a signatures profile/target only when it serves a distinct purpose.
 
 Important command differences:
 
-- `compress_mode` is applied uniformly by `sift dump`.
-- `sift select` chooses modes per file and does not use `compress_mode` to flatten that selection.
+- `compress_mode` supplies the overall dump mode; `[modes]` provides deterministic per-path modes for `sift dump`.
+- `sift select` derives a mode per file from its relevance ranker and does not use `compress_mode` to flatten that selection. Tune `[scoring]` for `select`.
 - The interactive picker supports mixed `FULL`, `SIGS`, and `SKIP` modes per file.
-- There is no supported per-glob `modes = { ... }` map for `sift dump`. Do not invent one.
+- Do not confuse `[modes]` path mapping with `[scoring]`: they solve different problems. `[modes]` maps explicit paths to modes for dump; `[scoring]` tunes automatic selection/picker smart-select.
 
 Signature-mode language support is implementation-dependent and can change. Check the current Sift output-format documentation before assuming a particular language receives syntax-aware signatures; files without a supported parser are emitted in full.
 
@@ -381,10 +398,8 @@ smart_filter = false
 ignore_hidden = true
 ignore_git = true
 secret_scan = true
-
-# Shared base profile. Profiles do not inherit ignore from [sift],
-# so put reusable ignore rules here and extend this profile.
-[profiles.base]
+fallback_mode = "signatures"
+fallback_threshold = 0.9
 ignore = [
   "**/vendor/**",
   "**/node_modules/**",
@@ -404,7 +419,6 @@ ignore = [
 ]
 
 [profiles.full]
-extends = ["base"]
 style = "xml"
 output = "codebase.xml"
 budget = 150000
@@ -412,10 +426,22 @@ compress_mode = "full"
 smart_filter = false
 prompt = """Describe the project from the included source. Trace behavior through entry points, core layers, persistence, external boundaries, and tests. Treat the file tree as orientation rather than proof. Distinguish verified behavior from inference, and call out missing evidence instead of inventing details."""
 
+# Optional: path-specific modes. Populate only from repository evidence.
+[modes]
+full = [
+  "cmd/**",
+  "internal/core/**",
+  "**/*_test.go",
+]
+signatures = [
+  "internal/ui/**",
+  "web/**",
+]
+
 # Add only when repository-root README.md and/or AGENTS.md exist.
 [[targets]]
 name = "guidance"
-profile = "base"
+profile = "full"
 output = "guidance-context.xml"
 style = "xml"
 extensions = ["md"]
@@ -493,7 +519,11 @@ Only list files that actually exist. Nested `docs/*.md` files, nested READMEs, g
 ## 10. Common mistakes to avoid
 
 - Putting `default_profile` after a table header.
-- Putting `ignore` only in `[sift]` and assuming the default profile inherits it.
+- Adding a base profile solely to carry `ignore` rules when profiles already inherit `[sift].ignore` automatically.
+- Setting `override_ignore = true` accidentally and silently discarding repository-wide ignores.
+- Forgetting that `[modes].skip` completely omits matched paths, or using it on tests/contracts without considering the loss of evidence.
+- Assuming `fallback_mode = "signatures"` preserves full implementation bodies; it deliberately degrades overflow files to structural signatures.
+- Using `[modes]` with overlapping globs and relying on undocumented overlap precedence.
 - Forgetting that `extensions = ["md"]` includes **all** Markdown files, not only README and AGENTS.
 - Using extension allowlists on a full dump and accidentally excluding extensionless build/deployment files.
 - Excluding all tests or fixtures from a general context dump.
@@ -501,7 +531,7 @@ Only list files that actually exist. Nested `docs/*.md` files, nested READMEs, g
 - Setting `ignore_hidden = true` without checking whether `.github/` or other hidden project files are important.
 - Setting `budget = 0` when a bounded budget was requested.
 - Assuming `compress_mode` controls `sift select` or that `skip_roles` affects `sift dump`.
-- Inventing a per-file compression map for `dump`; per-file modes belong to the picker or selection workflows.
+- Assuming `[modes]` affects `select` or picker workflows the same way it affects `dump`; verify command-specific behavior rather than transferring semantics between commands.
 - Excluding a parent directory and then attempting to re-include a child file with `!`.
 - Forgetting to ignore the generated context output, causing it to be included in future dumps.
 - Treating Sift's secret redaction as a guarantee. It is best-effort; never deliberately include credentials.
@@ -521,7 +551,24 @@ When asked to create a project dotfile:
 
 When asked to write or improve this skill, keep the current Sift documentation links below up to date and revisit the relevant sections before changing configuration guidance.
 
-## 12. Canonical references
+## 12. Sift configuration capability checklist
+
+When authoring or revising a dotfile, consider the following capabilities. Use only the features that solve a real repository problem:
+
+| Feature | Configuration / command | When it helps |
+|---|---|---|
+| Progressive fallback compression | `fallback_mode`, `fallback_threshold` | Preserve broad file coverage after full-fidelity content reaches the token budget. |
+| Path-based compression mapping | `[modes]` with `full`, `signatures`, `skip` | Keep core areas/tests full while compressing bulky peripheral code. |
+| Human-readable token units | `budget = "150k"`; `--budget 150k` | Make large budgets easier to read. |
+| Profile ignore inheritance | `[sift].ignore`, `override_ignore` | Share repository exclusions automatically; opt out only for isolated profiles. |
+| Alternate config path | `--config path.toml` | Test or use a separate config without replacing the repository dotfile. |
+| Skill distribution and MCP support | `sift skill ...`, `sift://skill`, `sift_skill` | Discover/install Sift's own usage skill in supported agent environments. This is separate from the project-specific `.sift.toml` being authored here. |
+
+Sift's repository includes its own self-dumping `.sift.toml`. Study it as a practical reference for profile and mode composition, but do not copy its Go-specific globs, extension list, or exclusions into unrelated repositories.
+
+For Sift usage guidance in supported coding-agent environments, Sift provides `sift skill status`, `sift skill install`, `sift skill show`, and `sift skill uninstall`. These manage Sift's bundled usage skill; they do not automatically install this custom project-dotfile authoring skill.
+
+## 13. Canonical references
 
 Use Sift's own documentation and repository configuration as the authority. Re-check these sources because flags, supported signature parsers, and config behavior can evolve.
 
@@ -533,7 +580,8 @@ Use Sift's own documentation and repository configuration as the authority. Re-c
 - [Following imports](https://bethropolis.github.io/sift/docs/follow/)
 - [Incremental deltas](https://bethropolis.github.io/sift/docs/delta/)
 - [Sift repository README](https://github.com/bethropolis/sift)
-- [Sift's own `.sift.toml`](https://github.com/bethropolis/sift/blob/main/.sift.toml) — particularly useful for real profile/target structure and the `ignore` inheritance caveat.
-- [Sift's Git-ignore matcher dependency](https://github.com/denormal/go-gitignore) — confirms ordered `!` negation semantics and the parent-directory re-inclusion limitation.
+- [Sift releases](https://github.com/bethropolis/sift/releases) — release history and feature updates.
+- [Sift's own `.sift.toml`](https://github.com/bethropolis/sift/blob/main/.sift.toml) — practical reference for root ignore patterns, `[modes]`, profiles, and project-specific prompts.
+- [Sift's Git-ignore matcher dependency](https://github.com/denormal/go-gitignore) — useful background for ordered `!` negation semantics and parent-directory re-inclusion limitations.
 
-Last reviewed against the live Sift documentation and repository configuration: **2026-11-15**.
+Last reviewed against live configuration documentation: **2026-11-16**.
