@@ -178,9 +178,12 @@ func getVisibleCommands(parent *cobra.Command) []commandItem {
 		"watch":      9,
 		"serve":      10,
 		"mcp":        11,
-		"desktop":    12,
-		"version":    13,
-		"completion": 14,
+		"skill":      12,
+		"check":      13,
+		"config":     14,
+		"desktop":    15,
+		"version":    16,
+		"completion": 17,
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
@@ -722,6 +725,18 @@ func getCommandExamples(cmd *cobra.Command) []exampleItem {
 			{"sift mcp", "Start Model Context Protocol server over stdio for LLM agents"},
 			{"sift mcp ./src", "Start MCP server scoped to ./src directory"},
 			{"sift mcp --budget 120k", "Start MCP server with default 120k token limit"},
+		}
+	case "check":
+		return []exampleItem{
+			{"sift check", "Validate .sift.toml in current directory"},
+			{"sift check ./subproject", "Validate .sift.toml in ./subproject"},
+			{"sift check custom.toml", "Validate specific configuration file"},
+			{"sift check --quiet", "Validate silently; return non-zero exit code on failure"},
+		}
+	case "config":
+		return []exampleItem{
+			{"sift config check", "Validate .sift.toml in current directory"},
+			{"sift config check ./subproject", "Validate .sift.toml in ./subproject"},
 		}
 	case "desktop":
 		return []exampleItem{

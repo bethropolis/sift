@@ -232,10 +232,46 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 		return writeErr
 	}
 
+	var fullCount, sigCount, totalSecrets int
+	for _, f := range files {
+		if f.IsCompressed {
+			sigCount++
+		} else {
+			fullCount++
+		}
+		totalSecrets += f.SecretCount
+	}
+
+	stats := summary.DumpStats{
+		FileCount:         len(files),
+		FullCount:         fullCount,
+		SigCount:          sigCount,
+		SkippedCount:      len(skippedItems),
+		TotalTokens:       tokenTotal,
+		Budget:            a.cfg.Budget,
+		Duration:          duration,
+		OutputFile:        a.cfg.OutputFile,
+		OutputStyle:       a.cfg.EffectiveStyle(),
+		IsClipboard:       a.cfg.Clipboard,
+		SecretCount:       totalSecrets,
+		FallbackMode:      a.cfg.FallbackMode,
+		FallbackThreshold: a.cfg.FallbackThreshold,
+		FallbackApplied:   sigCount > 0 && a.cfg.FallbackMode == "signatures",
+	}
+
+	// When dumping to stdout (-o - or empty output), send the human summary to stderr
+	// so the document stream on stdout stays pristine. When dumping to a file or clipboard,
+	// send the formatted summary to standard output.
+	summaryOut := os.Stdout
+	if (a.cfg.OutputFile == "" || a.cfg.OutputFile == "-") && !a.cfg.Clipboard {
+		summaryOut = os.Stderr
+	}
+
+	summary.PrintDumpSummary(summaryOut, stats, a.cfg.UseColors, a.cfg.Quiet)
 	summary.DisplayResults(a.log, int64(len(files)), tokenTotal, duration, a.cfg.Quiet)
 
 	if a.cfg.ShowSkipped {
-		summary.DisplaySkippedItems(a.log, skippedItems, os.Stderr, a.cfg.Quiet)
+		summary.DisplaySkippedItems(a.log, skippedItems, summaryOut, a.cfg.Quiet)
 	}
 
 	return nil

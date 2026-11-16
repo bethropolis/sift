@@ -456,9 +456,22 @@ This template is not a universal drop-in. In particular, choose `ignore_hidden` 
 
 Never stop after writing syntactically plausible TOML. Validate both the file and the behavior it produces.
 
-### 9.1 TOML syntax
+### 9.1 Validate with `sift check`
 
-Use Python 3.11+ `tomllib` if available:
+Run Sift's built-in validation command to verify TOML syntax, table ordering, profile inheritance, mode mappings, token budgets, and safety constraints:
+
+```bash
+sift check
+```
+
+You can also validate a specific file or check silently in CI:
+
+```bash
+sift check path/to/.sift.toml
+sift check --quiet
+```
+
+If the Sift binary is not installed in the environment yet, fall back to Python 3.11+ `tomllib`:
 
 ```bash
 python - <<'PY'
@@ -505,7 +518,7 @@ Use the output tree and skipped-file report to check the actual result. Confirm 
 - The configured budget is applied and is not accidentally `0` (unlimited).
 - Secret scanning remains enabled.
 
-If the Sift binary is unavailable, still parse the TOML and inspect the patterns carefully, but be honest that runtime behavior has not been smoke-tested. Do not invent a validation command; use `sift --help` and the installed version's documentation.
+If the Sift binary is unavailable, still parse the TOML and inspect the patterns carefully, but be honest that runtime behavior has not been smoke-tested. Use `sift check` whenever the binary is present.
 
 ### 9.3 Verify Markdown allowlisting explicitly
 
@@ -562,6 +575,7 @@ When authoring or revising a dotfile, consider the following capabilities. Use o
 | Human-readable token units | `budget = "150k"`; `--budget 150k` | Make large budgets easier to read. |
 | Profile ignore inheritance | `[sift].ignore`, `override_ignore` | Share repository exclusions automatically; opt out only for isolated profiles. |
 | Alternate config path | `--config path.toml` | Test or use a separate config without replacing the repository dotfile. |
+| Configuration check & validation | `sift check [path]`, `sift config check` | Verify `.sift.toml` syntax, profile inheritance, mode mappings, and safety constraints before dumping. |
 | Skill distribution and MCP support | `sift skill ...`, `sift://skill`, `sift_skill` | Discover/install Sift's own usage skill in supported agent environments. This is separate from the project-specific `.sift.toml` being authored here. |
 
 Sift's repository includes its own self-dumping `.sift.toml`. Study it as a practical reference for profile and mode composition, but do not copy its Go-specific globs, extension list, or exclusions into unrelated repositories.
