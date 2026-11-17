@@ -316,6 +316,81 @@ class Service
 	}
 }
 
+func TestCompressKotlin(t *testing.T) {
+	c := New()
+	src := `package com.example.ui
+
+import com.example.models.User as AppUser
+
+@Entity(tableName = "users")
+class DetailViewModel {
+    fun load() {
+        println("heavy implementation")
+    }
+
+    fun isReady(): Boolean = true
+
+    val formattedTitle: String
+        get() {
+            return "title".uppercase()
+        }
+
+    companion object {
+        fun create(): DetailViewModel {
+            return DetailViewModel()
+        }
+    }
+}
+
+object NetworkClient {
+    fun fetch() {
+        println("fetching")
+    }
+}
+
+@Composable
+@Preview
+fun DetailScreen(user: AppUser) {
+    Text("User detail")
+}
+`
+	out, didCompress := c.Compress([]byte(src), lang.Kotlin)
+	if !didCompress {
+		t.Fatal("expected compression")
+	}
+
+	for _, w := range []string{
+		"package com.example.ui",
+		"import com.example.models.User as AppUser",
+		"@Entity(tableName = \"users\")\nclass DetailViewModel {",
+		"fun load() { /* ... */ }",
+		"fun isReady(): Boolean { /* ... */ }",
+		"get() { /* ... */ }",
+		"companion object {",
+		"fun create(): DetailViewModel { /* ... */ }",
+		"object NetworkClient {",
+		"fun fetch() { /* ... */ }",
+		"@Composable\n@Preview\nfun DetailScreen(user: AppUser) { /* ... */ }",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q in output:\n%s", w, out)
+		}
+	}
+
+	for _, leaked := range []string{
+		"heavy implementation",
+		"= true",
+		"return \"title\".uppercase()",
+		"return DetailViewModel()",
+		"fetching",
+		"Text(\"User detail\")",
+	} {
+		if strings.Contains(out, leaked) {
+			t.Errorf("body leaked into Kotlin signatures: %q in:\n%s", leaked, out)
+		}
+	}
+}
+
 func TestCompressFallback(t *testing.T) {
 	c := New()
 	src := "this is not parseable as code, just prose text without declarations"

@@ -111,6 +111,11 @@ func (e *Engine) emitNode(n *sitter.Node, src []byte, spec *SignatureSpec, b *st
 	}
 
 	if spec.FunctionOrMethod(nodeType) {
+		if (nodeType == "getter" || nodeType == "setter") && !hasFunctionBody(n) {
+			b.WriteString(strings.TrimSpace(n.Content(src)))
+			b.WriteString("\n\n")
+			return true
+		}
 		doc := docComment(src, n)
 		sig := signatureFrom(declStart(n), src, n, spec)
 		if sig == "" {
@@ -119,6 +124,7 @@ func (e *Engine) emitNode(n *sitter.Node, src []byte, spec *SignatureSpec, b *st
 		if doc != "" {
 			b.WriteString(doc)
 		}
+		sig = indentBlock(sig, "")
 		b.WriteString(sig)
 		if spec.PythonLike {
 			b.WriteString(" ...\n\n")
@@ -191,8 +197,8 @@ func (e *Engine) emitTypeWithStructure(n *sitter.Node, src []byte, spec *Signatu
 	}
 
 	if isContainerType(n.Type()) {
-		if body := n.ChildByFieldName("body"); body != nil {
-			e.emitContainer(n, body, src, spec, b)
+		if body := containerBody(n); body != nil {
+			e.emitContainer(n, body, src, spec, b, "")
 			return
 		}
 	}
@@ -202,31 +208,52 @@ func (e *Engine) emitTypeWithStructure(n *sitter.Node, src []byte, spec *Signatu
 	b.WriteString("\n\n")
 }
 
-// emitContainer writes a class header followed by its members indented two
-// spaces, compressing method bodies. Python classes end at the header colon
+// emitContainer writes a class/container header followed by its members
+// indented, compressing method bodies. Python classes end at the header colon
 // (no closing brace).
-func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) {
+func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder, indent string) {
 	header := strings.TrimRight(string(src[declStart(n):int(body.StartByte())]), " \t\r\n")
-	b.WriteString(header)
+	if indent != "" {
+		b.WriteString(indentBlock(header, indent))
+	} else {
+		b.WriteString(header)
+	}
 	if spec.PythonLike {
 		b.WriteString("\n")
 	} else {
 		b.WriteString(" {\n")
 	}
 
+	childIndent := indent + "  "
 	for i := 0; i < int(body.ChildCount()); i++ {
 		child := body.Child(i)
 		if !child.IsNamed() {
 			continue
 		}
 		switch {
+		case isContainerType(child.Type()):
+			if childBody := containerBody(child); childBody != nil {
+				e.emitContainer(child, childBody, src, spec, b, childIndent)
+			} else {
+				text := strings.TrimSpace(child.Content(src))
+				if text != "" {
+					b.WriteString(indentBlock(text, childIndent) + "\n")
+				}
+			}
 		case spec.FunctionOrMethod(child.Type()):
+			if (child.Type() == "getter" || child.Type() == "setter") && !hasFunctionBody(child) {
+				text := strings.TrimSpace(child.Content(src))
+				if text != "" {
+					b.WriteString(indentBlock(text, childIndent) + "\n")
+				}
+				continue
+			}
 			if doc := docComment(src, child); doc != "" {
-				b.WriteString("  " + strings.TrimRight(strings.ReplaceAll(strings.TrimSpace(doc), "\n", "\n  "), " ") + "\n")
+				b.WriteString(indentBlock(strings.TrimSpace(doc), childIndent) + "\n")
 			}
 			sig := signatureFrom(declStart(child), src, child, spec)
 			if sig != "" {
-				b.WriteString("  " + sig)
+				b.WriteString(indentBlock(sig, childIndent))
 				if spec.PythonLike {
 					b.WriteString(" ...\n")
 				} else {
@@ -239,11 +266,11 @@ func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *Signature
 			if next := child.NextNamedSibling(); next != nil && spec.FunctionOrMethod(next.Type()) && attached(src, child, next) {
 				continue
 			}
-			b.WriteString("  " + strings.TrimSpace(child.Content(src)) + "\n")
+			b.WriteString(childIndent + strings.TrimSpace(child.Content(src)) + "\n")
 		default:
 			// Fields, properties, and nested declarations: verbatim.
 			if text := strings.TrimSpace(child.Content(src)); text != "" {
-				b.WriteString("  " + text + "\n")
+				b.WriteString(indentBlock(text, childIndent) + "\n")
 			}
 		}
 	}
@@ -251,15 +278,58 @@ func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *Signature
 	if spec.PythonLike {
 		b.WriteString("\n")
 	} else {
-		b.WriteString("}\n")
+		b.WriteString(indent + "}\n")
 	}
-	b.WriteString("\n")
+	if indent == "" {
+		b.WriteString("\n")
+	}
+}
+
+// containerBody returns the body node of a container, checking standard
+// field name "body" and common body node types like "class_body" or "declaration_list".
+func containerBody(n *sitter.Node) *sitter.Node {
+	if body := n.ChildByFieldName("body"); body != nil {
+		return body
+	}
+	for i := 0; i < int(n.ChildCount()); i++ {
+		child := n.Child(i)
+		switch child.Type() {
+		case "class_body", "declaration_list":
+			return child
+		}
+	}
+	return nil
+}
+
+// hasFunctionBody reports whether a node contains an explicit function_body child.
+func hasFunctionBody(n *sitter.Node) bool {
+	for i := 0; i < int(n.ChildCount()); i++ {
+		if n.Child(i).Type() == "function_body" {
+			return true
+		}
+	}
+	return false
+}
+
+// indentBlock indents non-empty lines with the given prefix.
+func indentBlock(s string, indent string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			lines[i] = ""
+		} else {
+			lines[i] = indent + trimmed
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // isContainerType reports whether a type node's body can contain method
-// bodies that must be compressed (classes and Python class definitions).
+// bodies that must be compressed (classes, Kotlin objects/companion objects,
+// and Python class definitions).
 func isContainerType(t string) bool {
-	return t == "class_definition" || t == "class_declaration"
+	return t == "class_definition" || t == "class_declaration" || t == "object_declaration" || t == "companion_object"
 }
 
 // isComment reports whether a node type is a comment. Grammars differ: Rust
@@ -282,6 +352,16 @@ func signatureFrom(start int, src []byte, n *sitter.Node, spec *SignatureSpec) s
 		}
 	}
 
+	for i := 0; i < int(n.ChildCount()); i++ {
+		child := n.Child(i)
+		if child.Type() == "function_body" {
+			cut := int(child.StartByte()) - start
+			if cut > 0 && cut <= len(text) {
+				return strings.TrimRight(string(text[:cut]), " \t\r\n")
+			}
+		}
+	}
+
 	offset := scanBodyBoundary(src, n, spec)
 	if offset > 0 {
 		return strings.TrimRight(string(text[:offset]), " \t\r\n")
@@ -291,8 +371,9 @@ func signatureFrom(start int, src []byte, n *sitter.Node, spec *SignatureSpec) s
 
 // scanBodyBoundary finds the byte offset (relative to the node start) where the
 // declaration body begins: the first { at bracket/paren depth zero for brace
-// languages, the first : at depth zero for Python. Strings and comments are
-// skipped so literals cannot cause a premature cut.
+// languages, the first = at depth zero for single-expression functions, or the
+// first : at depth zero for Python. Strings and comments are skipped so
+// literals cannot cause a premature cut.
 func scanBodyBoundary(src []byte, n *sitter.Node, spec *SignatureSpec) int {
 	start := int(n.StartByte())
 	end := int(n.EndByte())
@@ -358,6 +439,10 @@ func scanBodyBoundary(src []byte, n *sitter.Node, spec *SignatureSpec) int {
 			}
 		case '{':
 			if paren == 0 && brack == 0 {
+				return i - start
+			}
+		case '=':
+			if !spec.PythonLike && paren == 0 && brack == 0 {
 				return i - start
 			}
 		case ':':
