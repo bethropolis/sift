@@ -6,12 +6,14 @@ package rank
 
 import (
 	"context"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Git runs git against rootDir.
@@ -31,17 +33,16 @@ type Git struct {
 	rootDir string
 	ctx     context.Context
 
-	// availOnce memoizes the repository probe: it forks a git subprocess,
-	// and one scoring pass asks several times. Handles are constructed per
-	// scan/rank pass, so the answer stays fresh where it matters.
-	availOnce sync.Once
-	avail     bool
+	// repoOnce memoizes the repository probe (is-inside-work-tree plus
+	// show-prefix). One fork answers both questions; earlier code paid two.
+	repoOnce sync.Once
+	avail    bool
+	prefix   string
 
-	// prefixOnce memoizes --show-prefix, the scan root's path inside the
-	// repository. Git reports every path relative to the repository root, so
-	// scanning a subdirectory needs this prefix stripped to match walker paths.
-	prefixOnce sync.Once
-	prefix     string
+	// historyMu guards the parsed commit history so ChangesFor and any
+	// churn consumer share one `git log` invocation.
+	historyMu sync.Mutex
+	history   map[string][]historyCommit
 }
 
 // New returns a Git handle rooted at dir with a background context.
@@ -172,11 +173,9 @@ func (g *Git) runList(args ...string) []string {
 }
 
 // Available reports whether rootDir is inside a git repository. The probe is
-// memoized per Git handle so a scoring pass pays for at most one fork.
+// memoized per Git handle and shared with Prefix.
 func (g *Git) Available() bool {
-	g.availOnce.Do(func() {
-		g.avail = g.run("rev-parse", "--is-inside-work-tree") == "true"
-	})
+	g.repoInfo()
 	return g.avail
 }
 
@@ -184,11 +183,23 @@ func (g *Git) Available() bool {
 // and without a trailing slash. It is "" when rootDir is the repository root
 // (or not inside a repository).
 func (g *Git) Prefix() string {
-	g.prefixOnce.Do(func() {
-		out := strings.TrimSpace(g.run("rev-parse", "--show-prefix"))
-		g.prefix = strings.Trim(strings.TrimSuffix(out, "/"), "/")
-	})
+	g.repoInfo()
 	return g.prefix
+}
+
+// repoInfo runs one rev-parse that answers both the repository probe and the
+// scan root's prefix. Non-repository roots leave both values empty.
+func (g *Git) repoInfo() {
+	g.repoOnce.Do(func() {
+		out := g.runRaw("rev-parse", "--is-inside-work-tree", "--show-prefix")
+		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+		if len(lines) > 0 {
+			g.avail = strings.TrimSpace(lines[0]) == "true"
+		}
+		if len(lines) > 1 {
+			g.prefix = strings.Trim(strings.TrimSpace(lines[1]), "/")
+		}
+	})
 }
 
 // toRootPath maps a git-reported repository-root-relative path to one relative
@@ -212,13 +223,78 @@ func (g *Git) toRootPath(p string) (string, bool) {
 	return "", false
 }
 
-// ChangesFor computes the relevance tiers for ref (default HEAD):
+// historyCommit is one commit parsed from the single log stream.
+type historyCommit struct {
+	hash  string
+	when  time.Time
+	files []string
+}
+
+// churnHalfLife controls time decay for the churn signal: a touch this old
+// counts half as much as a fresh one.
+const churnHalfLife = 30 * 24 * time.Hour
+
+// historyFor returns up to n parsed commits for ref, running one git log and
+// memoizing the full 30-commit window per handle.
+func (g *Git) historyFor(ref string, n int) []historyCommit {
+	if cleanRef(ref) == "" {
+		return nil
+	}
+	g.historyMu.Lock()
+	defer g.historyMu.Unlock()
+	commits, ok := g.history[ref]
+	if !ok {
+		commits = g.readHistory(ref, 30)
+		if g.history == nil {
+			g.history = map[string][]historyCommit{}
+		}
+		g.history[ref] = commits
+	}
+	if n > len(commits) {
+		n = len(commits)
+	}
+	return commits[:n]
+}
+
+// readHistory parses `git log --name-only` with commit timestamps once.
+func (g *Git) readHistory(ref string, n int) []historyCommit {
+	out := g.runRaw("log", "-n", strconv.Itoa(n), "--name-only", "--format=COMMIT:%H:%ct", ref)
+	var commits []historyCommit
+	var cur *historyCommit
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "COMMIT:") {
+			parts := strings.SplitN(strings.TrimPrefix(line, "COMMIT:"), ":", 2)
+			c := historyCommit{hash: parts[0]}
+			if len(parts) == 2 {
+				if ts, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+					c.when = time.Unix(ts, 0)
+				}
+			}
+			commits = append(commits, c)
+			cur = &commits[len(commits)-1]
+			continue
+		}
+		if line == "" || cur == nil {
+			continue
+		}
+		if rp, ok := g.toRootPath(line); ok {
+			cur.files = append(cur.files, rp)
+		}
+	}
+	return commits
+}
+
+// ChangesFor computes the relevance tiers and per-file status for ref
+// (default HEAD):
 //   - Modified: uncommitted working-tree or staged changes.
-//   - Diffed:   files touched between ref and its first parent.
-//   - Committed: files in the latest commit at ref.
+//   - Diffed:   files in ref's newest commit (equivalent to parent..ref).
+//   - Committed: files in the newest five commits.
+//   - Status:   single-letter porcelain status (M, A, ?, R, D).
+//   - Churn:    time-decayed touch frequency over 30 commits.
 //
-// The three git invocations run concurrently since they are independent.
-// The tier sets are normalized once before return so Score is O(depth).
+// Status and history are independent, so they run concurrently. History is a
+// single git log serving both the tiers and churn.
 func (g *Git) ChangesFor(ref string) *Changes {
 	if ref == "" {
 		ref = "HEAD"
@@ -226,74 +302,94 @@ func (g *Git) ChangesFor(ref string) *Changes {
 	changes := NewChanges()
 
 	var wg sync.WaitGroup
-	var mu sync.Mutex
-	wg.Add(3)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		local := map[string]bool{}
-		add := func(p string) {
-			if rp, ok := g.toRootPath(p); ok {
-				local[rp] = true
-			}
-		}
-		for _, line := range strings.Split(g.runRaw("status", "--porcelain"), "\n") {
-			if len(line) > 3 {
-				p := strings.TrimSpace(line[3:])
-				if idx := strings.Index(p, " -> "); idx != -1 {
-					// Rename entry: "old.go -> new.go". Register both sides so
-					// the new path is scored as modified.
-					add(p[idx+4:])
-					add(p[:idx])
-				} else {
-					add(p)
-				}
-			}
-		}
-		mu.Lock()
-		for p := range local {
-			changes.Modified[p] = true
-		}
-		mu.Unlock()
+		g.applyStatus(changes)
 	}()
 	go func() {
 		defer wg.Done()
-		if parent := g.Parent(ref); parent != "" {
-			// Root commits (a single-commit history) have no parent, so the diff
-			// range "ref^..ref" is invalid; skip it rather than silently returning
-			// an empty list.
-			local := map[string]bool{}
-			for _, p := range g.runDiffList("--name-only", parent+".."+ref) {
-				if rp, ok := g.toRootPath(p); ok {
-					local[rp] = true
-				}
-			}
-			mu.Lock()
-			for p := range local {
-				changes.Diffed[p] = true
-			}
-			mu.Unlock()
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		if cleanRef(ref) == "" {
-			return
-		}
-		local := map[string]bool{}
-		for _, p := range g.runListRef("log", "-n", "5", "--name-only", "--format=", ref) {
-			if rp, ok := g.toRootPath(p); ok {
-				local[rp] = true
-			}
-		}
-		mu.Lock()
-		for p := range local {
-			changes.Committed[p] = true
-		}
-		mu.Unlock()
+		g.applyHistory(changes, ref)
 	}()
 	wg.Wait()
 	changes.Normalize()
 	return changes
+}
+
+// applyStatus parses `git status --porcelain`, recording both the Modified
+// tier and the single-letter status used by TUI/Web UI badges.
+func (g *Git) applyStatus(changes *Changes) {
+	add := func(p, status string) {
+		rp, ok := g.toRootPath(p)
+		if !ok {
+			return
+		}
+		changes.Modified[rp] = true
+		if status != "" {
+			changes.Status[rp] = status
+		}
+	}
+	for _, line := range strings.Split(g.runRaw("status", "--porcelain"), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		code := line[:2]
+		p := strings.TrimSpace(line[3:])
+		if idx := strings.Index(p, " -> "); idx != -1 {
+			add(p[idx+4:], "R")
+			add(p[:idx], "D")
+			continue
+		}
+		add(p, porcelainStatus(code))
+	}
+}
+
+// porcelainStatus maps a two-letter porcelain code to one badge letter.
+func porcelainStatus(code string) string {
+	switch {
+	case code == "??":
+		return "?"
+	case strings.ContainsRune(code, 'R'):
+		return "R"
+	case strings.ContainsRune(code, 'A'):
+		return "A"
+	case strings.ContainsRune(code, 'D'):
+		return "D"
+	case strings.ContainsRune(code, 'M'):
+		return "M"
+	case strings.ContainsRune(code, 'T'):
+		return "M"
+	default:
+		return "?"
+	}
+}
+
+// applyHistory fills Diffed, Committed, and decayed Churn from one log.
+func (g *Git) applyHistory(changes *Changes, ref string) {
+	commits := g.historyFor(ref, 30)
+	if len(commits) == 0 {
+		return
+	}
+	// Newest commit is equivalent to ref^..ref, including a root commit.
+	for _, p := range commits[0].files {
+		changes.Diffed[p] = true
+	}
+	for i := 0; i < len(commits) && i < 5; i++ {
+		for _, p := range commits[i].files {
+			changes.Committed[p] = true
+		}
+	}
+	now := time.Now()
+	for _, c := range commits {
+		age := now.Sub(c.when)
+		if age < 0 {
+			age = 0 // clamp clock skew so weights stay in (0, 1]
+		}
+		weight := math.Pow(0.5, age.Seconds()/churnHalfLife.Seconds())
+		for _, p := range c.files {
+			changes.Churn[p] += weight
+		}
+	}
 }
 
 // Score returns a score for every given relative path. When the directory is

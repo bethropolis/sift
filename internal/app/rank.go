@@ -234,34 +234,26 @@ func (r *Ranker) computeFanIn(files []format.FileEntry) (map[string]int, map[str
 			p, ok := toRoot(p)
 			return ok && collected[strings.ToLower(p)]
 		}
-		for _, target := range lang.Imports(filePath, mod.moduleName, f.Content) {
-			target, ok := toRoot(target)
-			target = strings.TrimSuffix(target, "/")
-			if !ok || target == "" {
-				continue
-			}
-			// A package node present in collected paths receives one hit per
-			// importer. Hits are attributed to the node itself; fan-in is
-			// summed from a file's own node plus its immediate parent package
-			// below, so importing a package never inflates nested subpackages.
-			if node, ok := nodeByPath[target]; ok {
-				node.hits++
-			}
-		}
-		// Retain the resolved adjacency in the same pass: confirmed
-		// dependency paths per file for dependency expansion. The exists
-		// predicate covers collected files and their ancestor directories so
-		// Go package (directory) imports confirm.
-		if targets := lang.ResolveImports(filePath, mod.moduleName, f.Content, exists); len(targets) > 0 {
-			mapped := make([]string, 0, len(targets))
-			for _, t := range targets {
-				if mappedTarget, ok := toRoot(t); ok && mappedTarget != "" {
-					mapped = append(mapped, mappedTarget)
+		// One resolution pass per file: the resolved targets are confirmed
+		// repo paths, so they serve both the dependency graph and fan-in. The
+		// previous code parsed imports twice (Imports + ResolveImports).
+		targets := lang.ResolveImports(filePath, mod.moduleName, f.Content, exists)
+		mapped := make([]string, 0, len(targets))
+		for _, t := range targets {
+			if mappedTarget, ok := toRoot(t); ok && mappedTarget != "" {
+				mappedTarget = strings.TrimSuffix(mappedTarget, "/")
+				mapped = append(mapped, mappedTarget)
+				// A package node present in collected paths receives one hit
+				// per importer. Fan-in is summed from a file's own node plus
+				// its immediate parent package below, so importing a package
+				// never inflates nested subpackages.
+				if node, ok := nodeByPath[mappedTarget]; ok {
+					node.hits++
 				}
 			}
-			if len(mapped) > 0 {
-				graph[filePath] = mapped
-			}
+		}
+		if len(mapped) > 0 {
+			graph[filePath] = mapped
 		}
 	}
 
@@ -516,6 +508,8 @@ func (r *Ranker) moduleRoot() string {
 // ApplyRankScores writes the computed scores back into the entries.
 func ApplyRankScores(files []format.FileEntry, results map[string]rank.FileScoreResult) {
 	for i := range files {
-		files[i].RankScore = results[files[i].Path].Score
+		r := results[files[i].Path]
+		files[i].RankScore = r.Score
+		files[i].GitStatus = r.Status
 	}
 }

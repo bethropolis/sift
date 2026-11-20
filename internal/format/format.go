@@ -36,8 +36,11 @@ type FileEntry struct {
 	TokensSig   int
 	SecretCount int
 	RankScore   float64
-	Hidden      bool
-	GitIgnored  bool
+	// GitStatus is the single-letter working-tree status (M, A, ?, R, D)
+	// reported by git, when present.
+	GitStatus  string
+	Hidden     bool
+	GitIgnored bool
 }
 
 // Document is the complete set of data handed to a Renderer.

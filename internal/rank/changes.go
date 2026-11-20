@@ -22,6 +22,11 @@ type Changes struct {
 	Modified  map[string]bool
 	Diffed    map[string]bool
 	Committed map[string]bool
+	// Status holds the single-letter porcelain status (M, A, ?, R, D) for
+	// files with uncommitted changes.
+	Status map[string]string
+	// Churn holds time-decayed touch weights over the parsed history window.
+	Churn map[string]float64
 }
 
 // NewChanges returns an empty Changes with pre-normalized lookup sets.
@@ -30,6 +35,8 @@ func NewChanges() *Changes {
 		Modified:  map[string]bool{},
 		Diffed:    map[string]bool{},
 		Committed: map[string]bool{},
+		Status:    map[string]string{},
+		Churn:     map[string]float64{},
 	}
 }
 

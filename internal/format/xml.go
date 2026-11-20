@@ -1,6 +1,7 @@
 package format
 
 import (
+	"bytes"
 	"html"
 	"io"
 	"strings"
@@ -71,7 +72,13 @@ func (r *xmlRenderer) Render(doc *Document, w io.Writer) error {
 				pathAttr, langAttr, f.Tokens, mode); err != nil {
 				return err
 			}
-			if err := fprint(out, "<![CDATA[%s]]>\n", cdataContent(f.Content)); err != nil {
+			if err := fprint(out, "<![CDATA["); err != nil {
+				return err
+			}
+			if err := writeCDATA(out, f.Content); err != nil {
+				return err
+			}
+			if err := fprint(out, "]]>\n"); err != nil {
 				return err
 			}
 			if err := fprint(out, "    </file>\n"); err != nil {
@@ -87,8 +94,24 @@ func (r *xmlRenderer) Render(doc *Document, w io.Writer) error {
 	return fprint(out, "</repository>\n")
 }
 
-// cdataContent splits any "]]>" sequence inside content so it cannot
-// terminate the enclosing CDATA section early.
-func cdataContent(content []byte) string {
-	return strings.ReplaceAll(string(content), "]]>", "]]]]><![CDATA[>")
+// writeCDATA writes content directly, splitting any "]]>" sequence so it
+// cannot terminate the enclosing CDATA section early. Bytes are written as
+// slices of the caller's buffer; no string conversion or full-content copy is
+// made on the common path.
+func writeCDATA(w io.Writer, content []byte) error {
+	marker := []byte("]]>")
+	for {
+		idx := bytes.Index(content, marker)
+		if idx < 0 {
+			_, err := w.Write(content)
+			return err
+		}
+		if _, err := w.Write(content[:idx]); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(w, "]]]]><![CDATA[>"); err != nil {
+			return err
+		}
+		content = content[idx+len(marker):]
+	}
 }

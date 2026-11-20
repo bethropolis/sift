@@ -2,8 +2,6 @@ package rank
 
 import (
 	"path/filepath"
-	"strconv"
-	"sync"
 
 	"github.com/bethropolis/sift/internal/lang"
 )
@@ -14,6 +12,9 @@ type FileScoreResult struct {
 	PreferredMode string // "full", "signatures", or "skip"
 	Reason        string
 	Signals       ScoreSignals
+	// Status is the single-letter working-tree status (M, A, ?, R, D), when
+	// the file has uncommitted changes.
+	Status string
 }
 
 // ScoreSignals exposes the normalized inputs to the composite score. Keeping
@@ -76,22 +77,10 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams, w W
 	results := make(map[string]FileScoreResult, len(params))
 
 	var changes *Changes
-	churnMap := make(map[string]int)
 	if g.Available() {
-		// ChangesFor (status + diff + log) and the churn history (log -n 30)
-		// are independent git subprocess batches; running them concurrently
-		// makes the rank pass cost one batch of latency instead of two.
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			changes = g.ChangesFor("HEAD")
-		}()
-		go func() {
-			defer wg.Done()
-			churnMap = g.GetChurnFrequency(30)
-		}()
-		wg.Wait()
+		// One history pass feeds Diffed, Committed, and decayed churn; status
+		// is the only separate git call.
+		changes = g.ChangesFor("HEAD")
 	}
 
 	for _, p := range params {
@@ -103,8 +92,11 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams, w W
 			recencyScore = changes.Score(relPath)
 		}
 
-		// Signal 2: churn frequency over the last 30 commits.
-		churnScore := float64(churnMap[relPath]) / churnScale
+		// Signal 2: time-decayed churn over the last 30 commits.
+		churnScore := 0.0
+		if changes != nil {
+			churnScore = changes.Churn[relPath] / churnScale
+		}
 		if churnScore > 1.0 {
 			churnScore = 1.0
 		}
@@ -155,10 +147,16 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams, w W
 			reason = "Low relevance background file"
 		}
 
+		status := ""
+		if changes != nil {
+			status = changes.Status[relPath]
+		}
+
 		results[relPath] = FileScoreResult{
 			Score:         compositeScore,
 			PreferredMode: mode,
 			Reason:        reason,
+			Status:        status,
 			Signals: ScoreSignals{
 				Recency: recencyScore, Churn: churnScore,
 				Centrality: centralityScore, Role: roleModifier,
@@ -193,15 +191,15 @@ func (w *Weights) applyDefaults() {
 }
 
 // GetChurnFrequency counts how many of the last n commits touched each path.
-// Empty path lines (commit separators) are ignored.
+// It shares the parsed history with ChangesFor instead of running another log.
 func (g *Git) GetChurnFrequency(n int) map[string]int {
 	churn := make(map[string]int)
 	if !g.Available() {
 		return churn
 	}
-	for _, p := range g.runList("log", "-n", strconv.Itoa(n), "--name-only", "--format=") {
-		if rp, ok := g.toRootPath(p); ok {
-			churn[rp]++
+	for _, c := range g.historyFor("HEAD", n) {
+		for _, p := range c.files {
+			churn[p]++
 		}
 	}
 	return churn
