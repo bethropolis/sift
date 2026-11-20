@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/bethropolis/sift/internal/fsx"
 )
 
 // maxConfigFileBytes caps .sift.toml / config.toml reads. Real configs are a
@@ -54,16 +55,10 @@ func readConfigFileCapped(path string) ([]byte, error) {
 }
 
 // escapesRoot reports whether p (a config-declared path) resolves outside
-// root: absolute paths and ..-traversals are both rejected.
+// root: absolute paths, ..-traversals, and symlinks that point outside are all
+// rejected.
 func escapesRoot(root, p string) bool {
-	if p == "" {
-		return false
-	}
-	if filepath.IsAbs(filepath.FromSlash(p)) {
-		return true
-	}
-	clean := filepath.Clean(filepath.FromSlash(p))
-	return clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator))
+	return fsx.Escapes(root, p)
 }
 
 // parseConfigBytes decodes a v2 config file from memory for inspection.
@@ -105,6 +100,14 @@ func CheckProjectConfig(root string) []string {
 		issues = append(issues, "unparsable .sift.toml")
 		return issues
 	}
+	return checkParsedConfig(cf, root)
+}
+
+// checkParsedConfig applies the escape checks to an already-parsed config
+// file, so `sift check <custom.toml>` validates the file it was given instead
+// of reloading <root>/.sift.toml.
+func checkParsedConfig(cf configFile, root string) []string {
+	var issues []string
 	check := func(where, p string) {
 		if escapesRoot(root, p) {
 			issues = append(issues, where+" escapes the project root")
@@ -118,10 +121,12 @@ func CheckProjectConfig(root string) []string {
 	for name, p := range cf.Profiles {
 		check("profile "+name+" prompt_file", p.PromptFile)
 		check("profile "+name+" output", p.Output)
+		check("profile "+name+" ui_theme_file", p.UIThemeFile)
 	}
 	for _, t := range cf.Targets {
 		check("target "+t.Name+" prompt_file", t.PromptFile)
 		check("target "+t.Name+" output", t.Output)
+		check("target "+t.Name+" ui_theme_file", t.UIThemeFile)
 	}
 	for name, p := range cf.Prompts {
 		check("prompt "+name+" file", p.File)

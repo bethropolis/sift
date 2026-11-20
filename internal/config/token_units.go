@@ -2,9 +2,32 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
+
+// CanonicalStyle maps accepted style aliases to the renderer's names.
+func CanonicalStyle(style string) string {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case "md":
+		return "markdown"
+	case "txt", "text", "raw":
+		return "plain"
+	default:
+		return strings.ToLower(strings.TrimSpace(style))
+	}
+}
+
+// CanonicalMode maps compression-mode aliases to "full" or "signatures".
+func CanonicalMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "sigs", "signature":
+		return "signatures"
+	default:
+		return strings.ToLower(strings.TrimSpace(mode))
+	}
+}
 
 // ParseBudget parses human-readable token budget strings such as "200k",
 // "1.5M", "120k", "200_000", "200,000", or "200000". Suffixes 'k'/'K' (1,000)
@@ -38,11 +61,17 @@ func ParseBudget(s string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("parsing %q: invalid syntax", s)
 	}
+	if math.IsNaN(val) || math.IsInf(val, 0) {
+		return 0, fmt.Errorf("budget must be a finite number: %v", val)
+	}
 	if val < 0 {
 		return 0, fmt.Errorf("budget must be non-negative: %v", val)
 	}
 
 	total := val * multiplier
+	if total > float64(math.MaxInt) || total < 0 {
+		return 0, fmt.Errorf("budget value %v overflows int", total)
+	}
 	return int(total), nil
 }
 
@@ -57,6 +86,9 @@ func parseBudgetAny(v any) (int, error) {
 		if val < 0 {
 			return 0, fmt.Errorf("budget must be non-negative: %d", val)
 		}
+		if val > int64(math.MaxInt) {
+			return 0, fmt.Errorf("budget value %d overflows int", val)
+		}
 		return int(val), nil
 	case int:
 		if val < 0 {
@@ -64,8 +96,14 @@ func parseBudgetAny(v any) (int, error) {
 		}
 		return val, nil
 	case float64:
+		if math.IsNaN(val) || math.IsInf(val, 0) {
+			return 0, fmt.Errorf("budget must be a finite number: %v", val)
+		}
 		if val < 0 {
 			return 0, fmt.Errorf("budget must be non-negative: %v", val)
+		}
+		if val > float64(math.MaxInt) {
+			return 0, fmt.Errorf("budget value %v overflows int", val)
 		}
 		return int(val), nil
 	case string:
@@ -112,6 +150,9 @@ func (s *SiftDefaults) normalize() error {
 		}
 		s.Budget = b
 	}
+	s.Style = CanonicalStyle(s.Style)
+	s.Mode = CanonicalMode(s.Mode)
+	s.FallbackMode = CanonicalMode(s.FallbackMode)
 	return nil
 }
 
@@ -126,6 +167,9 @@ func (t *Target) normalize() error {
 		}
 		t.Budget = b
 	}
+	t.Style = CanonicalStyle(t.Style)
+	t.Mode = CanonicalMode(t.Mode)
+	t.FallbackMode = CanonicalMode(t.FallbackMode)
 	return nil
 }
 
@@ -140,6 +184,9 @@ func (p *Profile) normalize() error {
 		}
 		p.Budget = b
 	}
+	p.Style = CanonicalStyle(p.Style)
+	p.Mode = CanonicalMode(p.Mode)
+	p.FallbackMode = CanonicalMode(p.FallbackMode)
 	return nil
 }
 

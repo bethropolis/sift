@@ -187,9 +187,10 @@ func ValidateConfigFile(path string, rootDir string) (*CheckResult, error) {
 	// 5. Semantic Validation
 	validateSemantic(&cf, effectiveRoot, result)
 
-	// 6. Security escapes check
+	// 6. Security escapes check against the parsed file, not a reload of
+	// <effectiveRoot>/.sift.toml.
 	if effectiveRoot != "" {
-		for _, escape := range CheckProjectConfig(effectiveRoot) {
+		for _, escape := range checkParsedConfig(cf, effectiveRoot) {
 			result.Issues = append(result.Issues, ValidationIssue{
 				Severity: SeverityError,
 				Field:    "security",
@@ -249,6 +250,7 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 		"json":     true,
 		"plain":    true,
 		"txt":      true,
+		"text":     true,
 		"raw":      true,
 	}
 
@@ -257,7 +259,6 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 		"full":       true,
 		"signatures": true,
 		"sigs":       true,
-		"skip":       true,
 	}
 
 	// Check default_profile reference
@@ -290,7 +291,7 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 			result.Issues = append(result.Issues, ValidationIssue{
 				Severity: SeverityError,
 				Field:    "[sift].compress_mode",
-				Message:  fmt.Sprintf("invalid compress_mode %q (supported: full, signatures, skip)", cf.Sift.Mode),
+				Message:  fmt.Sprintf("invalid compress_mode %q (supported: full, signatures)", cf.Sift.Mode),
 			})
 		}
 		if cf.Sift.FallbackMode != "" && cf.Sift.FallbackMode != "signatures" && cf.Sift.FallbackMode != "sigs" {
@@ -443,6 +444,27 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 		}
 		if t.PromptFile != "" {
 			checkFileExists(root, t.PromptFile, prefix+".prompt_file", result)
+		}
+		if t.Mode != "" && t.Mode != "full" && t.Mode != "signatures" {
+			result.Issues = append(result.Issues, ValidationIssue{
+				Severity: SeverityError,
+				Field:    prefix + ".compress_mode",
+				Message:  fmt.Sprintf("invalid compress_mode %q (supported: full, signatures)", t.Mode),
+			})
+		}
+		if t.FallbackMode != "" && t.FallbackMode != "signatures" {
+			result.Issues = append(result.Issues, ValidationIssue{
+				Severity: SeverityError,
+				Field:    prefix + ".fallback_mode",
+				Message:  fmt.Sprintf("invalid fallback_mode %q (expected \"signatures\")", t.FallbackMode),
+			})
+		}
+		if t.FallbackThreshold != nil && (*t.FallbackThreshold < 0 || *t.FallbackThreshold > 1.0) {
+			result.Issues = append(result.Issues, ValidationIssue{
+				Severity: SeverityError,
+				Field:    prefix + ".fallback_threshold",
+				Message:  fmt.Sprintf("fallback_threshold must be between 0.0 and 1.0 (got %v)", *t.FallbackThreshold),
+			})
 		}
 		if t.Modes != nil {
 			validateModes(t.Modes, result)

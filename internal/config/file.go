@@ -82,6 +82,8 @@ type Target struct {
 	OverrideIgnore    bool         `toml:"override_ignore"`
 	SmartFilter       *bool        `toml:"smart_filter"`
 	SmartMaxTokens    int          `toml:"smart_max_tokens"`
+	UIThemeFile       string       `toml:"ui_theme_file"`
+	CopyOnGenerate    *bool        `toml:"copy_on_generate"`
 	Scoring           *Scoring     `toml:"scoring"`
 	Modes             *ModesConfig `toml:"modes"`
 }

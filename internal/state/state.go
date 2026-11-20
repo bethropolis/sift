@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/bethropolis/sift/internal/fsx"
 )
 
 // DumpRecord describes the most recent dump of a project.
@@ -55,11 +57,11 @@ func CanonicalRoot(rootDir string) (string, error) {
 // StatePath returns the JSON state file location in the user's config
 // directory: ~/.config/sift/state.json on Linux, %APPDATA% on Windows.
 func StatePath() (string, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := fsx.ConfigDir("sift")
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "sift", "state.json"), nil
+	return filepath.Join(dir, "state.json"), nil
 }
 
 // Load reads the state file, returning an empty state when it does not exist.

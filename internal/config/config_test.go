@@ -190,7 +190,9 @@ func TestApplyProfileSmart(t *testing.T) {
 		SmartFilter:    &smart,
 		SmartMaxTokens: 9000,
 	}
-	p.Apply(c, fs)
+	if err := p.Apply(c, fs); err != nil {
+		t.Fatal(err)
+	}
 
 	if !c.SmartFilter {
 		t.Error("SmartFilter = false, want true from profile")
@@ -214,7 +216,9 @@ func TestApplyProfile(t *testing.T) {
 		SecretScan:   &sec,
 		Extensions:   []string{"go", "md"},
 	}
-	p.Apply(c, fs)
+	if err := p.Apply(c, fs); err != nil {
+		t.Fatal(err)
+	}
 
 	if c.Style != "xml" {
 		t.Errorf("Style = %q, want xml", c.Style)
@@ -244,7 +248,9 @@ func TestApplyProfileFlagWins(t *testing.T) {
 
 	style := "xml"
 	p := Profile{Style: style}
-	p.Apply(c, fs)
+	if err := p.Apply(c, fs); err != nil {
+		t.Fatal(err)
+	}
 
 	if c.Style != "json" {
 		t.Errorf("Style = %q, want json (flag beats profile)", c.Style)

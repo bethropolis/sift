@@ -8,6 +8,8 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/pflag"
+
+	"github.com/bethropolis/sift/internal/fsx"
 )
 
 // Prompt file helper (used by Profile.Apply and Target.Apply).
@@ -17,20 +19,18 @@ func readPromptFile(path string) (string, error) {
 }
 
 func readPromptFileWithRoot(rootDir, path string) (string, error) {
-	if !filepath.IsAbs(path) {
-		// Try rootDir-relative first (e.g. `sift dump /repo` with prompt_file = "prompts/x.md").
-		if rootDir != "" && rootDir != "." {
-			candidate := filepath.Join(rootDir, path)
-			if _, err := os.Stat(candidate); err == nil {
-				path = candidate
-			} else if abs, err := filepath.Abs(rootDir); err == nil {
-				candidate2 := filepath.Join(abs, path)
-				if _, err := os.Stat(candidate2); err == nil {
-					path = candidate2
-				}
-			}
+	// Project-relative reads are confined to the project root: a symlinked
+	// prompt_file in an untrusted repository must not read host files.
+	if rootDir != "" && !filepath.IsAbs(filepath.FromSlash(path)) {
+		data, err := fsx.ReadFile(rootDir, path)
+		if err != nil {
+			return "", fmt.Errorf("read prompt file %q: %w", path, err)
 		}
-		// Fall back to cwd-relative (covers tests that chdir and real cwd usage).
+		return string(data), nil
+	}
+	// Absolute paths (trusted global config) and root-less callers keep the
+	// historical resolution order.
+	if !filepath.IsAbs(path) {
 		if _, err := os.Stat(path); err != nil {
 			if cwd, _ := os.Getwd(); cwd != "" {
 				candidate := filepath.Join(cwd, path)
@@ -40,7 +40,7 @@ func readPromptFileWithRoot(rootDir, path string) (string, error) {
 			}
 		}
 	}
-	data, err := os.ReadFile(path)
+	data, err := fsx.ReadFile("", path)
 	if err != nil {
 		return "", fmt.Errorf("read prompt file %q: %w", path, err)
 	}
@@ -78,90 +78,7 @@ func readConfigFile(path string) (configFile, error) {
 	return cf, nil
 }
 
-// SiftDefaults / Target / Automation → Config helpers.
-
-func (s *SiftDefaults) applyTo(c *Config) {
-	if s == nil {
-		return
-	}
-	if s.Style != "" {
-		c.Style = s.Style
-	}
-	if s.TokenizeModel != "" {
-		c.TokenizeModel = s.TokenizeModel
-	}
-	if s.Budget != 0 {
-		c.Budget = s.Budget
-	}
-	if s.Mode != "" {
-		c.Mode = s.Mode
-	}
-	if s.Output != "" {
-		c.OutputFile = s.Output
-	}
-	if s.Prompt != "" {
-		c.Prompt = s.Prompt
-	}
-	if s.PromptFile != "" {
-		if content, err := readPromptFileWithRoot(c.RootDir, s.PromptFile); err == nil {
-			c.Prompt = content
-		}
-	}
-	if s.SecretScan != nil {
-		c.SecretScan = *s.SecretScan
-	}
-	if s.ForceSecrets != nil {
-		c.ForceSecrets = *s.ForceSecrets
-	}
-	if s.IgnoreHidden != nil {
-		c.IgnoreHidden = *s.IgnoreHidden
-	}
-	if s.IgnoreGit != nil {
-		c.IgnoreGit = *s.IgnoreGit
-	}
-	if len(s.Extensions) > 0 {
-		c.Extensions = strings.Join([]string(s.Extensions), ",")
-	}
-	if len(s.Ignore) > 0 {
-		c.CustomIgnore = strings.Join([]string(s.Ignore), ",")
-	}
-	if s.SmartFilter != nil {
-		c.SmartFilter = *s.SmartFilter
-	}
-	if s.SmartMaxTokens != 0 {
-		c.SmartMaxTokens = s.SmartMaxTokens
-	}
-	if s.Highlight != nil {
-		c.Highlight = *s.Highlight
-	}
-	if s.NoHighlight != nil {
-		c.NoHighlight = *s.NoHighlight
-	}
-	if s.Theme != "" {
-		c.Theme = s.Theme
-	}
-	if s.UIThemeFile != "" {
-		c.UIThemeFile = s.UIThemeFile
-	}
-	if s.HighlightMaxBytes != 0 {
-		c.HighlightMaxBytes = s.HighlightMaxBytes
-	}
-	if s.WindowTitle != "" {
-		c.WindowTitle = s.WindowTitle
-	}
-	if s.NoWindowTitle != nil {
-		c.NoWindowTitle = *s.NoWindowTitle
-	}
-	if s.CopyOnGenerate != nil {
-		c.CopyOnGenerate = *s.CopyOnGenerate
-	}
-	if s.Scoring != nil {
-		c.Scoring.Merge(*s.Scoring)
-	}
-	if s.Modes != nil {
-		c.Modes = *s.Modes
-	}
-}
+// Target / Automation → Config helpers.
 
 func isStyleChanged(fs *pflag.FlagSet) bool {
 	if fs == nil {
@@ -170,9 +87,9 @@ func isStyleChanged(fs *pflag.FlagSet) bool {
 	return fs.Changed("style") || fs.Changed("format") || fs.Changed("json") || fs.Changed("markdown")
 }
 
-func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
+func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) error {
 	if t == nil {
-		return
+		return nil
 	}
 	changed := func(name string) bool {
 		if fs == nil {
@@ -198,6 +115,12 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 	if t.FallbackThreshold != nil && !changed("fallback-threshold") {
 		c.FallbackThreshold = *t.FallbackThreshold
 	}
+	if t.UIThemeFile != "" && !changed("ui-theme-file") {
+		c.UIThemeFile = t.UIThemeFile
+	}
+	if t.CopyOnGenerate != nil && !changed("copy-on-generate") {
+		c.CopyOnGenerate = *t.CopyOnGenerate
+	}
 	if t.Output != "" && !changed("output") {
 		c.OutputFile = t.Output
 		c.OutputFileExplicit = true
@@ -205,10 +128,15 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 	if t.Prompt != "" && !changed("prompt") {
 		c.Prompt = t.Prompt
 	}
+	if t.Prompt != "" && t.PromptFile != "" {
+		return fmt.Errorf("target %s: specify either prompt or prompt_file, not both", t.Name)
+	}
 	if t.PromptFile != "" && !changed("prompt") {
-		if content, err := readPromptFileWithRoot(c.RootDir, t.PromptFile); err == nil {
-			c.Prompt = content
+		content, err := readPromptFileWithRoot(c.RootDir, t.PromptFile)
+		if err != nil {
+			return err
 		}
+		c.Prompt = content
 	}
 	if t.SecretScan != nil && !changed("secrets") {
 		c.SecretScan = *t.SecretScan
@@ -257,6 +185,7 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) {
 	if t.Modes != nil {
 		c.Modes = *t.Modes
 	}
+	return nil
 }
 
 // Extends resolution.
@@ -370,6 +299,10 @@ func localConfigPathFor(c *Config) string {
 				return p2
 			}
 		}
+		// An explicit root has no local config; never fall back to the
+		// caller's working directory (that would apply cwd's .sift.toml to a
+		// completely different project).
+		return ""
 	}
 	return localConfigPath()
 }
@@ -436,7 +369,9 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	if merged.Sift != nil {
 		// Sift defaults should NOT override flags, but they DO override New() defaults.
 		// So apply before profile/target but after New() — with flag guard.
-		applySiftWithFlagGuard(c, merged.Sift, fs)
+		if err := applySiftWithFlagGuard(c, merged.Sift, fs); err != nil {
+			return err
+		}
 	}
 	// Top-level [scoring] (when not under [sift]) also applies.
 	if merged.Scoring != nil {
@@ -452,7 +387,9 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 		if p, ok := merged.Profiles[profileName]; ok {
 			// Clear Extends before Apply so it doesn't leak.
 			p.Extends = nil
-			p.Apply(c, fs)
+			if err := p.Apply(c, fs); err != nil {
+				return err
+			}
 		} else if c.Profile != "" {
 			// Explicit --profile must exist; default_profile may be absent.
 			return fmt.Errorf("profile %q not found", profileName)
@@ -465,9 +402,10 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 		if tgt == nil {
 			return fmt.Errorf("target %q not found", ro.targetName)
 		}
-		tgt.applyTo(c, fs)
+		if err := tgt.applyTo(c, fs); err != nil {
+			return err
+		}
 	}
-
 	// Apply prompts ref if requested and prompt not already set by target/profile.
 	if ro.promptName != "" && (fs == nil || !fs.Changed("prompt")) && c.Prompt == "" {
 		if pr, ok := merged.Prompts[ro.promptName]; ok {
@@ -499,17 +437,27 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 			c.OutputFileExplicit = false
 		}
 	}
+	// Normalize aliases after flags/profiles/targets so runtime comparisons
+	// (Mode == "signatures", style switches) see canonical names.
+	c.Style = CanonicalStyle(c.Style)
+	c.Mode = CanonicalMode(c.Mode)
+	if c.FallbackMode != "" {
+		c.FallbackMode = CanonicalMode(c.FallbackMode)
+	}
 	c.ResolveOutputFile()
 
 	return nil
 }
 
-func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) {
+func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) error {
 	changed := func(name string) bool {
 		if fs == nil {
 			return false
 		}
 		return fs.Changed(name)
+	}
+	if s.Prompt != "" && s.PromptFile != "" {
+		return fmt.Errorf("[sift]: specify either prompt or prompt_file, not both")
 	}
 	if s.Style != "" && !isStyleChanged(fs) {
 		c.Style = s.Style
@@ -537,9 +485,11 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) {
 		c.Prompt = s.Prompt
 	}
 	if s.PromptFile != "" && !changed("prompt") {
-		if content, err := readPromptFileWithRoot(c.RootDir, s.PromptFile); err == nil {
-			c.Prompt = content
+		content, err := readPromptFileWithRoot(c.RootDir, s.PromptFile)
+		if err != nil {
+			return err
 		}
+		c.Prompt = content
 	}
 	if s.SecretScan != nil && !changed("secrets") {
 		c.SecretScan = *s.SecretScan
@@ -574,6 +524,9 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) {
 	if s.Theme != "" && !changed("theme") {
 		c.Theme = s.Theme
 	}
+	if s.UIThemeFile != "" && !changed("ui-theme-file") {
+		c.UIThemeFile = s.UIThemeFile
+	}
 	if s.HighlightMaxBytes != 0 && !changed("highlight-max-bytes") {
 		c.HighlightMaxBytes = s.HighlightMaxBytes
 	}
@@ -592,6 +545,7 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) {
 	if s.Modes != nil {
 		c.Modes = *s.Modes
 	}
+	return nil
 }
 
 func findTarget(targets []Target, name string) *Target {
@@ -692,6 +646,12 @@ func mergeConfigFiles(global, local configFile) configFile {
 			if ls.Theme != "" {
 				s.Theme = ls.Theme
 			}
+			if ls.UIThemeFile != "" {
+				s.UIThemeFile = ls.UIThemeFile
+			}
+			if ls.CopyOnGenerate != nil {
+				s.CopyOnGenerate = ls.CopyOnGenerate
+			}
 			if ls.HighlightMaxBytes != 0 {
 				s.HighlightMaxBytes = ls.HighlightMaxBytes
 			}
@@ -716,6 +676,13 @@ func mergeConfigFiles(global, local configFile) configFile {
 	}
 	if local.Modes != nil {
 		out.Modes = local.Modes
+		// A local top-level [modes] is as specific as [sift.modes]. Clear an
+		// inherited global [sift.modes] so it cannot override the local file.
+		if out.Sift != nil {
+			s := *out.Sift
+			s.Modes = nil
+			out.Sift = &s
+		}
 	} else if global.Modes != nil {
 		out.Modes = global.Modes
 	}

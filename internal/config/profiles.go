@@ -1,12 +1,15 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/pflag"
+
+	"github.com/bethropolis/sift/internal/fsx"
 )
 
 // Profile is a named set of configuration overrides loaded from TOML.
@@ -37,6 +40,8 @@ type Profile struct {
 	HighlightMaxBytes int          `toml:"highlight_max_bytes"`
 	WindowTitle       string       `toml:"window_title"`
 	NoWindowTitle     *bool        `toml:"no_window_title"`
+	UIThemeFile       string       `toml:"ui_theme_file"`
+	CopyOnGenerate    *bool        `toml:"copy_on_generate"`
 	Scoring           *Scoring     `toml:"scoring"`
 	Modes             *ModesConfig `toml:"modes"`
 	Extends           []string     `toml:"extends"`
@@ -49,15 +54,25 @@ type profilesFile struct {
 
 // globalConfigPath returns the user-level config file path.
 func globalConfigPath() string {
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		dir = filepath.Join(home, ".config")
+	dir, err := fsx.ConfigDir("sift")
+	if err != nil {
+		return ""
 	}
-	return filepath.Join(dir, "sift", "config.toml")
+	native := filepath.Join(dir, "config.toml")
+	if _, err := os.Stat(native); err == nil {
+		return native
+	}
+	// Backward compatibility: older builds only looked at ~/.config/sift on
+	// macOS. Keep using that file when it exists and the native one does not.
+	if home, homeErr := os.UserHomeDir(); homeErr == nil {
+		legacy := filepath.Join(home, ".config", "sift", "config.toml")
+		if legacy != native {
+			if _, statErr := os.Stat(legacy); statErr == nil {
+				return legacy
+			}
+		}
+	}
+	return native
 }
 
 // localConfigPath returns the per-repository config file path.
@@ -200,6 +215,12 @@ func overlay(dst, src Profile) Profile {
 	if src.Theme != "" {
 		dst.Theme = src.Theme
 	}
+	if src.UIThemeFile != "" {
+		dst.UIThemeFile = src.UIThemeFile
+	}
+	if src.CopyOnGenerate != nil {
+		dst.CopyOnGenerate = src.CopyOnGenerate
+	}
 	if src.HighlightMaxBytes != 0 {
 		dst.HighlightMaxBytes = src.HighlightMaxBytes
 	}
@@ -239,7 +260,15 @@ func overlay(dst, src Profile) Profile {
 
 // Apply overlays the profile onto c, without overriding any flag the user
 // explicitly set on the command line.
-func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
+func (p Profile) Apply(c *Config, fs *pflag.FlagSet) error {
+	// A nil FlagSet means "no CLI overrides"; treat every flag as unchanged
+	// instead of panicking on fs.Changed.
+	if fs == nil {
+		fs = pflag.NewFlagSet("profile", pflag.ContinueOnError)
+	}
+	if p.Prompt != "" && p.PromptFile != "" {
+		return fmt.Errorf("profile: specify either prompt or prompt_file, not both")
+	}
 	if p.Style != "" && !isStyleChanged(fs) {
 		c.Style = p.Style
 	}
@@ -266,9 +295,11 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 		c.Prompt = p.Prompt
 	}
 	if p.PromptFile != "" && !fs.Changed("prompt") {
-		if content, err := readPromptFileWithRoot(c.RootDir, p.PromptFile); err == nil {
-			c.Prompt = content
+		content, err := readPromptFileWithRoot(c.RootDir, p.PromptFile)
+		if err != nil {
+			return err
 		}
+		c.Prompt = content
 	}
 	if p.SecretScan != nil && !fs.Changed("secrets") {
 		c.SecretScan = *p.SecretScan
@@ -320,6 +351,12 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 	if p.Theme != "" && !fs.Changed("theme") {
 		c.Theme = p.Theme
 	}
+	if p.UIThemeFile != "" && !fs.Changed("ui-theme-file") {
+		c.UIThemeFile = p.UIThemeFile
+	}
+	if p.CopyOnGenerate != nil && !fs.Changed("copy-on-generate") {
+		c.CopyOnGenerate = *p.CopyOnGenerate
+	}
 	if p.HighlightMaxBytes != 0 && !fs.Changed("highlight-max-bytes") {
 		c.HighlightMaxBytes = p.HighlightMaxBytes
 	}
@@ -333,6 +370,9 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) {
 		c.Scoring.Merge(*p.Scoring)
 	}
 	if p.Modes != nil {
+		// A profile's [modes] replaces the current mapping wholesale; tiers are
+		// not merged field by field (matching Target and [sift] behavior).
 		c.Modes = *p.Modes
 	}
+	return nil
 }

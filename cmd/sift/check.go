@@ -159,11 +159,11 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		if sum.Style != "" || sum.Output != "" {
 			styleStr := sum.Style
 			if styleStr == "" {
-				styleStr = "xml"
+				styleStr = config.New().Style
 			}
 			outStr := sum.Output
 			if outStr == "" {
-				outStr = "codebase." + styleStr
+				outStr = config.DefaultOutputFile(styleStr)
 			}
 			printRow("Output", fmt.Sprintf("%s (%s)", outStr, styleStr))
 		}

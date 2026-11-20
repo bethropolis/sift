@@ -791,43 +791,40 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	prefs, err := state.LoadPreferences()
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "cannot load settings")
+	if body.DefaultBudget != 0 && (body.DefaultBudget < 1000 || body.DefaultBudget > 4000000) {
+		writeAPIError(w, http.StatusBadRequest, "defaultBudget out of range")
 		return
 	}
-	if body.DefaultStyle != "" {
-		prefs.DefaultStyle = body.DefaultStyle
-	}
-	if body.DefaultBudget != 0 {
-		if body.DefaultBudget < 1000 || body.DefaultBudget > 4000000 {
-			writeAPIError(w, http.StatusBadRequest, "defaultBudget out of range")
-			return
-		}
-		prefs.DefaultBudget = body.DefaultBudget
-	}
-	if body.Theme != "" {
-		// One id drives both frontends: mirror it to the legacy TUI field
-		// so older builds follow a browser theme change.
-		prefs.Theme = body.Theme
-		prefs.UITheme = body.Theme
-	}
-	if body.ShowHidden != nil {
-		prefs.ShowHidden = *body.ShowHidden
-	}
-	if body.FileSort != "" {
-		prefs.FileSort = body.FileSort
-	}
-	prefs = state.SanitizePreferences(prefs)
-	if body.Theme != "" && prefs.Theme == "" {
+	if body.Theme != "" && state.SanitizePreferences(state.Preferences{Theme: body.Theme}).Theme == "" {
 		writeAPIError(w, http.StatusBadRequest, "bad theme id")
 		return
 	}
-	if body.FileSort != "" && prefs.FileSort == "" {
+	if body.FileSort != "" && state.SanitizePreferences(state.Preferences{FileSort: body.FileSort}).FileSort == "" {
 		writeAPIError(w, http.StatusBadRequest, "bad fileSort")
 		return
 	}
-	if err := state.SavePreferences(prefs); err != nil {
+	err := state.UpdatePreferences(func(prefs *state.Preferences) error {
+		if body.DefaultStyle != "" {
+			prefs.DefaultStyle = body.DefaultStyle
+		}
+		if body.DefaultBudget != 0 {
+			prefs.DefaultBudget = body.DefaultBudget
+		}
+		if body.Theme != "" {
+			// One id drives both frontends: mirror it to the legacy TUI field
+			// so older builds follow a browser theme change.
+			prefs.Theme = body.Theme
+			prefs.UITheme = body.Theme
+		}
+		if body.ShowHidden != nil {
+			prefs.ShowHidden = *body.ShowHidden
+		}
+		if body.FileSort != "" {
+			prefs.FileSort = body.FileSort
+		}
+		return nil
+	})
+	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "cannot save settings")
 		return
 	}

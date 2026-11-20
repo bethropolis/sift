@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"testing"
 
 	"github.com/spf13/pflag"
@@ -28,6 +29,10 @@ func TestParseBudget(t *testing.T) {
 		{"invalid", 0, true},
 		{"-100", 0, true},
 		{"-50k", 0, true},
+		{"NaN", 0, true},
+		{"Inf", 0, true},
+		{"-Inf", 0, true},
+		{"9e300", 0, true},
 	}
 
 	for _, tc := range tests {
@@ -57,6 +62,9 @@ func TestParseBudgetAny(t *testing.T) {
 		{-100, 0, true},
 		{int64(-1), 0, true},
 		{true, 0, true},
+		{math.NaN(), 0, true},
+		{math.Inf(1), 0, true},
+		{float64(1e300), 0, true},
 	}
 
 	for _, tc := range tests {

@@ -104,7 +104,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 
 	var userThemes []theme.ThemePreset
 	if s.cfg.UIThemeFile != "" {
-		userThemes, err = theme.LoadUserThemes(s.cfg.UIThemeFile)
+		userThemes, err = theme.LoadUserThemesIn(s.cfg.RootDir, s.cfg.UIThemeFile)
 		if err != nil {
 			return Result{}, err
 		}

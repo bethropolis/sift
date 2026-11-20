@@ -2,11 +2,12 @@ package theme
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/bethropolis/sift/internal/fsx"
 )
 
 type userThemeFile struct {
@@ -46,7 +47,14 @@ func (s userThemeSpec) overridesColors() bool {
 // LoadUserThemes loads and validates custom picker themes from a TOML file.
 // Inheriting themes are resolved against built-ins and earlier definitions.
 func LoadUserThemes(path string) ([]ThemePreset, error) {
-	data, err := os.ReadFile(path)
+	return LoadUserThemesIn("", path)
+}
+
+// LoadUserThemesIn loads themes from path, confining a relative path to
+// rootDir so a symlinked ui_theme_file in an untrusted project cannot read
+// host files. An empty rootDir reads path as given (trusted global config).
+func LoadUserThemesIn(rootDir, path string) ([]ThemePreset, error) {
+	data, err := fsx.ReadFile(rootDir, path)
 	if err != nil {
 		return nil, fmt.Errorf("read UI theme file: %w", err)
 	}

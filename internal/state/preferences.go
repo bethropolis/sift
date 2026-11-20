@@ -5,7 +5,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
+
+	"github.com/bethropolis/sift/internal/fsx"
 )
+
+// prefsMu serializes in-process read-modify-write access; acquireFileLock
+// handles concurrent processes.
+var prefsMu sync.Mutex
 
 // Preferences contains user-level interactive preferences that should survive
 // picker sessions but do not belong to a project's dump history. The TUI and
@@ -57,13 +64,11 @@ func EffectiveTheme(p Preferences) string {
 // preserving every other preference. It replaces the old pattern of saving
 // Preferences{UITheme: name}, which silently wiped the rest of the file.
 func SetTheme(id string) error {
-	prefs, err := LoadPreferences()
-	if err != nil {
-		return err
-	}
-	prefs.Theme = id
-	prefs.UITheme = id
-	return SavePreferences(prefs)
+	return UpdatePreferences(func(prefs *Preferences) error {
+		prefs.Theme = id
+		prefs.UITheme = id
+		return nil
+	})
 }
 func SanitizePreferences(p Preferences) Preferences {
 	if !validThemeID(p.Theme) {
@@ -86,11 +91,11 @@ func SanitizePreferences(p Preferences) Preferences {
 }
 
 func preferencesPath() (string, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := fsx.ConfigDir("sift")
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "sift", "preferences.json"), nil
+	return filepath.Join(dir, "preferences.json"), nil
 }
 
 // LoadPreferences loads user preferences. Missing preferences are normal and
@@ -100,6 +105,67 @@ func LoadPreferences() (Preferences, error) {
 	if err != nil {
 		return Preferences{}, err
 	}
+	return loadPreferencesFile(path)
+}
+
+// SavePreferences writes user preferences atomically, sanitizing first.
+func SavePreferences(prefs Preferences) error {
+	path, err := preferencesPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	lock, err := acquireFileLock(preferencesLockPath(path))
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+
+	prefsMu.Lock()
+	defer prefsMu.Unlock()
+	return savePreferencesLocked(path, prefs)
+}
+
+// UpdatePreferences runs fn against the current preferences inside the same
+// cross-process lock and in-process mutex as SavePreferences, then writes the
+// result. Read-modify-write callers (SetTheme, the serve settings handler)
+// must use this so concurrent updates cannot clobber each other.
+func UpdatePreferences(fn func(*Preferences) error) error {
+	path, err := preferencesPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	lock, err := acquireFileLock(preferencesLockPath(path))
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+
+	prefsMu.Lock()
+	defer prefsMu.Unlock()
+
+	prefs, err := loadPreferencesFile(path)
+	if err != nil {
+		return err
+	}
+	if err := fn(&prefs); err != nil {
+		return err
+	}
+	return savePreferencesLocked(path, prefs)
+}
+
+func preferencesLockPath(path string) string {
+	return filepath.Join(filepath.Dir(path), "preferences.lock")
+}
+
+// loadPreferencesFile reads one path. Callers hold the preference lock when
+// performing a read-modify-write.
+func loadPreferencesFile(path string) (Preferences, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -117,13 +183,9 @@ func LoadPreferences() (Preferences, error) {
 	return SanitizePreferences(prefs), nil
 }
 
-// SavePreferences writes user preferences atomically, sanitizing first.
-func SavePreferences(prefs Preferences) error {
+// savePreferencesLocked writes prefs atomically. Callers hold the lock.
+func savePreferencesLocked(path string, prefs Preferences) error {
 	prefs = SanitizePreferences(prefs)
-	path, err := preferencesPath()
-	if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

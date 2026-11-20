@@ -87,15 +87,18 @@ func NewRendererWithOptions(style Style, options RenderOptions) (Renderer, error
 	}
 }
 
-// ParseStyle converts a style string to a Style, defaulting to plain.
+// ParseStyle converts a style string to a Style, defaulting to plain. Common
+// aliases (md, txt, raw) are accepted so config and flags agree with --style.
 func ParseStyle(s string) Style {
 	switch Style(strings.ToLower(strings.TrimSpace(s))) {
-	case StyleMarkdown:
+	case StyleMarkdown, "md":
 		return StyleMarkdown
 	case StyleJSON:
 		return StyleJSON
 	case StyleXML:
 		return StyleXML
+	case StylePlain, "txt", "text", "raw":
+		return StylePlain
 	default:
 		return StylePlain
 	}

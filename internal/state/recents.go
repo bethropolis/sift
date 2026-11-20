@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bethropolis/sift/internal/fsx"
 )
 
 // maxRecents caps the shared recent-projects list. The browser sends no
@@ -26,11 +28,11 @@ type Recent struct {
 var recentsMu sync.Mutex
 
 func recentsPath() (string, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := fsx.ConfigDir("sift")
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "sift", "recents.json"), nil
+	return filepath.Join(dir, "recents.json"), nil
 }
 
 func recentsLockPath() (string, error) {
