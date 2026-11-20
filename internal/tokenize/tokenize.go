@@ -141,6 +141,26 @@ func FitToBudgetWithFallback(files []format.FileEntry, budget int, threshold flo
 				used += fullTokens
 				continue
 			}
+			if used < thresholdBudget {
+				// Still below the threshold: this single file is the outlier.
+				// Downgrade just this file (or skip it) instead of flipping
+				// the global switch and compressing every smaller file behind
+				// it.
+				sigTokens := f.TokensSig
+				if sigTokens <= 0 {
+					sigTokens = fullTokens
+				}
+				if sigTokens < fullTokens && used+sigTokens <= budget {
+					if len(f.SigContent) > 0 {
+						f.Content = f.SigContent
+						f.IsCompressed = true
+					}
+					f.Tokens = sigTokens
+					kept = append(kept, f)
+					used += sigTokens
+				}
+				continue
+			}
 			fallbackTriggered = true
 		}
 

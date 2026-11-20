@@ -96,6 +96,18 @@ func HasImportScanner(path string) bool {
 	return false
 }
 
+// ImportsUseModuleRoot reports whether the driver for path expresses import
+// targets relative to the module root.
+func ImportsUseModuleRoot(path string) bool {
+	norm := strings.ToLower(filepath.ToSlash(path))
+	if l, ok := ForPath(norm); ok {
+		if m, ok := l.(types.ModuleRootImports); ok {
+			return m.ImportsUseModuleRoot()
+		}
+	}
+	return false
+}
+
 // ImportExtensions lists the sorted file extensions of languages that
 // extract imports, for error messages naming resolver support.
 func ImportExtensions() []string {

@@ -90,6 +90,10 @@ func Imports(path, moduleRoot string, content []byte) []string {
 // HasImportScanner reports whether the language for path extracts imports.
 func HasImportScanner(path string) bool { return registry.HasImportScanner(path) }
 
+// ImportsUseModuleRoot reports whether the language for path expresses import
+// targets relative to its module root (Go) rather than the scan root.
+func ImportsUseModuleRoot(path string) bool { return registry.ImportsUseModuleRoot(path) }
+
 // ImportExtensions lists the sorted extensions of import-scanning languages.
 func ImportExtensions() []string { return registry.ImportExtensions() }
 

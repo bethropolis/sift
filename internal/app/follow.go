@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -85,9 +86,11 @@ func MergeGraphs(a, b map[string][]string) map[string][]string {
 	return out
 }
 
-// ExpandGraphDirs rewrites directory targets to the sorted collected files
-// beneath them (Go package imports name directories). Targets naming neither
-// a file nor a directory with collected files are dropped.
+// ExpandGraphDirs rewrites directory targets to the collected files directly
+// inside them (Go package imports name directories). Only direct children are
+// included: a nested subpackage is a different Go package and must not be
+// pulled in by an import of its parent. Targets naming neither a file nor a
+// directory with collected files are dropped.
 func ExpandGraphDirs(graph map[string][]string, paths []string) map[string][]string {
 	files := make(map[string]bool, len(paths))
 	for _, p := range paths {
@@ -105,9 +108,8 @@ func ExpandGraphDirs(graph map[string][]string, paths []string) map[string][]str
 				out[s] = append(out[s], t)
 				continue
 			}
-			prefix := t + "/"
 			for p := range files {
-				if strings.HasPrefix(p, prefix) {
+				if path.Dir(p) == t {
 					out[s] = append(out[s], p)
 				}
 			}

@@ -105,7 +105,7 @@ func TestWalkGraphCycleDiamondDepth(t *testing.T) {
 
 func TestWalkGraphDirTargets(t *testing.T) {
 	graph := map[string][]string{"a.go": {"pkg"}}
-	expanded := ExpandGraphDirs(graph, []string{"a.go", "pkg/x.go", "pkg/y.go", "other.go"})
+	expanded := ExpandGraphDirs(graph, []string{"a.go", "pkg/x.go", "pkg/y.go", "pkg/sub/z.go", "other.go"})
 	hits := WalkGraph(expanded, []string{"a.go"}, -1)
 	if hitPaths(hits) != "a.go pkg/x.go pkg/y.go" {
 		t.Fatalf("dir expansion walk = %v", hits)

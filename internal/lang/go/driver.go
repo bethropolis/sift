@@ -15,6 +15,10 @@ func init() { registry.Register(goDriver{}) }
 func (goDriver) ID() types.ID         { return types.Go }
 func (goDriver) Name() string         { return "Go" }
 func (goDriver) Extensions() []string { return []string{".go"} }
+
+// ImportsUseModuleRoot marks Go import targets as module-relative package
+// directories, which the ranker must re-base onto the scan root.
+func (goDriver) ImportsUseModuleRoot() bool { return true }
 func (goDriver) ShouldSkipSmart(path, filename string, content []byte) (bool, string) {
 	const reason = "Matched smart language filter"
 	if filename == "go.sum" {

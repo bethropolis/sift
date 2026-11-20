@@ -48,6 +48,7 @@ func TestProcessCacheReplayIdentical(t *testing.T) {
 // serves the compressed entry purely from a shared cache populated by a
 // compression-enabled processor.
 func TestProcessCacheSkipsExpensivePaths(t *testing.T) {
+	requireCompression(t)
 	cache := NewContentCache()
 	full := newCacheTestProcessor(t, true, cache)
 	want, err := full.Process("main.go", []byte(goSource), ModePicker)
@@ -93,6 +94,34 @@ func TestContentCacheNilSafe(t *testing.T) {
 		t.Error("nil cache hit")
 	}
 	c.Put([]byte("x"), ModeFull, "m", CachedResult{TokensFull: 1})
+}
+
+// TestContentCacheEviction verifies both LRU bounds are enforced.
+func TestContentCacheEviction(t *testing.T) {
+	c := NewContentCacheWithLimits(2, 1<<20)
+	c.Put([]byte("a"), ModeFull, "m", CachedResult{TokensFull: 1})
+	c.Put([]byte("b"), ModeFull, "m", CachedResult{TokensFull: 2})
+	// Touch a so b is the least recently used.
+	if _, hit := c.Get([]byte("a"), ModeFull, "m"); !hit {
+		t.Fatal("a missing")
+	}
+	c.Put([]byte("c"), ModeFull, "m", CachedResult{TokensFull: 3})
+	if _, hit := c.Get([]byte("b"), ModeFull, "m"); hit {
+		t.Error("least-recently-used entry b was not evicted")
+	}
+	if _, hit := c.Get([]byte("a"), ModeFull, "m"); !hit {
+		t.Error("recently used entry a was evicted")
+	}
+	if _, hit := c.Get([]byte("c"), ModeFull, "m"); !hit {
+		t.Error("new entry c missing")
+	}
+
+	// Byte cap: one entry over the limit evicts everything older.
+	small := NewContentCacheWithLimits(100, 8)
+	small.Put([]byte("x"), ModeFull, "m", CachedResult{SigContent: []byte("0123456789")})
+	if small.bytes > small.maxBytes {
+		t.Errorf("cache retained %d bytes over cap %d", small.bytes, small.maxBytes)
+	}
 }
 
 // TestContentCacheConcurrent verifies parallel walker workers can share one

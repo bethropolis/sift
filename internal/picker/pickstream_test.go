@@ -60,6 +60,7 @@ func initGitTree(t *testing.T, dir string) {
 // skeleton's provisional modes with unified-score-derived ranks and preferred
 // modes for every streamed file in a git repository.
 func TestStreamScanPatchesUnifiedRanks(t *testing.T) {
+	requireCompression(t)
 	dir := writeSmokeTree(t)
 	initGitTree(t, dir)
 	cfg := config.New()

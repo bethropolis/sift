@@ -1,8 +1,8 @@
 package rank
 
 import (
+	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/bethropolis/sift/internal/lang"
@@ -95,7 +95,7 @@ func (g *Git) CalculateUnifiedScores(rootDir string, params []ScoringParams, w W
 	}
 
 	for _, p := range params {
-		relPath := p.Path
+		relPath := filepath.ToSlash(p.Path)
 
 		// Signal 1: git recency tier.
 		recencyScore := ScoreBaseline
@@ -200,8 +200,8 @@ func (g *Git) GetChurnFrequency(n int) map[string]int {
 		return churn
 	}
 	for _, p := range g.runList("log", "-n", strconv.Itoa(n), "--name-only", "--format=") {
-		if p = strings.TrimSpace(p); p != "" {
-			churn[p]++
+		if rp, ok := g.toRootPath(p); ok {
+			churn[rp]++
 		}
 	}
 	return churn

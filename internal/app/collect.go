@@ -280,11 +280,9 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 			case config.ModeDecisionSignatures:
 				procMode = scan.ModeSignatures
 			case config.ModeDecisionFull:
-				if a.cfg.FallbackMode == "signatures" {
-					procMode = scan.ModePicker
-				} else {
-					procMode = scan.ModeFull
-				}
+				// An explicit [modes].full pin wins over fallback-mode
+				// compression: the file is never rendered as signatures.
+				procMode = scan.ModeFull
 			}
 		}
 

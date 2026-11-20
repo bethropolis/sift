@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,6 +36,12 @@ type Git struct {
 	// scan/rank pass, so the answer stays fresh where it matters.
 	availOnce sync.Once
 	avail     bool
+
+	// prefixOnce memoizes --show-prefix, the scan root's path inside the
+	// repository. Git reports every path relative to the repository root, so
+	// scanning a subdirectory needs this prefix stripped to match walker paths.
+	prefixOnce sync.Once
+	prefix     string
 }
 
 // New returns a Git handle rooted at dir with a background context.
@@ -59,10 +66,13 @@ func (g *Git) run(args ...string) string {
 // runRaw captures git stdout verbatim so column-aligned output like porcelain
 // status survives unscathed.
 func (g *Git) runRaw(args ...string) string {
-	full := make([]string, 0, len(args)+4)
+	full := make([]string, 0, len(args)+6)
 	full = append(full,
 		"-c", "core.fsmonitor=false",
 		"-c", "core.hooksPath=/dev/null",
+		// Emit raw UTF-8 paths instead of C-quoted escapes; quoted paths never
+		// matched walker paths and broke scoring for non-ASCII filenames.
+		"-c", "core.quotepath=false",
 	)
 	full = append(full, args...)
 	cmd := exec.CommandContext(g.ctx, "git", full...)
@@ -170,6 +180,38 @@ func (g *Git) Available() bool {
 	return g.avail
 }
 
+// Prefix returns the scan root's path inside the repository, slash-normalized
+// and without a trailing slash. It is "" when rootDir is the repository root
+// (or not inside a repository).
+func (g *Git) Prefix() string {
+	g.prefixOnce.Do(func() {
+		out := strings.TrimSpace(g.run("rev-parse", "--show-prefix"))
+		g.prefix = strings.Trim(strings.TrimSuffix(out, "/"), "/")
+	})
+	return g.prefix
+}
+
+// toRootPath maps a git-reported repository-root-relative path to one relative
+// to the scan root. Paths outside the scan root are dropped: a whole-repo
+// git query must not score files the walker never collected.
+func (g *Git) toRootPath(p string) (string, bool) {
+	p = strings.TrimSpace(filepath.ToSlash(p))
+	if p == "" {
+		return "", false
+	}
+	prefix := g.Prefix()
+	if prefix == "" {
+		return p, true
+	}
+	if p == prefix {
+		return "", false
+	}
+	if strings.HasPrefix(p, prefix+"/") {
+		return p[len(prefix)+1:], true
+	}
+	return "", false
+}
+
 // ChangesFor computes the relevance tiers for ref (default HEAD):
 //   - Modified: uncommitted working-tree or staged changes.
 //   - Diffed:   files touched between ref and its first parent.
@@ -189,16 +231,21 @@ func (g *Git) ChangesFor(ref string) *Changes {
 	go func() {
 		defer wg.Done()
 		local := map[string]bool{}
+		add := func(p string) {
+			if rp, ok := g.toRootPath(p); ok {
+				local[rp] = true
+			}
+		}
 		for _, line := range strings.Split(g.runRaw("status", "--porcelain"), "\n") {
 			if len(line) > 3 {
 				p := strings.TrimSpace(line[3:])
 				if idx := strings.Index(p, " -> "); idx != -1 {
 					// Rename entry: "old.go -> new.go". Register both sides so
 					// the new path is scored as modified.
-					local[p[idx+4:]] = true
-					local[p[:idx]] = true
+					add(p[idx+4:])
+					add(p[:idx])
 				} else {
-					local[p] = true
+					add(p)
 				}
 			}
 		}
@@ -216,8 +263,8 @@ func (g *Git) ChangesFor(ref string) *Changes {
 			// an empty list.
 			local := map[string]bool{}
 			for _, p := range g.runDiffList("--name-only", parent+".."+ref) {
-				if p = strings.TrimSpace(p); p != "" {
-					local[p] = true
+				if rp, ok := g.toRootPath(p); ok {
+					local[rp] = true
 				}
 			}
 			mu.Lock()
@@ -234,8 +281,8 @@ func (g *Git) ChangesFor(ref string) *Changes {
 		}
 		local := map[string]bool{}
 		for _, p := range g.runListRef("log", "-n", "5", "--name-only", "--format=", ref) {
-			if p = strings.TrimSpace(p); p != "" {
-				local[p] = true
+			if rp, ok := g.toRootPath(p); ok {
+				local[rp] = true
 			}
 		}
 		mu.Lock()
@@ -354,8 +401,8 @@ func (g *Git) ChangedBetween(from, to string) []string {
 		return nil
 	}
 	for _, p := range g.runDiffList("--name-only", from+".."+to, "--") {
-		if p = strings.TrimSpace(p); p != "" {
-			set[p] = true
+		if rp, ok := g.toRootPath(p); ok {
+			set[rp] = true
 		}
 	}
 	paths := make([]string, 0, len(set))
@@ -378,8 +425,8 @@ func (g *Git) ChangedSinceRef(ref string) []string {
 	set := map[string]bool{}
 	add := func(lines []string) {
 		for _, p := range lines {
-			if p = strings.TrimSpace(p); p != "" {
-				set[p] = true
+			if rp, ok := g.toRootPath(p); ok {
+				set[rp] = true
 			}
 		}
 	}

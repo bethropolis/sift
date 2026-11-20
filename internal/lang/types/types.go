@@ -121,6 +121,15 @@ type ImportScanner interface {
 	Imports(path, moduleRoot string, content []byte) []string
 }
 
+// ModuleRootImports is an optional capability of a Language whose Imports and
+// ResolveImports targets are expressed relative to the module root rather than
+// the scan root. The ranker uses it to re-base targets when scanning a
+// subdirectory or a nested module. Go is the canonical case: package imports
+// name module-relative directories.
+type ModuleRootImports interface {
+	ImportsUseModuleRoot() bool
+}
+
 // DeclMap builds a lookup set of AST node types for a SignatureSpec.
 func DeclMap(tags ...string) map[string]bool {
 	m := make(map[string]bool, len(tags))

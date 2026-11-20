@@ -9,6 +9,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/lang"
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/selection"
@@ -106,20 +107,21 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 	intArg(args, "budget", &runCfg.Budget)
 	stringArg(args, "prompt", &runCfg.Prompt)
 	stringArg(args, "mode", &runCfg.Mode)
+	if _, ok := args["style"]; ok {
+		// An explicit style must beat the server's legacy --json/--markdown
+		// flags, which EffectiveStyle consults first.
+		runCfg.JSONOutput = false
+		runCfg.MarkdownOutput = false
+	}
 	stringArg(args, "style", &runCfg.Style)
 	stringArg(args, "ext", &runCfg.Extensions)
 	stringArg(args, "ignore", &runCfg.CustomIgnore)
+	_, modeGiven := args["mode"]
 	if runCfg.Mode != "" && runCfg.Mode != "full" && runCfg.Mode != "signatures" {
 		return "", fmt.Errorf("invalid mode %q: want full or signatures", runCfg.Mode)
 	}
 	runCfg.SmartFilter = true
 	runCfg.OutputFile = "-" // never touch disk
-
-	application, err := app.New(&runCfg)
-	if err != nil {
-		return "", err
-	}
-	defer application.Close()
 
 	files, _, err := app.ScanPicker(ctx, runCfg.RootDir, &runCfg)
 	if err != nil {
@@ -133,6 +135,7 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 	graph := map[string][]string{}
 	ranker := app.NewRankerWithWeights(absRoot, app.WeightsFromScoring(runCfg.Scoring))
 	preferred, graph = ranker.RankGraph(files)
+	affinity := app.RelatedTestAffinity(files, graph)
 
 	candidates := make([]selection.Candidate, 0, len(files))
 	for _, file := range files {
@@ -141,10 +144,11 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 			File:          file,
 			PreferredMode: sc.PreferredMode,
 			Signals: selection.Signals{
-				Recency:    sc.Signals.Recency,
-				Churn:      sc.Signals.Churn,
-				Centrality: sc.Signals.Centrality,
-				Role:       sc.Signals.Role,
+				Recency:      sc.Signals.Recency,
+				Churn:        sc.Signals.Churn,
+				Centrality:   sc.Signals.Centrality,
+				Role:         sc.Signals.Role,
+				TestAffinity: affinity[file.Path],
 			},
 		})
 	}
@@ -159,8 +163,43 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 		MaxDepth:   runCfg.MaxDepth,
 	})
 
-	buf, err := app.RenderBuffer(ctx, result.Selected, runCfg.Prompt, &runCfg)
+	selected := result.Selected
+	if modeGiven {
+		selected = forceSelectionMode(selected, runCfg.Mode, runCfg.Budget)
+	}
+
+	buf, err := app.RenderBuffer(ctx, selected, runCfg.Prompt, &runCfg)
 	return string(buf), err
+}
+
+// forceSelectionMode rewrites the optimizer's picks to an explicit caller mode.
+// Files that cannot be compressed fall back to full content; entries that would
+// exceed the budget are dropped so the document never overshoots.
+func forceSelectionMode(files []format.FileEntry, mode string, budget int) []format.FileEntry {
+	out := make([]format.FileEntry, 0, len(files))
+	used := 0
+	for _, f := range files {
+		switch mode {
+		case "signatures":
+			if len(f.SigContent) > 0 {
+				f.Content = f.SigContent
+				f.Tokens = f.TokensSig
+				f.IsCompressed = true
+			} else {
+				f.Tokens = f.TokensFull
+				f.IsCompressed = false
+			}
+		case "full":
+			f.Tokens = f.TokensFull
+			f.IsCompressed = false
+		}
+		if budget > 0 && used+f.Tokens > budget {
+			continue
+		}
+		used += f.Tokens
+		out = append(out, f)
+	}
+	return out
 }
 
 // handlePackDiff packs what changed. from="" means uncommitted working-tree
@@ -204,7 +243,7 @@ func handlePackDiff(ctx context.Context, args map[string]any, cfg *config.Config
 		} else {
 			diff = strings.TrimSpace(g.RawPatch(from, head))
 		}
-		return fmt.Sprintf("<context_update type=\"delta_patch\" from_commit=%q to_commit=%q>\n<![CDATA[\n%s\n]]>\n</context_update>\n", from, to, diff), nil
+		return format.RenderContextUpdate(from, to, diff), nil
 	}
 
 	runCfg := *cfg

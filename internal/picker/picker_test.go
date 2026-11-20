@@ -24,6 +24,7 @@ const fallbackSource = "package main\n\nfunc main() {\n\tprintln(\"hi\")\n}\n"
 // TestApplySelectionFallbackRead covers a selected file that has not streamed
 // in yet: applySelection falls back to ReadEntry and still honours the mode.
 func TestApplySelectionFallbackRead(t *testing.T) {
+	requireCompression(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fallbackSource), 0o644); err != nil {
 		t.Fatal(err)

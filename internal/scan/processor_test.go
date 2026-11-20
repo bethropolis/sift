@@ -6,8 +6,18 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/bethropolis/sift/internal/compress"
 	"github.com/bethropolis/sift/internal/logger"
 )
+
+// requireCompression skips tests that assert signature output when the build
+// has no cgo tree-sitter engine (CGO_ENABLED=0).
+func requireCompression(t *testing.T) {
+	t.Helper()
+	if _, ok := compress.New().Compress([]byte("package x\n\nfunc F() {}\n"), "go"); !ok {
+		t.Skip("signature compression requires cgo")
+	}
+}
 
 func newTestProcessor(t *testing.T, smartOn bool) *Processor {
 	t.Helper()
@@ -69,6 +79,7 @@ func TestProcessFullRetainsSource(t *testing.T) {
 // TestProcessSignaturesRendersCompressed verifies ModeSignatures swaps the raw
 // body for the signature summary and counts the compressed text.
 func TestProcessSignaturesRendersCompressed(t *testing.T) {
+	requireCompression(t)
 	p := newTestProcessor(t, false)
 	e, err := p.Process("main.go", []byte(goSource), ModeSignatures)
 	if err != nil {
@@ -91,6 +102,7 @@ func TestProcessSignaturesRendersCompressed(t *testing.T) {
 // TestProcessPickerRetainsBoth verifies ModePicker keeps full and signature
 // variants plus both token counts, leaving Tokens unset.
 func TestProcessPickerRetainsBoth(t *testing.T) {
+	requireCompression(t)
 	p := newTestProcessor(t, false)
 	e, err := p.Process("main.go", []byte(goSource), ModePicker)
 	if err != nil {
@@ -213,6 +225,7 @@ func TestProcessTokenLimitSkip(t *testing.T) {
 // TestProcessConcurrent verifies one Processor is safe for concurrent use,
 // exercising the shared tokenizer and compressor from many goroutines.
 func TestProcessConcurrent(t *testing.T) {
+	requireCompression(t)
 	p := newTestProcessor(t, false)
 	var wg sync.WaitGroup
 	errs := make(chan error, 64)

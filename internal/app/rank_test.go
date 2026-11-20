@@ -154,7 +154,7 @@ func TestComputeFanIn(t *testing.T) {
 		"cmd/tool/main.go":          0,
 		"internal/app/app.go":       2, // imported by main.go and cmd/tool
 		"internal/app/store.go":     2,
-		"internal/app/sub/extra.go": 2, // inherits from the internal/app package node
+		"internal/app/sub/extra.go": 0, // a nested package is not the imported package
 		"other.go":                  0,
 	}
 	for path, wantCount := range want {
@@ -238,7 +238,7 @@ func TestModuleRootsIncludesGoWorkMembers(t *testing.T) {
 	if byDir["services/auth"] != "example.com/auth" {
 		t.Errorf("member module = %q, want example.com/auth (via go.work)", byDir["services/auth"])
 	}
-	if got := resolveModuleForFile("services/auth/handler.go", roots); got != "example.com/auth" {
+	if got := resolveModuleForFile("services/auth/handler.go", roots).moduleName; got != "example.com/auth" {
 		t.Errorf("resolveModuleForFile = %q, want example.com/auth", got)
 	}
 }

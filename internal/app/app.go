@@ -46,6 +46,9 @@ type App struct {
 	smartEval *smart.Evaluator
 
 	// modesMatcher enforces path-based compression and filtering rules.
+	// modeOnce guards lazy construction for struct-literal Apps; the normal
+	// constructors set it eagerly.
+	modeOnce     sync.Once
 	modesMatcher *config.ModesMatcher
 }
 
@@ -104,12 +107,11 @@ func New(cfg *config.Config) (*App, error) {
 }
 
 func (a *App) getModesMatcher() *config.ModesMatcher {
-	if a.modesMatcher != nil {
-		return a.modesMatcher
-	}
-	if a.cfg != nil {
-		a.modesMatcher = config.NewModesMatcher(a.cfg.RootDir, a.cfg.Modes)
-	}
+	a.modeOnce.Do(func() {
+		if a.modesMatcher == nil && a.cfg != nil {
+			a.modesMatcher = config.NewModesMatcher(a.cfg.RootDir, a.cfg.Modes)
+		}
+	})
 	return a.modesMatcher
 }
 

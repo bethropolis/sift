@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -158,7 +159,10 @@ func RankParams(files []format.FileEntry, fanIn map[string]int) []rank.ScoringPa
 func (r *Ranker) computeFanIn(files []format.FileEntry) (map[string]int, map[string][]string) {
 	moduleRoots := r.moduleRoots(files)
 	root := &fanNode{children: map[string]*fanNode{}}
-	nodeByPath := make(map[string]*fanNode, len(files))
+	nodeByPath := make(map[string]*fanNode, len(files)+1)
+	// "." is the scan-root package for top-level files and for imports of the
+	// root package itself.
+	nodeByPath["."] = root
 	for _, f := range files {
 		path := filepath.ToSlash(f.Path)
 		node := root
@@ -195,19 +199,51 @@ func (r *Ranker) computeFanIn(files []format.FileEntry) (map[string]int, map[str
 			collected[d] = true
 		}
 	}
-	exists := func(p string) bool { return collected[strings.ToLower(filepath.ToSlash(p))] }
 	graph := make(map[string][]string)
 
 	for _, f := range files {
 		filePath := filepath.ToSlash(f.Path)
-		modRoot := resolveModuleForFile(filePath, moduleRoots)
-		for _, target := range lang.Imports(filePath, modRoot, f.Content) {
-			target = strings.TrimSuffix(filepath.ToSlash(target), "/")
-			if target == "" {
+		mod := resolveModuleForFile(filePath, moduleRoots)
+		moduleRelative := lang.ImportsUseModuleRoot(filePath)
+		// Module-relative import targets (Go packages) are mapped back onto
+		// scan-root relative paths. Other drivers already emit scan-root
+		// relative targets, so they pass through unchanged.
+		toRoot := func(p string) (string, bool) {
+			p = filepath.ToSlash(strings.TrimSpace(p))
+			if p == "" {
+				return "", false
+			}
+			if !moduleRelative {
+				return p, true
+			}
+			if mod.moduleRel != "" {
+				if p == mod.moduleRel {
+					return ".", true
+				}
+				if !strings.HasPrefix(p, mod.moduleRel+"/") {
+					return "", false // import resolves outside the scan root
+				}
+				return strings.TrimPrefix(p, mod.moduleRel+"/"), true
+			}
+			if mod.dir == "" {
+				return p, true
+			}
+			return filepath.ToSlash(path.Join(mod.dir, p)), true
+		}
+		exists := func(p string) bool {
+			p, ok := toRoot(p)
+			return ok && collected[strings.ToLower(p)]
+		}
+		for _, target := range lang.Imports(filePath, mod.moduleName, f.Content) {
+			target, ok := toRoot(target)
+			target = strings.TrimSuffix(target, "/")
+			if !ok || target == "" {
 				continue
 			}
 			// A package node present in collected paths receives one hit per
-			// importer; it is distributed to itself and its descendants below.
+			// importer. Hits are attributed to the node itself; fan-in is
+			// summed from a file's own node plus its immediate parent package
+			// below, so importing a package never inflates nested subpackages.
 			if node, ok := nodeByPath[target]; ok {
 				node.hits++
 			}
@@ -216,23 +252,35 @@ func (r *Ranker) computeFanIn(files []format.FileEntry) (map[string]int, map[str
 		// dependency paths per file for dependency expansion. The exists
 		// predicate covers collected files and their ancestor directories so
 		// Go package (directory) imports confirm.
-		if targets := lang.ResolveImports(filePath, modRoot, f.Content, exists); len(targets) > 0 {
-			graph[filePath] = targets
+		if targets := lang.ResolveImports(filePath, mod.moduleName, f.Content, exists); len(targets) > 0 {
+			mapped := make([]string, 0, len(targets))
+			for _, t := range targets {
+				if mappedTarget, ok := toRoot(t); ok && mappedTarget != "" {
+					mapped = append(mapped, mappedTarget)
+				}
+			}
+			if len(mapped) > 0 {
+				graph[filePath] = mapped
+			}
 		}
 	}
 
+	// Fan-in is the sum of hits on a file's own node and on its immediate
+	// parent package directory. Earlier versions propagated a package's hits
+	// to every descendant, so importing internal/lang also counted
+	// internal/lang/rust/*.
 	fanIn := make(map[string]int, len(files))
-	var accumulate func(node *fanNode, running int)
-	accumulate = func(node *fanNode, running int) {
-		total := running + node.hits
-		if node.isFile {
-			fanIn[node.path] = total
+	for _, f := range files {
+		p := filepath.ToSlash(f.Path)
+		total := 0
+		if node, ok := nodeByPath[p]; ok {
+			total += node.hits
 		}
-		for _, child := range node.children {
-			accumulate(child, total)
+		if parent, ok := nodeByPath[path.Dir(p)]; ok {
+			total += parent.hits
 		}
+		fanIn[p] = total
 	}
-	accumulate(root, 0)
 	return fanIn, graph
 }
 
@@ -246,52 +294,114 @@ type fanNode struct {
 	children map[string]*fanNode
 }
 
-// moduleRootInfo maps a workspace directory prefix to its module name.
+// moduleRootInfo maps a module directory (relative to the scan root) to its
+// module name. dir "" is the baseline module: either the scan root itself or
+// an enclosing parent module when scanning a subdirectory. moduleRel is the
+// scan root's path relative to that module root ("" when they are the same),
+// used to re-base module-relative import targets onto the scan root.
 type moduleRootInfo struct {
-	dir        string // e.g. "" for root, "services/auth" for nested
+	dir        string // e.g. "" for the baseline, "services/auth" for nested
 	moduleName string
+	moduleRel  string // rootDir relative to the module root, e.g. "internal"
 }
 
-// moduleRoots discovers module definitions across the repository (e.g. root
-// go.mod and nested go.mod files in subpackages/monorepos). Workspace
-// members declared via go.work `use` directives are included even when their
-// go.mod files were not collected.
+// moduleRoots discovers module definitions around and inside the scan root:
+// an enclosing go.mod/pubspec.yaml above it, nested modules found among the
+// collected files, and go.work workspace members. Scanning a subdirectory of a
+// Go repository must still resolve imports against the parent module.
 func (r *Ranker) moduleRoots(files []format.FileEntry) []moduleRootInfo {
 	var roots []moduleRootInfo
 	seen := make(map[string]bool)
-	add := func(dir, mod string) {
+	add := func(dir, moduleRel, mod string) {
+		dir = normalizeModuleDir(dir)
+		moduleRel = normalizeModuleDir(moduleRel)
 		if mod == "" || seen[dir] {
 			return
 		}
 		seen[dir] = true
-		roots = append(roots, moduleRootInfo{dir: dir, moduleName: mod})
+		roots = append(roots, moduleRootInfo{dir: dir, moduleName: mod, moduleRel: moduleRel})
 	}
-	// 1. Root module
-	rootModule := parseGoMod(filepath.Join(r.rootDir, "go.mod"))
-	if rootModule == "" {
-		rootModule = parsePubspecName(filepath.Join(r.rootDir, "pubspec.yaml"))
+
+	// 1. Enclosing module. All collected paths are relative to r.rootDir, so
+	// whatever module encloses it is the baseline (""); moduleRel records how
+	// far below the module root the scan starts.
+	moduleDir, rootModule := findEnclosingModule(r.rootDir)
+	moduleRel := ""
+	if moduleDir != "" {
+		if rel, err := filepath.Rel(moduleDir, r.rootDir); err == nil {
+			moduleRel = normalizeModuleDir(rel)
+		}
 	}
-	add("", rootModule)
-	// 2. Discover any nested go.mod from collected files
+	add("", moduleRel, rootModule)
+
+	// 2. Discover any nested go.mod/pubspec.yaml from collected files.
 	for _, f := range files {
 		p := filepath.ToSlash(f.Path)
 		base := filepath.Base(p)
 		if (base == "go.mod" || base == "pubspec.yaml") && filepath.Dir(p) != "." {
-			dir := filepath.Dir(p)
+			full := filepath.Join(r.rootDir, filepath.FromSlash(p))
 			module := ""
 			if base == "go.mod" {
-				module = parseGoMod(filepath.Join(r.rootDir, filepath.FromSlash(p)))
+				module = parseGoMod(full)
 			} else {
-				module = parsePubspecName(filepath.Join(r.rootDir, filepath.FromSlash(p)))
+				module = parsePubspecName(full)
 			}
-			add(dir, module)
+			add(filepath.Dir(p), "", module)
 		}
 	}
-	// 3. Workspace members from go.work, in case their go.mod was skipped
-	for _, dir := range parseGoWork(filepath.Join(r.rootDir, "go.work")) {
-		add(dir, parseGoMod(filepath.Join(r.rootDir, filepath.FromSlash(dir), "go.mod")))
+
+	// 3. Workspace members from go.work, in case their go.mod was skipped.
+	// Check the scan root and the enclosing module directory.
+	workFiles := []string{filepath.Join(r.rootDir, "go.work")}
+	if moduleDir != "" && filepath.Clean(moduleDir) != filepath.Clean(r.rootDir) {
+		workFiles = append(workFiles, filepath.Join(moduleDir, "go.work"))
+	}
+	for _, workFile := range workFiles {
+		for _, member := range parseGoWork(workFile) {
+			abs := filepath.FromSlash(member)
+			if !filepath.IsAbs(abs) {
+				abs = filepath.Join(filepath.Dir(workFile), abs)
+			}
+			rel, err := filepath.Rel(r.rootDir, abs)
+			if err != nil {
+				continue
+			}
+			rel = normalizeModuleDir(rel)
+			if strings.HasPrefix(rel, "..") {
+				continue
+			}
+			add(rel, "", parseGoMod(filepath.Join(abs, "go.mod")))
+		}
 	}
 	return roots
+}
+
+// normalizeModuleDir cleans a module directory for prefix matching.
+func normalizeModuleDir(dir string) string {
+	dir = filepath.ToSlash(filepath.Clean(dir))
+	if dir == "." || dir == "/" {
+		return ""
+	}
+	return dir
+}
+
+// findEnclosingModule walks upward from start until it finds a go.mod or
+// pubspec.yaml, returning that directory and its module name.
+func findEnclosingModule(start string) (dir, module string) {
+	cur := start
+	for {
+		if mod := parseGoMod(filepath.Join(cur, "go.mod")); mod != "" {
+			return cur, mod
+		}
+		if mod := parsePubspecName(filepath.Join(cur, "pubspec.yaml")); mod != "" {
+			return cur, mod
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return "", ""
+		}
+		cur = parent
+	}
 }
 
 var pubspecName = regexp.MustCompile(`(?m)^\s*name\s*:\s*['"]?([A-Za-z0-9_-]+)['"]?\s*(?:#.*)?$`)
@@ -378,22 +488,24 @@ func parseGoMod(path string) string {
 	return ""
 }
 
-func resolveModuleForFile(filePath string, roots []moduleRootInfo) string {
-	bestDir := ""
-	bestMod := ""
+// resolveModuleForFile returns the module a file belongs to. The longest
+// matching nested module wins; the baseline module (dir "") applies otherwise.
+func resolveModuleForFile(filePath string, roots []moduleRootInfo) moduleRootInfo {
+	best := moduleRootInfo{}
 	for _, r := range roots {
 		if r.dir == "" {
-			if bestMod == "" {
-				bestMod = r.moduleName
+			if best.moduleName == "" {
+				best = r
 			}
-		} else if strings.HasPrefix(filePath, r.dir+"/") {
-			if len(r.dir) > len(bestDir) {
-				bestDir = r.dir
-				bestMod = r.moduleName
+			continue
+		}
+		if strings.HasPrefix(filePath, r.dir+"/") || filePath == r.dir {
+			if len(r.dir) > len(best.dir) {
+				best = r
 			}
 		}
 	}
-	return bestMod
+	return best
 }
 
 // moduleRoot reads the repository root's module path for backwards compatibility.

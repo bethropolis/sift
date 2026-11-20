@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/format"
 )
 
 const mcpTestSource = `package main
@@ -136,6 +137,7 @@ func TestPackFollowDepsAndStateless(t *testing.T) {
 }
 
 func TestPackContextRespectsBudget(t *testing.T) {
+	requireCompression(t)
 	root, _ := writeMCPRepo(t)
 	text, err := handlePackContext(context.Background(), map[string]any{
 		"budget": float64(20), "mode": "signatures",
@@ -155,6 +157,51 @@ func TestPackContextRejectsBadMode(t *testing.T) {
 	root, _ := writeMCPRepo(t)
 	if _, err := handlePackContext(context.Background(), map[string]any{"mode": "lossy"}, mcpTestConfig(root)); err == nil {
 		t.Error("expected error for invalid mode")
+	}
+}
+
+// TestForceSelectionMode pins the explicit-mode rewrite: signatures replaces
+// content with the compressed variant, full restores the original body.
+func TestForceSelectionMode(t *testing.T) {
+	files := []format.FileEntry{{
+		Path:         "a.go",
+		Content:      []byte("package a\n\nfunc A() { work() }\n"),
+		Tokens:       10,
+		TokensFull:   10,
+		SigContent:   []byte("package a\n\nfunc A()\n"),
+		TokensSig:    4,
+		IsCompressed: false,
+	}}
+	sigs := forceSelectionMode(files, "signatures", 0)
+	if len(sigs) != 1 || !sigs[0].IsCompressed || string(sigs[0].Content) != "package a\n\nfunc A()\n" || sigs[0].Tokens != 4 {
+		t.Fatalf("signatures force = %+v", sigs)
+	}
+	full := forceSelectionMode(files, "full", 0)
+	if len(full) != 1 || full[0].IsCompressed || string(full[0].Content) != "package a\n\nfunc A() { work() }\n" || full[0].Tokens != 10 {
+		t.Fatalf("full force = %+v", full)
+	}
+	if got := forceSelectionMode(files, "full", 4); len(got) != 0 {
+		t.Errorf("budget overflow not dropped: %+v", got)
+	}
+}
+
+// TestPackContextStyleOverridesLegacyFlags verifies an explicit style argument
+// beats a server started with --json.
+func TestPackContextStyleOverridesLegacyFlags(t *testing.T) {
+	root, _ := writeMCPRepo(t)
+	cfg := mcpTestConfig(root)
+	cfg.JSONOutput = true
+	cfg.Budget = 5000
+
+	text, err := handlePackContext(context.Background(), map[string]any{"style": "markdown"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasPrefix(strings.TrimSpace(text), "{") || strings.HasPrefix(strings.TrimSpace(text), "[") {
+		t.Errorf("style override produced JSON:\n%s", text)
+	}
+	if !strings.Contains(text, "```") {
+		t.Errorf("expected markdown fences:\n%s", text)
 	}
 }
 

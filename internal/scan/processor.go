@@ -128,9 +128,10 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 	// hit cannot resurrect a file the filter would reject.
 	var cacheHash [32]byte
 	cacheMiss := false
+	signatureLanguage := languageForPath(path)
 	if p.cache != nil {
 		cacheHash = sha256.Sum256(content)
-		if cached, hit := p.cache.GetHashed(cacheHash, mode, p.model); hit {
+		if cached, hit := p.cache.GetHashed(cacheHash, mode, p.model, signatureLanguage); hit {
 			return format.FileEntry{
 				Path:         path,
 				Content:      cached.Content,
@@ -216,7 +217,7 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 	}
 
 	if cacheMiss {
-		p.cache.PutHashed(cacheHash, mode, p.model, CachedResult{
+		p.cache.PutHashed(cacheHash, mode, p.model, signatureLanguage, CachedResult{
 			Content:      entry.Content,
 			Tokens:       entry.Tokens,
 			TokensFull:   entry.TokensFull,
