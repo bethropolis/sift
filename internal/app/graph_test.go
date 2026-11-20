@@ -31,3 +31,14 @@ func TestArchitectureEdgesDropsSelfAndUnknown(t *testing.T) {
 		t.Fatalf("expected no edges, got %v", got)
 	}
 }
+
+func TestArchitectureEdgesIncludesLeafPackageTargets(t *testing.T) {
+	graph := map[string][]string{
+		"main.go": {"helper"},
+	}
+	got := ArchitectureEdges(graph)
+	want := []string{". -> helper"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ArchitectureEdges = %v, want %v", got, want)
+	}
+}

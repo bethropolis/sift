@@ -24,6 +24,17 @@ func ArchitectureEdges(graph map[string][]string) []string {
 	for src := range graph {
 		dirs[filepath.ToSlash(filepath.Dir(src))] = true
 	}
+	// Import targets can be package directories that never import anything
+	// themselves, so they have no source key. Register extension-less
+	// targets as directories too.
+	for _, targets := range graph {
+		for _, target := range targets {
+			target = strings.TrimSuffix(filepath.ToSlash(strings.TrimSpace(target)), "/")
+			if target != "" && filepath.Ext(target) == "" {
+				dirs[target] = true
+			}
+		}
+	}
 
 	edges := make(map[string]map[string]bool)
 	add := func(from, to string) {
