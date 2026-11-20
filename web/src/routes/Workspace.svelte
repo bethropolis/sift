@@ -8,6 +8,7 @@
     type ApiMeta,
     type FollowHit,
   } from '../lib/api';
+  import type { Component } from 'svelte';
   import FileTree, { type TreeFoldActions } from '../components/FileTree.svelte';
   import CodePreview from '../components/CodePreview.svelte';
   import OutputView from '../components/OutputView.svelte';
@@ -73,6 +74,15 @@
   let isGenerating = $state(false);
   let isSmartSelecting = $state(false);
   let copiedNotification = $state(false);
+
+  // Toolbar dialogs: modes export preview, preset save, preset list.
+  // Their code is split into lazy chunks so the initial bundle stays small.
+  let modesOpen = $state(false);
+  let savePresetOpen = $state(false);
+  let presetsOpen = $state(false);
+  let ModesModalComp = $state<Component | null>(null);
+  let SavePresetModalComp = $state<Component | null>(null);
+  let PresetsModalComp = $state<Component | null>(null);
 
   // Top/footer configuration. The format choice persists: the server default
   // seeds it, the user's own pick is kept (see lib/persist.ts).
@@ -473,44 +483,39 @@
     return tokens;
   });
 
-  async function handleSavePreset() {
-    const name = window.prompt('Preset name');
-    if (!name?.trim()) return;
+  async function openModes() {
+    modesOpen = true;
+    if (ModesModalComp) return;
     try {
-      await api.savePreset({
-        root: projectRoot,
-        name: name.trim(),
-        selections,
-        prompt: taskPrompt,
-        style: selectedStyle,
-        budget,
-      });
-      toast({ id: 'preset', kind: 'success', message: `Saved preset “${name.trim()}”`, duration: 2200 });
+      ModesModalComp = (await import('./workspace/ModesModal.svelte')).default;
     } catch (err) {
       console.error(err);
-      toast({ id: 'preset', kind: 'error', message: 'Couldn’t save preset', duration: 2200 });
+      modesOpen = false;
+      toast({ id: 'modes', kind: 'error', message: 'Could not open modes' });
     }
   }
 
-  async function handleLoadPreset() {
+  async function openSavePreset() {
+    savePresetOpen = true;
+    if (SavePresetModalComp) return;
     try {
-      const result = await api.listPresets(projectRoot);
-      if (result.presets.length === 0) {
-        toast({ id: 'preset', kind: 'info', message: 'No saved presets', duration: 2200 });
-        return;
-      }
-      const name = window.prompt(`Load preset (${result.presets.map((p) => p.name).join(', ')})`);
-      if (!name) return;
-      const preset = result.presets.find((p) => p.name === name);
-      if (!preset) {
-        toast({ id: 'preset', kind: 'error', message: 'Preset not found', duration: 2200 });
-        return;
-      }
-      applyPreset(preset);
-      toast({ id: 'preset', kind: 'success', message: `Loaded “${preset.name}”`, duration: 2200 });
+      SavePresetModalComp = (await import('./workspace/SavePresetModal.svelte')).default;
     } catch (err) {
       console.error(err);
-      toast({ id: 'preset', kind: 'error', message: 'Couldn’t load presets', duration: 2200 });
+      savePresetOpen = false;
+      toast({ id: 'preset', kind: 'error', message: 'Could not open preset save' });
+    }
+  }
+
+  async function openPresets() {
+    presetsOpen = true;
+    if (PresetsModalComp) return;
+    try {
+      PresetsModalComp = (await import('./workspace/PresetsModal.svelte')).default;
+    } catch (err) {
+      console.error(err);
+      presetsOpen = false;
+      toast({ id: 'preset', kind: 'error', message: 'Could not open presets' });
     }
   }
 
@@ -524,21 +529,6 @@
     if (preset.prompt !== undefined) taskPrompt = preset.prompt;
     if (preset.style) selectedStyle = preset.style;
     if (preset.budget) budget = preset.budget;
-  }
-
-  async function handleExportModes() {
-    try {
-      const result = await api.exportModes({ root: projectRoot, selections });
-      if (!result.toml) {
-        toast({ id: 'export-modes', kind: 'info', message: 'No non-default modes to export', duration: 2200 });
-        return;
-      }
-      await navigator.clipboard.writeText(result.toml);
-      toast({ id: 'export-modes', kind: 'success', message: 'Copied [modes] TOML', duration: 2200 });
-    } catch (err) {
-      console.error(err);
-      toast({ id: 'export-modes', kind: 'error', message: 'Couldn’t export modes', duration: 2200 });
-    }
   }
 
   async function handleGenerate() {
@@ -662,6 +652,7 @@
   }
 
   function handleWindowKey(e: KeyboardEvent) {
+    if (modesOpen || savePresetOpen || presetsOpen) return;
     if (isEditingTarget(e)) {
       if (e.key === 'Escape') (e.target as HTMLElement).blur();
       return;
@@ -829,20 +820,6 @@
               </button>
             {/if}
 
-            <button
-              class="btn btn-sm btn-ghost"
-              onclick={() => void handleExportModes()}
-              title="Copy the current modes as a [modes] TOML block"
-            >
-              Modes
-            </button>
-            <button class="btn btn-sm btn-ghost" onclick={() => void handleSavePreset()} title="Save the current selection as a preset">
-              Save
-            </button>
-            <button class="btn btn-sm btn-ghost" onclick={() => void handleLoadPreset()} title="Load a saved selection preset">
-              Presets
-            </button>
-
             <div class="segmented-control">
               <button
                 onclick={() => (activeTab = 'preview')}
@@ -858,6 +835,30 @@
                 {/if}
               </button>
             </div>
+          </div>
+
+          <div class="tabs-right">
+            <button
+              class="btn btn-sm btn-ghost action-btn"
+              onclick={() => void openModes()}
+              title="Preview and copy the current modes as a [modes] TOML block"
+            >
+              Modes
+            </button>
+            <button
+              class="btn btn-sm btn-ghost action-btn"
+              onclick={() => void openSavePreset()}
+              title="Save the current selection as a preset"
+            >
+              Save
+            </button>
+            <button
+              class="btn btn-sm btn-ghost action-btn"
+              onclick={() => void openPresets()}
+              title="Load or delete a saved selection preset"
+            >
+              Presets
+            </button>
           </div>
         </div>
 
@@ -913,6 +914,37 @@
     isCopied={copiedNotification}
   />
 </div>
+
+{#if modesOpen && ModesModalComp}
+  <ModesModalComp
+    root={projectRoot}
+    {selections}
+    {selectedCount}
+    {usedTokens}
+    onClose={() => (modesOpen = false)}
+  />
+{/if}
+
+{#if savePresetOpen && SavePresetModalComp}
+  <SavePresetModalComp
+    root={projectRoot}
+    {selections}
+    prompt={taskPrompt}
+    style={selectedStyle}
+    {budget}
+    {selectedCount}
+    {usedTokens}
+    onClose={() => (savePresetOpen = false)}
+  />
+{/if}
+
+{#if presetsOpen && PresetsModalComp}
+  <PresetsModalComp
+    root={projectRoot}
+    onApply={(preset) => applyPreset(preset)}
+    onClose={() => (presetsOpen = false)}
+  />
+{/if}
 
 <style>
   .workspace {
@@ -1004,6 +1036,18 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
+  }
+  .tabs-right {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .action-btn {
+    padding: 2px 7px;
+    font-size: 10.5px;
+    color: var(--ink-soft);
   }
   .files-btn {
     padding: 2px 6px;

@@ -14,6 +14,11 @@ sift serve --root ~/code          # restrict browsable projects
 sift serve --idle-timeout 30m     # exit after 30 minutes without requests
 ```
 
+The workspace toolbar keeps the Preview/Output toggle on the left. **Modes**,
+**Save**, and **Presets** sit on the right and open in-app dialogs: Modes shows
+the exact `[modes]` TOML before copying, Save names the preset with a summary,
+and Presets lists, loads, and deletes saved selections.
+
 ## Local use
 
 Local mode is the default: loopback-only bind, a generated 256-bit token,
