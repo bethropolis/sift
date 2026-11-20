@@ -50,6 +50,14 @@ type App struct {
 	// constructors set it eagerly.
 	modeOnce     sync.Once
 	modesMatcher *config.ModesMatcher
+
+	// archGraph is the optional directory-level dependency header built for
+	// the current render when cfg.IncludeGraph is set.
+	archGraph []string
+
+	// patch is the unified diff prepended to the current render by
+	// diff --with-context. It also reserves budget before any file body.
+	patch string
 }
 
 // NewContentCache returns a bounded in-memory cache for one process. Callers

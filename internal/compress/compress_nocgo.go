@@ -6,6 +6,8 @@
 package compress
 
 import (
+	"fmt"
+
 	"github.com/bethropolis/sift/internal/lang"
 )
 
@@ -25,4 +27,12 @@ func (c *Compressor) LanguageForPath(path string) (lang.ID, bool) {
 
 func (c *Compressor) Compress(_ []byte, _ lang.ID) (string, bool) {
 	return "", false
+}
+
+// Focus falls back to a line slice; symbol focus needs tree-sitter.
+func (c *Compressor) Focus(src []byte, path, symbol string, start, end int) ([]byte, error) {
+	if symbol != "" {
+		return nil, fmt.Errorf("focus: symbol focus requires a cgo build")
+	}
+	return LineSlice(src, start, end)
 }

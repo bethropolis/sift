@@ -101,6 +101,9 @@ type Config struct {
 	MaxDepth int
 	// Prompt is an optional task/directive section prepended to the output.
 	Prompt string
+	// IncludeGraph emits a compact directory-level dependency map in the
+	// document header.
+	IncludeGraph bool
 
 	// Safety
 	SecretScan     bool
@@ -200,6 +203,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.BoolVar(&c.IncludeBinary, "binary", c.IncludeBinary, "Include binary files in output (default: skipped)")
 	fs.BoolVar(&c.SmartFilter, "smart", c.SmartFilter, "Skip generated, lockfile, minified, and oversized files")
 	fs.BoolVar(&c.NoCache, "no-cache", c.NoCache, "Disable the persistent on-disk signature cache")
+	fs.BoolVar(&c.IncludeGraph, "include-graph", c.IncludeGraph, "Emit a compact directory-level dependency map in the header")
 	fs.IntVar(&c.SmartMaxTokens, "smart-max-tokens", c.SmartMaxTokens, "Per-file token ceiling for the smart filter (default: 15000)")
 	fs.BoolVar(&c.NoColor, "no-color", c.NoColor, "Disable color output")
 	fs.BoolVar(&c.Highlight, "highlight", c.Highlight, "Enable syntax highlighting for terminal output")

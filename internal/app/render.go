@@ -59,6 +59,30 @@ func (a *App) RenderFinalWithPrompt(files []format.FileEntry, skippedItems []wal
 	return err
 }
 
+// RenderPatchWithMetrics renders a diff plus its signature-mode neighbors.
+// The patch is charged against the budget before any file body is considered.
+func (a *App) RenderPatchWithMetrics(files []format.FileEntry, patch string, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) (RenderMetrics, error) {
+	a.patch = patch
+	defer func() { a.patch = "" }()
+	return a.renderWithPrompt(files, skippedItems, duration, runErr, true, a.cfg.Prompt)
+}
+
+// RenderPatchBuffer renders a diff plus neighbors (honoring the configured
+// budget) into a new buffer for MCP callers.
+func (a *App) RenderPatchBuffer(files []format.FileEntry, patch, prompt string) ([]byte, error) {
+	a.patch = patch
+	defer func() { a.patch = "" }()
+	a.prepareArchitecture(files)
+	if a.cfg.Budget > 0 {
+		files = a.fitToBudget(files, prompt)
+	}
+	var buf bytes.Buffer
+	if _, err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // RenderToClipboard renders the given files and copies the result to the
 // system clipboard, without writing to the configured output destination. It
 // backs the picker's live copy action.
@@ -68,6 +92,7 @@ func (a *App) RenderToClipboard(files []format.FileEntry) error {
 
 // directive without mutating application configuration.
 func (a *App) RenderToClipboardWithPrompt(files []format.FileEntry, prompt string) error {
+	a.prepareArchitecture(files)
 	var buf bytes.Buffer
 	if _, err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
 		return fmt.Errorf("render output: %w", err)
@@ -81,6 +106,7 @@ func (a *App) RenderToClipboardWithPrompt(files []format.FileEntry, prompt strin
 // non-destructively: the render must fully succeed before the previous dump is
 // truncated, so a failed render never destroys the last good document.
 func (a *App) RenderFinalToBuffer(files []format.FileEntry, prompt string) ([]byte, error) {
+	a.prepareArchitecture(files)
 	var buf bytes.Buffer
 	if _, err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
 		return nil, err
@@ -93,6 +119,9 @@ func (a *App) RenderFinalToBuffer(files []format.FileEntry, prompt string) ([]by
 // the shared render core for file, clipboard, and buffer output. When
 // sections is non-nil it collects one byte range per rendered file.
 func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Writer, sections *[]format.Section) (RenderMetrics, error) {
+	if a.archGraph == nil && a.cfg.IncludeGraph {
+		a.prepareArchitecture(files)
+	}
 	var metrics RenderMetrics
 	renderer, err := format.NewRendererWithOptions(format.ParseStyle(a.cfg.EffectiveStyle()), format.RenderOptions{
 		UseColors: a.cfg.UseColors,
@@ -135,10 +164,12 @@ func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Wri
 		paths = append(paths, f.Path)
 	}
 	doc := &format.Document{
-		DirectoryTree: format.BuildTree(paths),
-		Files:         files,
-		TotalTokens:   metrics.Tokens,
-		Instructions:  prompt,
+		DirectoryTree:     format.BuildTree(paths),
+		Files:             files,
+		TotalTokens:       metrics.Tokens,
+		Instructions:      prompt,
+		ArchitectureGraph: a.archGraph,
+		Patch:             a.patch,
 	}
 	return metrics, renderer.Render(doc, w)
 }
@@ -183,6 +214,7 @@ func (a *App) recountRedactedTokens(files []format.FileEntry) {
 }
 
 func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool, prompt string) (RenderMetrics, error) {
+	a.prepareArchitecture(files)
 	if applyBudget && a.cfg.Budget > 0 {
 		a.infoLog("Applying token budget: %d", a.cfg.Budget)
 		files = a.fitToBudget(files, prompt)

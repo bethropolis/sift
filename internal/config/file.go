@@ -30,6 +30,7 @@ type SiftDefaults struct {
 	Ignore            StringList   `toml:"ignore"`
 	SmartFilter       *bool        `toml:"smart_filter"`
 	SmartMaxTokens    int          `toml:"smart_max_tokens"`
+	IncludeGraph      *bool        `toml:"include_graph"`
 	Highlight         *bool        `toml:"highlight"`
 	NoHighlight       *bool        `toml:"no_highlight"`
 	Theme             string       `toml:"theme"`
@@ -82,6 +83,7 @@ type Target struct {
 	OverrideIgnore    bool         `toml:"override_ignore"`
 	SmartFilter       *bool        `toml:"smart_filter"`
 	SmartMaxTokens    int          `toml:"smart_max_tokens"`
+	IncludeGraph      *bool        `toml:"include_graph"`
 	UIThemeFile       string       `toml:"ui_theme_file"`
 	CopyOnGenerate    *bool        `toml:"copy_on_generate"`
 	Scoring           *Scoring     `toml:"scoring"`

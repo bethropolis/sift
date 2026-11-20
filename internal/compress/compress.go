@@ -8,6 +8,8 @@
 package compress
 
 import (
+	"fmt"
+
 	"github.com/bethropolis/sift/internal/lang"
 	"github.com/bethropolis/sift/internal/lang/signature"
 )
@@ -45,4 +47,24 @@ func (c *Compressor) LanguageForPath(path string) (lang.ID, bool) {
 // returned unchanged (nothing to compress or a parse failure).
 func (c *Compressor) Compress(src []byte, id lang.ID) (string, bool) {
 	return c.engine.Signature(src, id)
+}
+
+// Focus renders one symbol in full while compressing siblings, or returns a
+// marked line slice for a range.
+func (c *Compressor) Focus(src []byte, path, symbol string, start, end int) ([]byte, error) {
+	if start > 0 {
+		return LineSlice(src, start, end)
+	}
+	id, ok := c.LanguageForPath(path)
+	if !ok {
+		return nil, fmt.Errorf("focus: unsupported language for %q", path)
+	}
+	out, emitted, err := c.engine.Focus(src, id, symbol, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	if !emitted {
+		return nil, fmt.Errorf("focus: no declaration emitted for %q", symbol)
+	}
+	return []byte(out), nil
 }

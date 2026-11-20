@@ -181,9 +181,12 @@ type Signals struct {
 type Candidate struct {
 	File          format.FileEntry
 	PreferredMode string
-	Signals       Signals
-	AreaWeight    float64
-	Area          string
+	// Symbols is the declaration-name index used for prompt relevance. It is
+	// filled automatically by Select when callers leave it nil.
+	Symbols    []string
+	Signals    Signals
+	AreaWeight float64
+	Area       string
 }
 
 // Decision explains the automatic decision for one candidate.
@@ -292,6 +295,11 @@ func Select(candidates []Candidate, request Request) Result {
 	tuning := request.Tuning
 
 	ordered := append([]Candidate(nil), candidates...)
+	for i := range ordered {
+		if ordered[i].Symbols == nil {
+			ordered[i].Symbols = Symbols(ordered[i].File)
+		}
+	}
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].File.RankScore != ordered[j].File.RankScore {
 			return ordered[i].File.RankScore > ordered[j].File.RankScore
@@ -386,13 +394,13 @@ func Select(candidates []Candidate, request Request) Result {
 	for index, candidate := range ordered {
 		if reserved[index].Tokens == 0 && !candidate.File.Hidden && !candidate.File.GitIgnored &&
 			!tuning.skipRole(lang.Classify(candidate.File.Path).Role, request.Prompt) &&
-			taskRelevance(candidate.File.Path, request.Prompt) >= 0.20 {
+			taskRelevance(candidate, request.Prompt) >= 0.20 {
 			promptOrder = append(promptOrder, index)
 		}
 	}
 	sort.SliceStable(promptOrder, func(i, j int) bool {
 		left, right := ordered[promptOrder[i]], ordered[promptOrder[j]]
-		lr, rr := taskRelevance(left.File.Path, request.Prompt), taskRelevance(right.File.Path, request.Prompt)
+		lr, rr := taskRelevance(left, request.Prompt), taskRelevance(right, request.Prompt)
 		if lr != rr {
 			return lr > rr
 		}
@@ -619,7 +627,7 @@ func balanceAreaBudget(result *Result, ordered []Candidate, prompt string, tunin
 		area := candidateArea(candidate)
 		if !candidate.File.Hidden && !candidate.File.GitIgnored && !tuning.skipRole(lang.Classify(candidate.File.Path).Role, prompt) {
 			areas[area] = true
-			if relevance := taskRelevance(candidate.File.Path, prompt); relevance > areaRelevance[area] {
+			if relevance := taskRelevance(candidate, prompt); relevance > areaRelevance[area] {
 				areaRelevance[area] = relevance
 			}
 		}
@@ -814,7 +822,7 @@ func retainWithoutBudget(role lang.Role) bool {
 
 func makeDecision(candidate Candidate, mode Mode, utility float64, reason, prompt string) Decision {
 	classification := lang.Classify(candidate.File.Path)
-	relevance := taskRelevance(candidate.File.Path, prompt)
+	relevance := taskRelevance(candidate, prompt)
 	return Decision{
 		Path:            candidate.File.Path,
 		Area:            candidateArea(candidate),
@@ -840,7 +848,7 @@ func variants(candidate Candidate, prompt string, tuning Tuning) []Variant {
 		return []Variant{{Mode: ModeSkip, Tokens: 0, Utility: 0, Reason: "hidden or git-ignored; opt-in required"}}
 	}
 	classification := lang.Classify(file.Path)
-	relevance := taskRelevance(file.Path, prompt)
+	relevance := taskRelevance(candidate, prompt)
 	testBoost := 0.0
 	if classification.Role == lang.RoleTest && testFocusedPrompt(prompt) {
 		testBoost = tuning.TestTaskBoost * (0.5 + clamp(candidate.Signals.TestAffinity, 0, 1))
@@ -881,22 +889,56 @@ func variants(candidate Candidate, prompt string, tuning Tuning) []Variant {
 	return result
 }
 
-func taskRelevance(path, prompt string) float64 {
+func taskRelevance(candidate Candidate, prompt string) float64 {
 	terms := words(prompt)
 	if len(terms) == 0 {
 		return 0
 	}
-	pathWords := words(path)
-	hits := 0
+	symbols := candidate.Symbols
+	if symbols == nil {
+		symbols = Symbols(candidate.File)
+	}
+	pathWords := words(candidate.File.Path)
+	symbolWords := make([]string, 0, len(symbols))
+	for _, sym := range symbols {
+		symbolWords = append(symbolWords, words(sym)...)
+	}
+
+	score := 0.0
 	for _, term := range terms {
-		for _, part := range pathWords {
-			if part == term || strings.Contains(part, term) || strings.Contains(term, part) {
-				hits++
+		// Exact identifier matches are the strongest signal: the prompt names
+		// a declaration that lives in this file.
+		exact := false
+		for _, sym := range symbols {
+			if strings.EqualFold(sym, term) {
+				exact = true
 				break
 			}
 		}
+		switch {
+		case exact:
+			score += 2.0
+			continue
+		case matchesWord(pathWords, term):
+			score += 1.0
+			continue
+		case matchesWord(symbolWords, term):
+			score += 1.0
+		}
 	}
-	return float64(hits) / float64(len(terms))
+	if score > float64(len(terms)) {
+		score = float64(len(terms))
+	}
+	return score / float64(len(terms))
+}
+
+func matchesWord(words []string, term string) bool {
+	for _, part := range words {
+		if part == term || strings.Contains(part, term) || strings.Contains(term, part) {
+			return true
+		}
+	}
+	return false
 }
 
 func words(value string) []string {

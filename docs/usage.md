@@ -149,12 +149,24 @@ sift dump . --show-skipped
 ```sh
 sift diff                # files changed in the uncommitted working tree
 sift diff main           # files changed since the main branch
+sift diff --with-context # patch first, then 1-hop neighbors as signatures
 sift delta               # changes since the last recorded dump
 sift delta --patch       # raw unified diff in a <context_update> block
 ```
 
+`--context-depth N` widens the neighbor walk around changed files.
+
 `diff` and `delta` require the scanned directory to be inside a Git repository.
 See [Incremental deltas](delta.md) for details.
+
+`follow` accepts a focused seed: `path#Symbol`, `path#Type.Method`, or
+`path:start-end`. The named declaration (or line slice) is rendered in full
+while sibling declarations stay compressed to signatures:
+
+```sh
+sift follow internal/app/app.go#Config
+sift follow internal/app/rank.go:120-180
+```
 
 ## More examples
 

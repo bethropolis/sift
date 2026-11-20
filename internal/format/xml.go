@@ -33,6 +33,32 @@ func (r *xmlRenderer) Render(doc *Document, w io.Writer) error {
 		}
 	}
 
+	if len(doc.ArchitectureGraph) > 0 {
+		if err := fprint(out, "  <architecture>\n"); err != nil {
+			return err
+		}
+		for _, line := range doc.ArchitectureGraph {
+			if err := fprint(out, "    %s\n", html.EscapeString(line)); err != nil {
+				return err
+			}
+		}
+		if err := fprint(out, "  </architecture>\n"); err != nil {
+			return err
+		}
+	}
+
+	if doc.Patch != "" {
+		if err := fprint(out, "  <diff><![CDATA["); err != nil {
+			return err
+		}
+		if err := writeCDATA(out, []byte(doc.Patch)); err != nil {
+			return err
+		}
+		if err := fprint(out, "]]></diff>\n"); err != nil {
+			return err
+		}
+	}
+
 	if doc.DirectoryTree != "" {
 		if err := fprint(out, "  <structure>\n"); err != nil {
 			return err

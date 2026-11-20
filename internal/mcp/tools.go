@@ -43,8 +43,10 @@ func toolDefinitions() []Tool {
 			Name:        "pack_diff",
 			Description: "Pack only what changed: uncommitted working-tree changes by default, or the range between a git ref and HEAD.",
 			InputSchema: Schema{Type: "object", Properties: map[string]Property{
-				"from":  str("Git ref to compare from; empty means uncommitted working-tree changes."),
-				"patch": {Type: "boolean", Description: "Return a raw unified diff patch instead of full file contents."},
+				"from":          str("Git ref to compare from; empty means uncommitted working-tree changes."),
+				"patch":         {Type: "boolean", Description: "Return a raw unified diff patch instead of full file contents."},
+				"with_context":  {Type: "boolean", Description: "Emit the unified diff plus import-graph neighbors in signatures mode."},
+				"context_depth": {Type: "number", Description: "Import hops to include around changed files (default 1)."},
 			}},
 		},
 		{
@@ -234,8 +236,11 @@ func handlePackDiffSession(ctx context.Context, args map[string]any, s *session)
 
 	var from string
 	stringArg(args, "from", &from)
-	var patch bool
+	var patch, withContext bool
 	boolArg(args, "patch", &patch)
+	boolArg(args, "with_context", &withContext)
+	contextDepth := 1
+	intArg(args, "context_depth", &contextDepth)
 	head, _ := g.Head()
 
 	var changed []string
@@ -252,14 +257,34 @@ func handlePackDiffSession(ctx context.Context, args map[string]any, s *session)
 		return "No files changed.", nil
 	}
 
-	if patch {
+	if patch || withContext {
 		var diff string
 		if uncommitted {
 			diff = strings.TrimSpace(g.RawWorktreePatch("HEAD"))
 		} else {
 			diff = strings.TrimSpace(g.RawPatch(from, head))
 		}
-		return format.RenderContextUpdate(from, to, diff), nil
+		if patch {
+			return format.RenderContextUpdate(from, to, diff), nil
+		}
+		if contextDepth <= 0 {
+			contextDepth = 1
+		}
+		runCfg := *cfg
+		runCfg.RootDir = absRoot
+		runCfg.OutputFile = "-"
+		files, _, err := app.ScanPickerWithCache(ctx, absRoot, &runCfg, s.cache)
+		if err != nil {
+			return "", err
+		}
+		neighbors := app.DiffNeighborFiles(&runCfg, files, changed, contextDepth)
+		application, err := app.NewBufferedWithCache(&runCfg, s.cache)
+		if err != nil {
+			return "", err
+		}
+		defer application.Close()
+		buf, err := application.RenderPatchBuffer(neighbors, diff, runCfg.Prompt)
+		return string(buf), err
 	}
 
 	runCfg := *cfg
@@ -298,6 +323,10 @@ func handlePackFollowSession(ctx context.Context, args map[string]any, s *sessio
 	if strings.TrimSpace(file) == "" {
 		return "", fmt.Errorf("file is required")
 	}
+	target, err := app.ParseTarget(file)
+	if err != nil {
+		return "", err
+	}
 	var rawDirection string
 	stringArg(args, "direction", &rawDirection)
 	if rawDirection == "" {
@@ -326,7 +355,7 @@ func handlePackFollowSession(ctx context.Context, args map[string]any, s *sessio
 	if err != nil {
 		return "", err
 	}
-	seed, err := app.ResolveSeed(absRoot, file)
+	seed, err := app.ResolveSeed(absRoot, target.Path)
 	if err != nil {
 		return "", err
 	}
@@ -350,6 +379,17 @@ func handlePackFollowSession(ctx context.Context, args map[string]any, s *sessio
 
 	ranker := app.NewRankerWithWeights(absRoot, app.WeightsFromScoring(runCfg.Scoring))
 	preferred, graph := ranker.RankGraph(files)
+	if target.IsFocused() {
+		for i := range files {
+			if filepath.ToSlash(files[i].Path) == seed {
+				files[i], err = app.FocusEntry(files[i], target, runCfg.TokenizeModel)
+				if err != nil {
+					return "", err
+				}
+				break
+			}
+		}
+	}
 	modeOverride := ""
 	if modeGiven {
 		modeOverride = runCfg.Mode

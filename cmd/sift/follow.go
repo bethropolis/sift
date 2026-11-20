@@ -47,6 +47,10 @@ restricted to one direction.`,
 }
 
 func runFollow(cfg *config.Config, opts *followOptions, cmd *cobra.Command, args []string) error {
+	target, err := app.ParseTarget(args[0])
+	if err != nil {
+		return err
+	}
 	direction, err := app.ParseFollowDirection(opts.direction)
 	if err != nil {
 		return err
@@ -70,7 +74,7 @@ func runFollow(cfg *config.Config, opts *followOptions, cmd *cobra.Command, args
 	if err != nil {
 		return fmt.Errorf("sift follow: cannot resolve root: %w", err)
 	}
-	seed, err := app.ResolveSeed(absRoot, args[0])
+	seed, err := app.ResolveSeed(absRoot, target.Path)
 	if err != nil {
 		return err
 	}
@@ -87,10 +91,10 @@ func runFollow(cfg *config.Config, opts *followOptions, cmd *cobra.Command, args
 	if !byPath[seed] {
 		for _, s := range skipped {
 			if filepath.ToSlash(s.Path) == seed {
-				return fmt.Errorf("sift follow: seed %q skipped: %s", args[0], strings.ToLower(string(s.Reason)))
+				return fmt.Errorf("sift follow: seed %q skipped: %s", target.Path, strings.ToLower(string(s.Reason)))
 			}
 		}
-		return fmt.Errorf("sift follow: seed %q is ignored or outside the collected tree", args[0])
+		return fmt.Errorf("sift follow: seed %q is ignored or outside the collected tree", target.Path)
 	}
 	if !lang.HasImportScanner(seed) {
 		return fmt.Errorf("sift follow: no import resolver for %q; supported: %s",
@@ -100,6 +104,17 @@ func runFollow(cfg *config.Config, opts *followOptions, cmd *cobra.Command, args
 	scores := app.WeightsFromScoring(cfg.Scoring)
 	ranker := app.NewRankerWithWeights(absRoot, scores)
 	preferred, graph := ranker.RankGraph(files)
+	if target.IsFocused() {
+		for i := range files {
+			if filepath.ToSlash(files[i].Path) == seed {
+				files[i], err = app.FocusEntry(files[i], target, cfg.TokenizeModel)
+				if err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
 
 	modeOverride := ""
 	if cmd.Flags().Changed("mode") {
@@ -128,7 +143,7 @@ func runFollow(cfg *config.Config, opts *followOptions, cmd *cobra.Command, args
 		}
 	}
 	if !seedOK {
-		return fmt.Errorf("sift follow: seed %q alone exceeds the token budget (%d)", args[0], cfg.Budget)
+		return fmt.Errorf("sift follow: seed %q alone exceeds the token budget (%d)", target.Path, cfg.Budget)
 	}
 	if len(hits) == 1 {
 		fmt.Fprintf(os.Stderr, "sift follow: no %s found for %s within depth %d; rendering the seed alone\n", direction, seed, opts.depth)

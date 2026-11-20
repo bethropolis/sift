@@ -57,6 +57,7 @@ TOML keys are **snake_case** and do not always match the flag spelling:
 | `tokenize_model` | `--tokenize-model` | e.g. `cl100k_base` |
 | `fallback_mode` | `--fallback-mode` | Fallback compression mode when budget exceeded (e.g. `signatures`) |
 | `fallback_threshold` | `--fallback-threshold` | Budget threshold fraction before fallback activates (default: `1.0`) |
+| `include_graph` | `--include-graph` | Emit a compact directory-level dependency map in the header |
 | `ui_theme_file` | `--ui-theme-file` | Picker themes only |
 
 ### Inverted booleans

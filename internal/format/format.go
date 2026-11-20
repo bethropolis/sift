@@ -51,6 +51,12 @@ type Document struct {
 	// Instructions is an optional task/directive section emitted before the
 	// repository body when set (--prompt).
 	Instructions string
+	// ArchitectureGraph is an optional, sorted list of directory-level edges
+	// ("from -> to") emitted in the header when --include-graph is set.
+	ArchitectureGraph []string
+	// Patch is an optional unified diff emitted before the files by
+	// sift diff --with-context.
+	Patch string
 }
 
 // Renderer renders a Document to w.

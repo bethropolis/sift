@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"strings"
 
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
@@ -103,6 +104,16 @@ func (a *App) overheadTokens(tz *tokenize.Tokenizer, style format.Style, prompt 
 			total += n
 		}
 	}
+	if len(a.archGraph) > 0 {
+		if n, err := tz.Count([]byte(strings.Join(a.archGraph, "\n"))); err == nil {
+			total += n + 8 // section framing
+		}
+	}
+	if a.patch != "" {
+		if n, err := tz.Count([]byte(a.patch)); err == nil {
+			total += n + 10 // diff section framing
+		}
+	}
 	return total
 }
 
@@ -127,6 +138,7 @@ func fileFramingTokens(style format.Style, path string, tokenCount int) int {
 // EstimatedOverhead exposes the non-file token cost for selection callers so
 // their optimizer can reserve room for the document around the files.
 func (a *App) EstimatedOverhead(prompt string, files []format.FileEntry) int {
+	a.prepareArchitecture(files)
 	tz, err := tokenize.New(a.cfg.TokenizeModel)
 	if err != nil {
 		return 0

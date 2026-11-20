@@ -179,6 +179,9 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) error {
 	if t.SmartMaxTokens != 0 && !changed("smart-max-tokens") {
 		c.SmartMaxTokens = t.SmartMaxTokens
 	}
+	if t.IncludeGraph != nil && !changed("include-graph") {
+		c.IncludeGraph = *t.IncludeGraph
+	}
 	if t.Scoring != nil {
 		c.Scoring.Merge(*t.Scoring)
 	}
@@ -515,6 +518,9 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) error
 	if s.SmartMaxTokens != 0 && !changed("smart-max-tokens") {
 		c.SmartMaxTokens = s.SmartMaxTokens
 	}
+	if s.IncludeGraph != nil && !changed("include-graph") {
+		c.IncludeGraph = *s.IncludeGraph
+	}
 	if s.Highlight != nil && !changed("highlight") {
 		c.Highlight = *s.Highlight
 	}
@@ -636,6 +642,9 @@ func mergeConfigFiles(global, local configFile) configFile {
 			}
 			if ls.SmartMaxTokens != 0 {
 				s.SmartMaxTokens = ls.SmartMaxTokens
+			}
+			if ls.IncludeGraph != nil {
+				s.IncludeGraph = ls.IncludeGraph
 			}
 			if ls.Highlight != nil {
 				s.Highlight = ls.Highlight

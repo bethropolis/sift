@@ -28,6 +28,26 @@ func (r *plainRenderer) Render(doc *Document, w io.Writer) error {
 		}
 	}
 
+	if doc.Patch != "" {
+		if err := fprint(out, "--- diff ---\n%s\n\n", doc.Patch); err != nil {
+			return err
+		}
+	}
+
+	if len(doc.ArchitectureGraph) > 0 {
+		if err := fprint(out, "Architecture:\n"); err != nil {
+			return err
+		}
+		for _, line := range doc.ArchitectureGraph {
+			if err := fprint(out, "%s\n", line); err != nil {
+				return err
+			}
+		}
+		if err := fprint(out, "\n"); err != nil {
+			return err
+		}
+	}
+
 	for _, f := range doc.Files {
 		start := 0
 		if cw != nil {
@@ -73,6 +93,26 @@ func (r *markdownRenderer) Render(doc *Document, w io.Writer) error {
 	out, cw := sectionOut(w, r.sections)
 	if doc.Instructions != "" {
 		if err := fprint(out, "## Task / Instructions\n\n%s\n\n", doc.Instructions); err != nil {
+			return err
+		}
+	}
+
+	if doc.Patch != "" {
+		if err := fprint(out, "## Diff\n\n```diff\n%s\n```\n\n", doc.Patch); err != nil {
+			return err
+		}
+	}
+
+	if len(doc.ArchitectureGraph) > 0 {
+		if err := fprint(out, "## Architecture\n\n```\n"); err != nil {
+			return err
+		}
+		for _, line := range doc.ArchitectureGraph {
+			if err := fprint(out, "%s\n", line); err != nil {
+				return err
+			}
+		}
+		if err := fprint(out, "```\n\n"); err != nil {
 			return err
 		}
 	}

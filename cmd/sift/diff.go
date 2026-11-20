@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -16,6 +17,8 @@ import (
 
 // newDiffCmd renders a context document for files changed by a git ref.
 func newDiffCmd(cfg *config.Config) *cobra.Command {
+	withContext := false
+	contextDepth := 1
 	cmd := &cobra.Command{
 		Use:   "diff [ref]",
 		Short: "Dump context for files changed by a git ref",
@@ -23,7 +26,10 @@ func newDiffCmd(cfg *config.Config) *cobra.Command {
 tree and a git ref (default: HEAD, i.e. uncommitted changes).
 
 Files changed relative to the ref are collected from git and the walk is
-restricted to them, so the output contains exactly the edited surface.`,
+restricted to them, so the output contains exactly the edited surface.
+
+With --with-context the unified diff is emitted first, followed by the
+import-graph neighbors of the changed files as signatures.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref := ""
@@ -64,14 +70,24 @@ restricted to them, so the output contains exactly the edited surface.`,
 				return err
 			}
 			defer application.Close()
-			application.OnlyPaths = only
-
 			start := time.Now()
-			files, skipped, err := application.Collect()
-			if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-				return err
+			var metrics app.RenderMetrics
+			if withContext {
+				files, skipped, collectErr := application.CollectPicker()
+				if collectErr != nil && !errors.Is(collectErr, context.DeadlineExceeded) {
+					return collectErr
+				}
+				neighbors := app.DiffNeighborFiles(cfg, files, changed, contextDepth)
+				patch := strings.TrimSpace(g.RawWorktreePatch(ref))
+				metrics, err = application.RenderPatchWithMetrics(neighbors, patch, skipped, time.Since(start), collectErr)
+			} else {
+				application.OnlyPaths = only
+				files, skipped, collectErr := application.Collect()
+				if collectErr != nil && !errors.Is(collectErr, context.DeadlineExceeded) {
+					return collectErr
+				}
+				metrics, err = application.RenderWithMetrics(files, skipped, time.Since(start), collectErr)
 			}
-			metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
 			if err != nil {
 				return err
 			}
@@ -84,6 +100,8 @@ restricted to them, so the output contains exactly the edited surface.`,
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&withContext, "with-context", withContext, "Emit the unified diff plus import-graph neighbors in signatures mode")
+	cmd.Flags().IntVar(&contextDepth, "context-depth", contextDepth, "Import hops to include around changed files when --with-context is set")
 	config.RegisterFlags(cfg, cmd.Flags())
 	return cmd
 }

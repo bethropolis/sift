@@ -291,3 +291,63 @@ func TestRenderPropagatesWriteErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderArchitectureGraph(t *testing.T) {
+	doc := &Document{
+		ArchitectureGraph: []string{"internal/app -> internal/format", "internal/app -> internal/lang"},
+		Files:             []FileEntry{{Path: "a.go", Content: []byte("package a")}},
+	}
+
+	plain := render(t, StylePlain, doc, false)
+	if !strings.Contains(plain, "Architecture:\ninternal/app -> internal/format\ninternal/app -> internal/lang\n") {
+		t.Errorf("plain architecture missing:\n%s", plain)
+	}
+	md := render(t, StyleMarkdown, doc, false)
+	if !strings.Contains(md, "## Architecture\n\n```\ninternal/app -> internal/format\ninternal/app -> internal/lang\n```\n") {
+		t.Errorf("markdown architecture missing:\n%s", md)
+	}
+	xmlOut := render(t, StyleXML, doc, false)
+	if !strings.Contains(xmlOut, "<architecture>\n    internal/app -&gt; internal/format\n") {
+		t.Errorf("xml architecture missing or unescaped:\n%s", xmlOut)
+	}
+	jsonOut := render(t, StyleJSON, doc, false)
+	var jd jsonDoc
+	if err := json.Unmarshal([]byte(jsonOut), &jd); err != nil {
+		t.Fatalf("invalid JSON with architecture: %v\n%s", err, jsonOut)
+	}
+	if len(jd.Architecture) != 2 || jd.Architecture[0] != "internal/app -> internal/format" {
+		t.Errorf("json architecture = %v", jd.Architecture)
+	}
+	if len(jd.Files) != 1 {
+		t.Errorf("json files = %d, want 1", len(jd.Files))
+	}
+
+	// Without instructions or a graph the JSON output stays a bare array.
+	if got := render(t, StyleJSON, &Document{Files: doc.Files}, false); !strings.HasPrefix(got, "[") {
+		t.Errorf("bare-array JSON changed: %s", got)
+	}
+}
+
+func TestRenderDiffPatch(t *testing.T) {
+	doc := &Document{
+		Patch: "diff --git a/a.go b/a.go\n+new line",
+		Files: []FileEntry{{Path: "a.go", Content: []byte("package a")}},
+	}
+	if got := render(t, StylePlain, doc, false); !strings.HasPrefix(got, "--- diff ---\ndiff --git a/a.go b/a.go\n+new line\n\n") {
+		t.Errorf("plain diff missing:\n%s", got)
+	}
+	if got := render(t, StyleMarkdown, doc, false); !strings.Contains(got, "## Diff\n\n```diff\ndiff --git a/a.go b/a.go\n+new line\n```\n") {
+		t.Errorf("markdown diff missing:\n%s", got)
+	}
+	if got := render(t, StyleXML, doc, false); !strings.Contains(got, "<diff><![CDATA[diff --git a/a.go b/a.go\n+new line]]></diff>") {
+		t.Errorf("xml diff missing:\n%s", got)
+	}
+	got := render(t, StyleJSON, doc, false)
+	var jd jsonDoc
+	if err := json.Unmarshal([]byte(got), &jd); err != nil {
+		t.Fatalf("invalid JSON with diff: %v\n%s", err, got)
+	}
+	if jd.Diff != doc.Patch {
+		t.Errorf("json diff = %q", jd.Diff)
+	}
+}

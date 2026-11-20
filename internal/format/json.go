@@ -17,6 +17,8 @@ type JSONFileEntry struct {
 // jsonDoc is the JSON document used when instructions are present.
 type jsonDoc struct {
 	Instructions string          `json:"instructions,omitempty"`
+	Architecture []string        `json:"architecture,omitempty"`
+	Diff         string          `json:"diff,omitempty"`
 	Files        []JSONFileEntry `json:"files"`
 }
 
@@ -35,7 +37,7 @@ func (r *jsonRenderer) Render(doc *Document, w io.Writer) error {
 		})
 	}
 
-	if doc.Instructions == "" {
+	if doc.Instructions == "" && len(doc.ArchitectureGraph) == 0 && doc.Patch == "" {
 		if len(entries) == 0 {
 			return fprint(w, "[]\n")
 		}
@@ -46,7 +48,7 @@ func (r *jsonRenderer) Render(doc *Document, w io.Writer) error {
 		return fprint(w, "%s\n", data)
 	}
 
-	data, err := json.MarshalIndent(jsonDoc{Instructions: doc.Instructions, Files: entries}, "", "  ")
+	data, err := json.MarshalIndent(jsonDoc{Instructions: doc.Instructions, Architecture: doc.ArchitectureGraph, Diff: doc.Patch, Files: entries}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("format: marshal json: %w", err)
 	}
