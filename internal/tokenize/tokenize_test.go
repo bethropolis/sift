@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/bethropolis/sift/internal/format"
+	"github.com/tiktoken-go/tokenizer"
 )
 
 func TestNew(t *testing.T) {
@@ -205,5 +206,33 @@ func TestFitToBudgetWithFallback(t *testing.T) {
 	kept, used = FitToBudgetWithFallback(files, 0, 1.0)
 	if len(kept) != 3 || used != 150 {
 		t.Errorf("no budget: kept %d, used %d", len(kept), used)
+	}
+}
+
+func TestParseEncodingAliases(t *testing.T) {
+	cases := map[string]tokenizer.Encoding{
+		"cl100k":        tokenizer.Cl100kBase,
+		"CL100K_BASE":   tokenizer.Cl100kBase,
+		"claude":        tokenizer.Cl100kBase,
+		"anthropic":     tokenizer.Cl100kBase,
+		"gpt-4":         tokenizer.Cl100kBase,
+		"o200k":         tokenizer.O200kBase,
+		"gpt-5":         tokenizer.O200kBase,
+		"gemini":        tokenizer.O200kBase,
+		" GPT-4O-MINI ": tokenizer.O200kBase,
+		"r50k":          tokenizer.R50kBase,
+		"gpt2":          tokenizer.R50kBase,
+	}
+	for alias, want := range cases {
+		got, err := parseEncoding(alias)
+		if err != nil || got != want {
+			t.Errorf("parseEncoding(%q) = %v, %v; want %v", alias, got, err, want)
+		}
+	}
+	if _, err := parseEncoding("definitely-not-a-model"); err == nil {
+		t.Error("unknown encoding should fail")
+	}
+	if err := ValidateModel(""); err != nil {
+		t.Errorf("empty model should use the default: %v", err)
 	}
 }

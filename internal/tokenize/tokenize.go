@@ -35,20 +35,33 @@ func New(encoding string) (*Tokenizer, error) {
 }
 
 func parseEncoding(encoding string) (tokenizer.Encoding, error) {
-	switch strings.ToLower(encoding) {
-	case "gpt2", "r50k_base":
+	switch strings.ToLower(strings.TrimSpace(encoding)) {
+	case "gpt2", "r50k", "r50k_base":
 		return tokenizer.R50kBase, nil
 	case "p50k_base":
 		return tokenizer.P50kBase, nil
 	case "p50k_edit":
 		return tokenizer.P50kEdit, nil
-	case "cl100k_base":
+	// OpenAI modern models and Claude all use the cl100k BPE in practice;
+	// non-OpenAI names are an offline approximation, not an API contract.
+	case "cl100k", "cl100k_base", "gpt-4", "gpt-4-turbo", "gpt-3.5", "gpt-3.5-turbo",
+		"claude", "anthropic":
 		return tokenizer.Cl100kBase, nil
-	case "o200k_base":
+	case "o200k", "o200k_base", "gpt-4o", "gpt-4o-mini", "gpt-5", "gemini":
 		return tokenizer.O200kBase, nil
 	default:
 		return "", fmt.Errorf("tokenize: unsupported encoding %q", encoding)
 	}
+}
+
+// ValidateModel reports whether model/encoding is accepted by the tokenizer,
+// so config checks can fail early instead of at first render.
+func ValidateModel(model string) error {
+	if strings.TrimSpace(model) == "" {
+		return nil
+	}
+	_, err := parseEncoding(model)
+	return err
 }
 
 // Count returns the number of tokens in text.

@@ -35,6 +35,8 @@ sift
 | `sift clone <repository>` | Temporarily shallow-clone a repository and dump it in the current directory |
 | `sift copy [file]` | Copy `codebase.md` (or another document) to the clipboard |
 | `sift diff [ref]` | Render only files changed relative to a Git ref (default `HEAD`) |
+| `sift stats [path]` | Show token totals by directory, language, role, and file |
+| `sift init [path]` | Generate a validated starting `.sift.toml` |
 | `sift delta [path]` | Render only changes since the last recorded dump |
 | `sift follow <file>` | Render a file plus its import-graph neighbors |
 | `sift watch [path]` | Re-render the document whenever files change |
@@ -176,6 +178,12 @@ sift follow internal/app/rank.go:120-180
 ## More examples
 
 ```sh
+# Where do the tokens go?
+sift stats --signatures --top 20
+
+# Scaffold a project config
+sift init --stdout
+
 # An XML outline of a filtered subset, copied to the clipboard
 sift dump ./src --ext go,ts --style xml --clipboard
 

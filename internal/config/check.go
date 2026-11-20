@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/bethropolis/sift/internal/tokenize"
 )
 
 // ValidationSeverity indicates whether an issue is an error or a warning.
@@ -281,6 +283,13 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 
 	// Check [sift] defaults
 	if cf.Sift != nil {
+		if err := tokenize.ValidateModel(cf.Sift.TokenizeModel); err != nil {
+			result.Issues = append(result.Issues, ValidationIssue{
+				Severity: SeverityError,
+				Field:    "[sift].tokenize_model",
+				Message:  err.Error(),
+			})
+		}
 		if cf.Sift.Style != "" && !validStyles[strings.ToLower(cf.Sift.Style)] {
 			result.Issues = append(result.Issues, ValidationIssue{
 				Severity: SeverityError,

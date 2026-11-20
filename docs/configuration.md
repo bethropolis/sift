@@ -54,7 +54,7 @@ TOML keys are **snake_case** and do not always match the flag spelling:
 | `smart_filter` | `--smart` | Name differs from the flag |
 | `smart_max_tokens` | `--smart-max-tokens` | Per-file token ceiling |
 | `copy_on_generate` | `--clipboard` | Name differs from the flag |
-| `tokenize_model` | `--tokenize-model` | e.g. `cl100k_base` |
+| `tokenize_model` | `--tokenize-model` | tiktoken names or aliases (`cl100k`, `o200k`, `gpt-4o`, `gpt-5`, `claude`, `gemini`) |
 | `fallback_mode` | `--fallback-mode` | Fallback compression mode when budget exceeded (e.g. `signatures`) |
 | `fallback_threshold` | `--fallback-threshold` | Budget threshold fraction before fallback activates (default: `1.0`) |
 | `include_graph` | `--include-graph` | Emit a compact directory-level dependency map in the header |
@@ -84,6 +84,10 @@ which is misleading — the setting actually turns off `.gitignore` rule matchin
 One exception: the interactive picker always walks hidden and Git-ignored files
 so you can opt into them with its visibility toggles, regardless of these
 settings. They apply to `dump` and `select`.
+
+Token-model aliases are offline approximations: `claude`/`anthropic` map to
+`cl100k_base`, and `gpt-4o`/`gpt-5`/`gemini` map to `o200k_base`. Exact
+tiktoken names stay canonical. `sift check` rejects unknown values early.
 
 `force_secrets = true` includes detected credentials verbatim instead of
 redacting them. Only use this on trusted input.

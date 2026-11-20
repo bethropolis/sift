@@ -39,6 +39,8 @@ most important context fits in a model's window.
 | `sift pick [path]` | Select files interactively, then render |
 | `sift select [path]` | Auto-select useful files and render them |
 | `sift diff [ref]` | Render only files changed relative to a Git ref |
+| `sift stats [path]` | Show token distribution by directory, language, role, and file |
+| `sift init [path]` | Generate a validated starting `.sift.toml` |
 | `sift delta [path]` | Render only changes since the last recorded dump |
 | `sift follow <file>` | Render a file plus its import-graph neighbors |
 | `sift watch [path]` | Re-render the document whenever files change |
