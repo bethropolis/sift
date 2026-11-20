@@ -41,8 +41,6 @@
     onEmptyContextMenu?: (e: MouseEvent) => void;
   }
 
-  const totalTokens = $derived(files.reduce((sum, f) => sum + f.tokens, 0));
-
   // Re-exported via bind:filterInput so parents can focus the filter box.
 
   let {
@@ -395,13 +393,6 @@
                 <span class="rel-dot" title={`Git relevance: ${Math.round(node.file.score * 100)}%`}></span>
               {/if}
 
-              {#if totalTokens > 0}
-                {@const weight = row.isDir ? row.aggregateTokens : (node.file?.tokens ?? 0)}
-                <span class="row-heat" title={`${Math.round((weight / totalTokens) * 100)}% of project tokens`}>
-                  <span style:width={`${Math.min(100, (weight / totalTokens) * 400)}%`}></span>
-                </span>
-              {/if}
-
               {#if row.isDir}
                 <div
                   onclick={(e) => handleDirCheckboxClick(e, node.path)}
@@ -525,21 +516,6 @@
   }
   .git-badge.git-ren {
     color: var(--accent);
-  }
-  .row-heat {
-    flex: none;
-    width: 26px;
-    height: 4px;
-    margin-left: 6px;
-    background: var(--border-subtle);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .row-heat span {
-    display: block;
-    height: 100%;
-    background: var(--accent);
-    opacity: 0.65;
   }
   .row-name .hl {
     background-color: rgba(128, 128, 128, 0.3);

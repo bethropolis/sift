@@ -142,15 +142,6 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	treeGuide := m.styles.treeGuide.Render(prefix)
 	left := fmt.Sprintf("%s%s %s %s%s%s%s%s%s", cursorMark, treeGuide, mark, icon, name, status, relevant, modeStr, secret)
 
-	heat := ""
-	if width >= 72 && m.root != nil && m.root.TokensFull > 0 && n.TokensFull > 0 {
-		cells := 1 + (n.TokensFull*4)/m.root.TokensFull
-		if cells > 4 {
-			cells = 4
-		}
-		heat = m.styles.dim.Render(strings.Repeat(m.glyphs.HeatBar, cells)+strings.Repeat("·", 4-cells)) + " "
-	}
-
 	// Style the token count based on budget usage and zero-state.
 	var right string
 	if n.Kind == KindFile && n.TokensFull == 0 && n.ApproxTokens > 0 {
@@ -160,7 +151,6 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	} else {
 		right = lipgloss.NewStyle().Foreground(m.tokenColor(tokens)).Render(fmt.Sprintf("%6s", formatTokenCount(tokens)))
 	}
-	right = heat + right
 
 	leftWidth := ansi.StringWidth(left)
 	rightWidth := ansi.StringWidth(right)

@@ -190,9 +190,8 @@ with a 30-second bound.
 ## Visual cues
 
 Modified/added/renamed files show a colored single-letter Git badge next to
-the filename (`M`, `A`, `?`, `R`). Wide terminals also show a compact token
-heat bar, relative to the project total, so heavy files and folders stand out.
-Narrow panes and `--no-nerd-fonts` degrade to plain text.
+the filename (`M`, `A`, `?`, `R`). `--no-nerd-fonts` degrades glyphs to plain
+text.
 
 Per-project presets are stored under `presets.json` in Sift's config directory
 and remember each selection's modes, task prompt, style, and budget.

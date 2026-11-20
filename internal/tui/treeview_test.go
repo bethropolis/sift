@@ -115,7 +115,7 @@ func TestHiddenRowEmphasisOnCursorAndSelection(t *testing.T) {
 	}
 }
 
-func TestGitBadgeAndHeatBar(t *testing.T) {
+func TestGitBadge(t *testing.T) {
 	root := BuildTree([]Item{
 		{Path: "heavy.go", TokensFull: 80, GitStatus: "M"},
 		{Path: "light.go", TokensFull: 20, GitStatus: "A"},
@@ -126,12 +126,5 @@ func TestGitBadgeAndHeatBar(t *testing.T) {
 	row := m.treeRow(heavy, 100)
 	if !strings.Contains(row, "M") {
 		t.Fatalf("git status badge missing: %q", row)
-	}
-	if !strings.Contains(row, m.glyphs.HeatBar) {
-		t.Fatalf("heat bar missing on a wide row: %q", row)
-	}
-	narrow := m.treeRow(heavy, 40)
-	if strings.Contains(narrow, m.glyphs.HeatBar) {
-		t.Fatalf("heat bar should hide on narrow rows: %q", narrow)
 	}
 }
