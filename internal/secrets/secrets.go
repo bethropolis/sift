@@ -93,8 +93,12 @@ func (s *Scanner) RedactContent(content []byte) ([]byte, []Detection) {
 		if redacted != nil {
 			src = redacted
 		}
-		matches := rule.Regex.FindAllIndex(src, -1)
-		if len(matches) == 0 {
+
+		// A rule with a filter reports only the span holding the secret, and
+		// may reject matches entirely (generic-api-key's entropy/stopwords).
+		// Rules without a filter redact the whole match as before.
+		spans, candidates := matchRanges(rule, src)
+		if len(spans) == 0 {
 			continue
 		}
 		if redacted == nil {
@@ -105,11 +109,11 @@ func (s *Scanner) RedactContent(content []byte) ([]byte, []Detection) {
 		}
 
 		// Replace from the end so earlier indices stay valid.
-		for j := len(matches) - 1; j >= 0; j-- {
-			start, end := matches[j][0], matches[j][1]
+		for j := len(spans) - 1; j >= 0; j-- {
+			start, end := spans[j][0], spans[j][1]
 			detections = append(detections, Detection{
 				RuleName: rule.Name,
-				Match:    string(src[start:end]),
+				Match:    string(candidates[j]),
 			})
 			marker := "[REDACTED_SECRET: " + rule.Name + "]"
 			spliced := make([]byte, 0, len(src)-(end-start)+len(marker))
@@ -125,6 +129,39 @@ func (s *Scanner) RedactContent(content []byte) ([]byte, []Detection) {
 		return content, nil
 	}
 	return redacted, detections
+}
+
+// matchRanges returns the byte spans to redact for one rule plus the text of
+// each span. Filtered rules (see ruleFilters) redact only their secret capture
+// group and drop candidates that fail the filter; unfiltered rules redact the
+// whole match.
+func matchRanges(rule Rule, src []byte) (spans [][2]int, candidates [][]byte) {
+	filter, filtered := ruleFilters[rule.Name]
+	if !filtered {
+		for _, m := range rule.Regex.FindAllIndex(src, -1) {
+			spans = append(spans, [2]int{m[0], m[1]})
+			candidates = append(candidates, src[m[0]:m[1]])
+		}
+		return spans, candidates
+	}
+
+	group := filter.SecretGroup
+	for _, m := range rule.Regex.FindAllSubmatchIndex(src, -1) {
+		if 2*group+1 >= len(m) {
+			continue
+		}
+		start, end := m[2*group], m[2*group+1]
+		if start < 0 || end <= start {
+			continue
+		}
+		candidate := src[start:end]
+		if !filter.accept(candidate) {
+			continue
+		}
+		spans = append(spans, [2]int{start, end})
+		candidates = append(candidates, candidate)
+	}
+	return spans, candidates
 }
 
 // RedactSelectedFiles runs secret scanning concurrently over the given files.

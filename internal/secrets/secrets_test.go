@@ -58,6 +58,54 @@ func TestRedactContentClean(t *testing.T) {
 	}
 }
 
+// TestGenericAPIKeyDoesNotRedactCode pins the filters that stop the broad
+// generic-api-key rule from corrupting ordinary source and prose. These are
+// all real strings from this repository that the raw gitleaks regex matched.
+func TestGenericAPIKeyDoesNotRedactCode(t *testing.T) {
+	s := New()
+	for _, sample := range []string{
+		"dst.TokenizeModel = src.TokenizeModel",
+		`key == "default_profile"`,
+		"RoleAPI Role = types.RoleAPI",
+		`"SSH keys, credential helpers"`,
+		"SecretScan: true,",
+		"TokensFull: smartTokens,",
+	} {
+		redacted, detections := s.RedactContent([]byte(sample))
+		if len(detections) != 0 {
+			t.Errorf("%q: unexpected detections %+v", sample, detections)
+		}
+		if string(redacted) != sample {
+			t.Errorf("%q: content changed to %q", sample, redacted)
+		}
+	}
+}
+
+// TestGenericAPIKeyRedactsValue checks that a real generic key is still
+// detected, that only the value is replaced, and that the assignment around
+// it survives intact.
+func TestGenericAPIKeyRedactsValue(t *testing.T) {
+	s := New()
+	for _, sample := range []string{
+		`apiKey = "sk-proj-9fJ2kLmQ7xR4tY6vB8nM1pW3zC5dE0"`,
+		`client_secret = "a8f3d2e1c9b7a6f5d4e3c2b1a09f8e7d"`,
+		`token: "x9Yb3Kq7Lm2Np5Rt8Vw1Zc4Ef6Gh0Jk3"`,
+	} {
+		redacted, detections := s.RedactContent([]byte(sample))
+		if len(detections) != 1 {
+			t.Fatalf("%q: got %d detections, want 1", sample, len(detections))
+		}
+		out := string(redacted)
+		if !strings.Contains(out, "[REDACTED_SECRET: generic-api-key]") {
+			t.Errorf("%q: missing marker in %q", sample, out)
+		}
+		// The key name/assignment must not be swallowed.
+		if strings.HasPrefix(out, "[REDACTED") {
+			t.Errorf("%q: redacted the whole line: %q", sample, out)
+		}
+	}
+}
+
 func TestRedactContentEmpty(t *testing.T) {
 	s := New()
 	redacted, detections := s.RedactContent(nil)
