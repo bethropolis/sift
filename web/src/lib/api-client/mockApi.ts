@@ -14,6 +14,8 @@ import type {
   FileContentResult,
   FollowPayload,
   FollowResult,
+  ModesPayload,
+  ModesResult,
   PackPayload,
   PackResult,
   PackSection,
@@ -345,6 +347,28 @@ export async function follow(payload: FollowPayload): Promise<FollowResult> {
     })),
   ];
   return { seed: path, direction, depth: 2, hits, unanalyzed: 3 };
+}
+
+export async function exportModes(payload: ModesPayload): Promise<ModesResult> {
+  await delay(20);
+  const byMode = { full: [] as string[], outline: [] as string[], signatures: [] as string[], skip: [] as string[] };
+  for (const [path, mode] of Object.entries(payload.selections)) {
+    if (mode === 'sigs') byMode.signatures.push(path);
+    else if (mode === 'skip') byMode.skip.push(path);
+    else if (mode === 'outline') byMode.outline.push(path);
+    else if (mode === 'full') byMode.full.push(path);
+  }
+  for (const list of Object.values(byMode)) list.sort();
+  const lines: string[] = [];
+  const write = (name: string, values: string[]) => {
+    if (values.length === 0) return;
+    lines.push(`${name} = [`, ...values.map((v) => `  ${JSON.stringify(v)},`), ']');
+  };
+  write('full', byMode.full);
+  write('outline', byMode.outline);
+  write('signatures', byMode.signatures);
+  write('skip', byMode.skip);
+  return { toml: lines.length ? `[modes]\n${lines.join('\n')}\n` : '' };
 }
 
 export async function pack(payload: PackPayload): Promise<PackResult> {

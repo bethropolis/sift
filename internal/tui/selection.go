@@ -284,3 +284,29 @@ func (n *TreeNode) collectFiles(out *[]*TreeNode) {
 		c.collectFiles(out)
 	}
 }
+
+// ModeAssignments returns every file's current mode as a path → mode map, for
+// [modes] TOML export. Unselected files keep their mode; the selection state
+// itself is a separate concern.
+func (n *TreeNode) ModeAssignments() map[string]string {
+	out := make(map[string]string, n.FileCountVal)
+	var walk func(*TreeNode)
+	walk = func(node *TreeNode) {
+		if node.Kind == KindFile {
+			mode := "full"
+			switch node.Mode {
+			case ModeSkip:
+				mode = "skip"
+			case ModeSignatures:
+				mode = "signatures"
+			}
+			out[node.Path] = mode
+			return
+		}
+		for _, child := range node.Children {
+			walk(child)
+		}
+	}
+	walk(n)
+	return out
+}

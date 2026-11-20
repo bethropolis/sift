@@ -47,6 +47,7 @@ func helpSections() []helpSection {
 			Header: "Selection & Mode",
 			Rows: []helpRow{
 				{"m", "Cycle Mode  FULL → SIGS → SKIP"},
+				{"M", "Copy current modes as [modes] TOML"},
 				{"a", "Select All / Deselect All"},
 				{"s", "Smart Select by git history"},
 				{"f / F", "Follow imports from file (dependents / dependencies)"},

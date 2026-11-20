@@ -472,6 +472,21 @@
     return tokens;
   });
 
+  async function handleExportModes() {
+    try {
+      const result = await api.exportModes({ root: projectRoot, selections });
+      if (!result.toml) {
+        toast({ id: 'export-modes', kind: 'info', message: 'No non-default modes to export', duration: 2200 });
+        return;
+      }
+      await navigator.clipboard.writeText(result.toml);
+      toast({ id: 'export-modes', kind: 'success', message: 'Copied [modes] TOML', duration: 2200 });
+    } catch (err) {
+      console.error(err);
+      toast({ id: 'export-modes', kind: 'error', message: 'Couldn’t export modes', duration: 2200 });
+    }
+  }
+
   async function handleGenerate() {
     if (isGenerating || selectedCount === 0) return;
     isGenerating = true;
@@ -759,6 +774,14 @@
                 <span>Files</span>
               </button>
             {/if}
+
+            <button
+              class="btn btn-sm btn-ghost"
+              onclick={() => void handleExportModes()}
+              title="Copy the current modes as a [modes] TOML block"
+            >
+              Modes
+            </button>
 
             <div class="segmented-control">
               <button

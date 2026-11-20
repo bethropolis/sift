@@ -396,6 +396,23 @@ func TestDataEndpoints(t *testing.T) {
 		t.Fatalf("pack fileCount = %d, want 1", pack.FileCount)
 	}
 
+	// Mode export round-trips the client's assignment map.
+	rec = do(srv, "POST", "/api/modes", map[string]any{
+		"root": root, "selections": map[string]string{"README.md": "skip", "main.go": "sigs"},
+	}, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("modes = %d", rec.Code)
+	}
+	var modes struct {
+		TOML string `json:"toml"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&modes); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(modes.TOML, "signatures") || !strings.Contains(modes.TOML, "skip") {
+		t.Fatalf("modes TOML = %q", modes.TOML)
+	}
+
 	// Recents round-trip.
 	if rec := do(srv, "POST", "/api/recents", map[string]string{"root": root}, cookies); rec.Code != http.StatusNoContent {
 		t.Fatalf("recents post = %d", rec.Code)

@@ -9,6 +9,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/bethropolis/sift/internal/app"
+	"github.com/bethropolis/sift/internal/clipboard"
+	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/theme"
 )
 
@@ -335,6 +337,8 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if n := m.node(); n != nil {
 				m.cycleMode(n)
 			}
+		case "M":
+			return m, m.exportModes()
 		case "a":
 			m.selectAll()
 		case "s":
@@ -520,6 +524,29 @@ func pluralFiles(count int) string {
 		return "file"
 	}
 	return "files"
+}
+
+// copyClipboard is a seam for tests; the picker writes generated [modes]
+// blocks through the same clipboard helper as its other copy actions.
+var copyClipboard = clipboard.Copy
+
+// exportModes copies the current per-file modes as a minimal [modes] TOML
+// block, ready to paste into .sift.toml.
+func (m *model) exportModes() tea.Cmd {
+	if m.genBusy {
+		return m.busyNotice()
+	}
+	modes := config.ExportModes(m.root.ModeAssignments())
+	toml := config.FormatModesTOML(modes)
+	if toml == "" {
+		return m.setNotice("No non-default modes to export")
+	}
+	return m.startGenJob("Exporting modes…", func() string {
+		if err := copyClipboard([]byte(toml)); err != nil {
+			return "Mode export failed: " + err.Error()
+		}
+		return "Copied [modes] TOML to clipboard"
+	})
 }
 
 func (m *model) smartSelect() tea.Cmd {

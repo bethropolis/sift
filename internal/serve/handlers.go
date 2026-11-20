@@ -612,6 +612,25 @@ func followErrorText(err error) string {
 
 // handlePack renders the browser's explicit selections into the document.
 // At most 2 packs run concurrently; request cancellation stops the work.
+// handleModes exports the current per-file modes as a minimal [modes] TOML
+// block. It never scans: assignments come from the client's tree state.
+func (s *Server) handleModes(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Root       string            `json:"root"`
+		Selections map[string]string `json:"selections"`
+	}
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	if _, err := s.openProject(body.Root); err != nil {
+		s.log.Warn("denied modes export", "root", relForm(body.Root))
+		writeAPIError(w, http.StatusForbidden, "cannot open that project")
+		return
+	}
+	modes := config.ExportModes(body.Selections)
+	writeJSON(w, http.StatusOK, map[string]string{"toml": config.FormatModesTOML(modes)})
+}
+
 func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Root       string            `json:"root"`

@@ -145,6 +145,16 @@ export interface PackPayload {
   redact: boolean;
 }
 
+export interface ModesPayload {
+  root: string;
+  selections: Record<string, SelectionMode>;
+}
+
+export interface ModesResult {
+  /** Empty when every file uses the default full mode. */
+  toml: string;
+}
+
 export interface PackResult {
   document: string;
   tokens: number;

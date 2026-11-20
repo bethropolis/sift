@@ -15,6 +15,8 @@ import type {
   FileContentResult,
   FollowPayload,
   FollowResult,
+  ModesPayload,
+  ModesResult,
   PackPayload,
   PackResult,
   RecentProject,
@@ -104,6 +106,17 @@ export async function smartSelect(root: string, budget: number): Promise<SmartSe
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ root, budget }),
+    });
+    if (res.status === 401) handle401();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+export async function exportModes(payload: ModesPayload): Promise<ModesResult> {
+    const res = await fetch('/api/modes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
     if (res.status === 401) handle401();
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

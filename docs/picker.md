@@ -49,6 +49,7 @@ cursor.
 | --- | --- |
 | `Space` | Select / deselect the current file or folder |
 | `m` | Cycle a file's mode: `FULL` → `SIGS` → `SKIP` |
+| `M` | Copy the current modes as a minimal `[modes]` TOML block |
 | `s` | Smart-select files by Git history and budget |
 | `f` / `F` | Follow imports from the cursor file (dependents / dependencies) |
 | `a` | Select all / deselect all |
