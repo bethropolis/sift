@@ -12,50 +12,54 @@ import (
 	"github.com/bethropolis/sift/internal/config"
 )
 
-func init() {
-	rootCmd.AddCommand(checkCmd)
-	rootCmd.AddCommand(configCmd)
-	configCmd.AddCommand(configCheckCmd)
-
-	checkCmd.Flags().StringVar(&cfg.ConfigFile, "config", "", "Path to custom configuration file")
-	checkCmd.Flags().BoolVarP(&cfg.Quiet, "quiet", "q", false, "Do not print output; exit code indicates validity")
-
-	configCheckCmd.Flags().StringVar(&cfg.ConfigFile, "config", "", "Path to custom configuration file")
-	configCheckCmd.Flags().BoolVarP(&cfg.Quiet, "quiet", "q", false, "Do not print output; exit code indicates validity")
-}
-
-var checkCmd = &cobra.Command{
-	Use:     "check [path]",
-	Aliases: []string{"validate"},
-	Short:   "Validate .sift.toml configuration file syntax and semantics",
-	Long: `Validate a .sift.toml configuration file for syntax, profile inheritance,
+// newCheckCmd validates .sift.toml configuration syntax and semantics.
+func newCheckCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "check [path]",
+		Aliases: []string{"validate"},
+		Short:   "Validate .sift.toml configuration file syntax and semantics",
+		Long: `Validate a .sift.toml configuration file for syntax, profile inheritance,
 mode mappings, token budgets, and safety constraints.
 
 If path is omitted, checks .sift.toml in the current directory (or --config if set).
 If path is a directory, checks .sift.toml in that directory.
 If path is a file, checks that specific file directly.`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runCheck,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCheck(cfg, cmd, args)
+		},
+	}
+	cmd.Flags().StringVar(&cfg.ConfigFile, "config", "", "Path to custom configuration file")
+	cmd.Flags().BoolVarP(&cfg.Quiet, "quiet", "q", false, "Do not print output; exit code indicates validity")
+	return cmd
 }
 
-var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Inspect and manage Sift configuration",
-	Long:  "Inspect, validate, and manage Sift configuration files (.sift.toml).",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return cmd.Help()
-	},
+// newConfigCmd groups configuration inspection commands.
+func newConfigCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Inspect and manage Sift configuration",
+		Long:  "Inspect, validate, and manage Sift configuration files (.sift.toml).",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
+	}
+	check := &cobra.Command{
+		Use:     "check [path]",
+		Aliases: []string{"validate"},
+		Short:   "Validate .sift.toml configuration file syntax and semantics",
+		Args:    cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCheck(cfg, cmd, args)
+		},
+	}
+	check.Flags().StringVar(&cfg.ConfigFile, "config", "", "Path to custom configuration file")
+	check.Flags().BoolVarP(&cfg.Quiet, "quiet", "q", false, "Do not print output; exit code indicates validity")
+	cmd.AddCommand(check)
+	return cmd
 }
 
-var configCheckCmd = &cobra.Command{
-	Use:     "check [path]",
-	Aliases: []string{"validate"},
-	Short:   "Validate .sift.toml configuration file syntax and semantics",
-	Args:    cobra.MaximumNArgs(1),
-	RunE:    runCheck,
-}
-
-func runCheck(cmd *cobra.Command, args []string) error {
+func runCheck(cfg *config.Config, cmd *cobra.Command, args []string) error {
 	target := ""
 	if len(args) > 0 {
 		target = args[0]

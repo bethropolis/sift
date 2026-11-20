@@ -18,82 +18,81 @@ import (
 	"github.com/bethropolis/sift/internal/watch"
 )
 
-func init() {
-	rootCmd.AddCommand(watchCmd)
-	config.RegisterFlags(cfg, watchCmd.Flags())
-}
-
-// watchCmd re-renders the context document whenever files change.
-var watchCmd = &cobra.Command{
-	Use:   "watch [path]",
-	Short: "Watch a directory and re-render on changes",
-	Args:  cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			cfg.RootDir = args[0]
-		}
-		if err := applyProfile(cmd); err != nil {
-			return err
-		}
-
-		absRootDir, err := filepath.Abs(cfg.RootDir)
-		if err != nil {
-			return fmt.Errorf("invalid root directory path '%s': %w", cfg.RootDir, err)
-		}
-
-		// A watch is persistent; a per-collect timeout would abort renders.
-		cfg.Timeout = 0
-
-		application, err := app.New(cfg)
-		if err != nil {
-			return err
-		}
-		defer application.Close()
-
-		// First render.
-		start := time.Now()
-		files, skipped, err := application.Collect()
-		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-			return err
-		}
-		metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
-		if err != nil {
-			return err
-		}
-		if err := recordRenderMetrics(absRootDir, metrics, "HEAD"); err != nil {
-			application.LogError("Failed to record dump state: %v", err)
-		}
-
-		outputPath := application.OutputPath()
-		ignore := func(path string) bool {
-			if strings.Contains(path, string(filepath.Separator)+".git") {
-				return true
+// newWatchCmd re-renders the context document whenever files change.
+func newWatchCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "watch [path]",
+		Short: "Watch a directory and re-render on changes",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				cfg.RootDir = args[0]
 			}
-			return outputPath != "" && path == outputPath
-		}
+			if err := applyProfile(cfg, cmd); err != nil {
+				return err
+			}
 
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		defer stop()
+			absRootDir, err := filepath.Abs(cfg.RootDir)
+			if err != nil {
+				return fmt.Errorf("invalid root directory path '%s': %w", cfg.RootDir, err)
+			}
 
-		return watch.Run(ctx, watch.Options{
-			Root:   absRootDir,
-			Ignore: ignore,
-			OnChange: func() error {
-				start := time.Now()
-				files, skipped, err := application.Collect()
-				if err != nil {
-					application.LogError("re-render: %v", err)
+			// A watch is persistent; a per-collect timeout would abort renders.
+			cfg.Timeout = 0
+
+			application, err := app.New(cfg)
+			if err != nil {
+				return err
+			}
+			defer application.Close()
+
+			// First render.
+			start := time.Now()
+			files, skipped, err := application.Collect()
+			if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
+			if err != nil {
+				return err
+			}
+			if err := recordRenderMetrics(absRootDir, metrics, "HEAD"); err != nil {
+				application.LogError("Failed to record dump state: %v", err)
+			}
+
+			outputPath := application.OutputPath()
+			ignore := func(path string) bool {
+				if strings.Contains(path, string(filepath.Separator)+".git") {
+					return true
+				}
+				return outputPath != "" && path == outputPath
+			}
+
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+
+			return watch.Run(ctx, watch.Options{
+				Root:   absRootDir,
+				Ignore: ignore,
+				OnChange: func() error {
+					start := time.Now()
+					files, skipped, err := application.Collect()
+					if err != nil {
+						application.LogError("re-render: %v", err)
+						return nil
+					}
+					metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
+					if err != nil {
+						return err
+					}
+					if err := recordRenderMetrics(absRootDir, metrics, "HEAD"); err != nil {
+						application.LogError("Failed to record dump state: %v", err)
+					}
 					return nil
-				}
-				metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
-				if err != nil {
-					return err
-				}
-				if err := recordRenderMetrics(absRootDir, metrics, "HEAD"); err != nil {
-					application.LogError("Failed to record dump state: %v", err)
-				}
-				return nil
-			},
-		})
-	},
+				},
+			})
+		},
+	}
+	config.RegisterFlags(cfg, cmd.Flags())
+	return cmd
 }

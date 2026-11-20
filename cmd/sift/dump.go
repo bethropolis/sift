@@ -11,46 +11,44 @@ import (
 	"github.com/bethropolis/sift/internal/config"
 )
 
-func init() {
-	rootCmd.AddCommand(dumpCmd)
-	config.RegisterFlags(cfg, dumpCmd.Flags())
-}
+// newDumpCmd scans a directory and renders its contents.
+func newDumpCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "dump [path]",
+		Short: "Scan a directory and render its contents",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				cfg.RootDir = args[0]
+			}
+			if err := applyProfile(cfg, cmd); err != nil {
+				return err
+			}
 
-// dumpCmd scans a directory and renders its contents.
-var dumpCmd = &cobra.Command{
-	Use:   "dump [path]",
-	Short: "Scan a directory and render its contents",
-	Args:  cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			cfg.RootDir = args[0]
-		}
+			application, err := app.New(cfg)
+			if err != nil {
+				return err
+			}
+			defer application.Close()
 
-		if err := applyProfile(cmd); err != nil {
-			return err
-		}
+			start := time.Now()
+			files, skipped, err := application.Collect()
+			if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
+			if err != nil {
+				return err
+			}
 
-		application, err := app.New(cfg)
-		if err != nil {
-			return err
-		}
-		defer application.Close()
-
-		start := time.Now()
-		files, skipped, err := application.Collect()
-		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-			return err
-		}
-		metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
-		if err != nil {
-			return err
-		}
-
-		// Record the dump baseline so future delta dumps know what changed
-		// since this scan. Failure to record is non-fatal.
-		if err := recordRenderMetrics(cfg.RootDir, metrics, "HEAD"); err != nil {
-			application.LogError("Failed to record dump state: %v", err)
-		}
-		return nil
-	},
+			// Record the dump baseline so future delta dumps know what changed
+			// since this scan. Failure to record is non-fatal.
+			if err := recordRenderMetrics(cfg.RootDir, metrics, "HEAD"); err != nil {
+				application.LogError("Failed to record dump state: %v", err)
+			}
+			return nil
+		},
+	}
+	config.RegisterFlags(cfg, cmd.Flags())
+	return cmd
 }

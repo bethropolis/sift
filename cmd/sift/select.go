@@ -18,43 +18,47 @@ import (
 	"github.com/bethropolis/sift/internal/walker"
 )
 
-var (
-	printSelection     bool
-	selectionFormat    string
-	selectionOnly      bool
-	includeSkipped     bool
-	followSeed         string
-	selFollowDirection string
-	selFollowDepth     int
-	selFollowFullDepth int
-)
-
-func init() {
-	selectCmd.Flags().BoolVar(&printSelection, "print-selection", false, "Print the automatic full/signatures/skip decisions")
-	selectCmd.Flags().StringVar(&selectionFormat, "selection-format", "tree", "Selection report format: tree, json, ndjson")
-	selectCmd.Flags().BoolVar(&selectionOnly, "selection-only", false, "Print the selection report without rendering a document")
-	selectCmd.Flags().BoolVar(&includeSkipped, "include-skipped", false, "Include filtered files and skip reasons in the selection report")
-	selectCmd.Flags().StringVar(&followSeed, "follow", "", "Restrict candidates to the import-graph walk from this seed file (debug what follow picks)")
-	selectCmd.Flags().StringVar(&selFollowDirection, "follow-direction", "dependents", "Follow walk direction: deps, dependents, or both")
-	selectCmd.Flags().IntVar(&selFollowDepth, "follow-depth", 2, "Follow walk depth in hops (-1 = unlimited, 0 = seed only)")
-	selectCmd.Flags().IntVar(&selFollowFullDepth, "follow-full-depth", 1, "Follow walk full-render depth (-1 = all full)")
-	rootCmd.AddCommand(selectCmd)
-	config.RegisterFlags(cfg, selectCmd.Flags())
+// selectOptions holds the flags specific to `sift select`.
+type selectOptions struct {
+	printSelection  bool
+	selectionFormat string
+	selectionOnly   bool
+	includeSkipped  bool
+	followSeed      string
+	followDirection string
+	followDepth     int
+	followFullDepth int
 }
 
-var selectCmd = &cobra.Command{
-	Use:   "select [path]",
-	Short: "Automatically select the most useful files and render them",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runSelect,
+// newSelectCmd automatically selects the most useful files and renders them.
+func newSelectCmd(cfg *config.Config) *cobra.Command {
+	opts := &selectOptions{}
+	cmd := &cobra.Command{
+		Use:   "select [path]",
+		Short: "Automatically select the most useful files and render them",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSelect(cfg, opts, cmd, args)
+		},
+	}
+	cmd.Flags().BoolVar(&opts.printSelection, "print-selection", false, "Print the automatic full/signatures/skip decisions")
+	cmd.Flags().StringVar(&opts.selectionFormat, "selection-format", "tree", "Selection report format: tree, json, ndjson")
+	cmd.Flags().BoolVar(&opts.selectionOnly, "selection-only", false, "Print the selection report without rendering a document")
+	cmd.Flags().BoolVar(&opts.includeSkipped, "include-skipped", false, "Include filtered files and skip reasons in the selection report")
+	cmd.Flags().StringVar(&opts.followSeed, "follow", "", "Restrict candidates to the import-graph walk from this seed file (debug what follow picks)")
+	cmd.Flags().StringVar(&opts.followDirection, "follow-direction", "dependents", "Follow walk direction: deps, dependents, or both")
+	cmd.Flags().IntVar(&opts.followDepth, "follow-depth", 2, "Follow walk depth in hops (-1 = unlimited, 0 = seed only)")
+	cmd.Flags().IntVar(&opts.followFullDepth, "follow-full-depth", 1, "Follow walk full-render depth (-1 = all full)")
+	config.RegisterFlags(cfg, cmd.Flags())
+	return cmd
 }
 
 // runSelectFollow restricts the candidate set to one follow walk so the
 // selection report shows exactly what follow picks: distances ride along in
 // each decision's signals (visible in json/ndjson reports) and the walk
 // summary prints to stderr ahead of the report.
-func runSelectFollow(cmd *cobra.Command, files []format.FileEntry, skipped []walker.SkippedItem, graph map[string][]string, preferred map[string]rank.FileScoreResult) (selection.Result, error) {
-	direction, err := app.ParseFollowDirection(selFollowDirection)
+func runSelectFollow(cfg *config.Config, opts *selectOptions, cmd *cobra.Command, files []format.FileEntry, skipped []walker.SkippedItem, graph map[string][]string, preferred map[string]rank.FileScoreResult, overhead int) (selection.Result, error) {
+	direction, err := app.ParseFollowDirection(opts.followDirection)
 	if err != nil {
 		return selection.Result{}, err
 	}
@@ -62,7 +66,7 @@ func runSelectFollow(cmd *cobra.Command, files []format.FileEntry, skipped []wal
 	if err != nil {
 		return selection.Result{}, fmt.Errorf("sift select: cannot resolve root: %w", err)
 	}
-	seed, err := app.ResolveSeed(absRoot, followSeed)
+	seed, err := app.ResolveSeed(absRoot, opts.followSeed)
 	if err != nil {
 		return selection.Result{}, err
 	}
@@ -75,10 +79,10 @@ func runSelectFollow(cmd *cobra.Command, files []format.FileEntry, skipped []wal
 	if !present {
 		for _, s := range skipped {
 			if filepath.ToSlash(s.Path) == seed {
-				return selection.Result{}, fmt.Errorf("sift select: follow seed %q skipped: %s", followSeed, strings.ToLower(string(s.Reason)))
+				return selection.Result{}, fmt.Errorf("sift select: follow seed %q skipped: %s", opts.followSeed, strings.ToLower(string(s.Reason)))
 			}
 		}
-		return selection.Result{}, fmt.Errorf("sift select: follow seed %q is ignored or outside the collected tree", followSeed)
+		return selection.Result{}, fmt.Errorf("sift select: follow seed %q is ignored or outside the collected tree", opts.followSeed)
 	}
 	if !lang.HasImportScanner(seed) {
 		return selection.Result{}, fmt.Errorf("sift select: no import resolver for %q; supported: %s",
@@ -88,14 +92,15 @@ func runSelectFollow(cmd *cobra.Command, files []format.FileEntry, skipped []wal
 	if cmd.Flags().Changed("mode") {
 		modeOverride = cfg.Mode
 	}
-	sel, err := app.FollowCandidates(files, graph, preferred, seed, direction, selFollowDepth, selFollowFullDepth, modeOverride)
+	sel, err := app.FollowCandidates(files, graph, preferred, seed, direction, opts.followDepth, opts.followFullDepth, modeOverride)
 	if err != nil {
 		return selection.Result{}, err
 	}
 	result := selection.Select(sel.Candidates, selection.Request{
-		Budget: cfg.Budget,
-		Prompt: cfg.Prompt,
-		Tuning: app.TuningFromScoring(cfg.Scoring),
+		Budget:   cfg.Budget,
+		Overhead: overhead,
+		Prompt:   cfg.Prompt,
+		Tuning:   app.TuningFromScoring(cfg.Scoring),
 	})
 	wantMode := modeOverride
 	if wantMode == "" {
@@ -103,18 +108,18 @@ func runSelectFollow(cmd *cobra.Command, files []format.FileEntry, skipped []wal
 	}
 	for _, d := range result.Decisions {
 		if filepath.ToSlash(d.Path) == seed && d.Selected && string(d.Mode) == wantMode {
-			printFollowSummary(seed, direction, selFollowDepth, sel.Hits, sel.Unanalyzed)
+			printFollowSummary(seed, direction, opts.followDepth, sel.Hits, sel.Unanalyzed)
 			return result, nil
 		}
 	}
-	return selection.Result{}, fmt.Errorf("sift select: follow seed %q alone exceeds the token budget (%d)", followSeed, cfg.Budget)
+	return selection.Result{}, fmt.Errorf("sift select: follow seed %q alone exceeds the token budget (%d)", opts.followSeed, cfg.Budget)
 }
 
-func runSelect(cmd *cobra.Command, args []string) error {
+func runSelect(cfg *config.Config, opts *selectOptions, cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		cfg.RootDir = args[0]
 	}
-	if err := applyProfile(cmd); err != nil {
+	if err := applyProfile(cfg, cmd); err != nil {
 		return err
 	}
 	// `select` is the agent-context workflow, so give it a useful bounded
@@ -128,7 +133,7 @@ func runSelect(cmd *cobra.Command, args []string) error {
 	// and the smart filter regardless of whether the user set --smart.
 	cfg.SmartFilter = true
 	appConfig := cfg
-	if selectionOnly {
+	if opts.selectionOnly {
 		// A report-only command must not create or truncate the default
 		// codebase.md output file.
 		reportConfig := *cfg
@@ -153,6 +158,7 @@ func runSelect(cmd *cobra.Command, args []string) error {
 		ranker := app.NewRankerWithWeights(root, scores)
 		preferred, graph = ranker.RankGraph(files)
 	}
+	overhead := app.EstimatedDocumentOverhead(cfg, cfg.Prompt, files)
 	testAffinity := app.RelatedTestAffinity(files, graph)
 	candidates := make([]selection.Candidate, 0, len(files))
 	for _, file := range files {
@@ -169,9 +175,8 @@ func runSelect(cmd *cobra.Command, args []string) error {
 		})
 	}
 	var result selection.Result
-	if followSeed != "" {
-		var err error
-		result, err = runSelectFollow(cmd, files, skipped, graph, preferred)
+	if opts.followSeed != "" {
+		result, err = runSelectFollow(cfg, opts, cmd, files, skipped, graph, preferred, overhead)
 		if err != nil {
 			return err
 		}
@@ -182,21 +187,22 @@ func runSelect(cmd *cobra.Command, args []string) error {
 			Graph:      graph,
 			Preferred:  preferred,
 			Budget:     cfg.Budget,
+			Overhead:   overhead,
 			Prompt:     cfg.Prompt,
 			Tuning:     app.TuningFromScoring(cfg.Scoring),
 			MaxDepth:   cfg.MaxDepth,
 		})
 	}
-	if printSelection || selectionOnly {
+	if opts.printSelection || opts.selectionOnly {
 		writer := os.Stderr
-		if selectionOnly {
+		if opts.selectionOnly {
 			writer = os.Stdout
 		}
-		if err := (selection.Report{Result: result, Skipped: skipped}).Print(writer, selectionFormat, includeSkipped); err != nil {
+		if err := (selection.Report{Result: result, Skipped: skipped}).Print(writer, opts.selectionFormat, opts.includeSkipped); err != nil {
 			return fmt.Errorf("print selection: %w", err)
 		}
 	}
-	if selectionOnly {
+	if opts.selectionOnly {
 		return nil
 	}
 	if len(result.Selected) == 0 {

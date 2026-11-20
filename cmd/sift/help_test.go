@@ -6,13 +6,38 @@ import (
 	"testing"
 )
 
-func TestHelpOutputContainsSections(t *testing.T) {
+// helpFor renders help for the named subcommand ("" for the root) through the
+// same custom help function the CLI installs.
+func helpFor(t *testing.T, name string, all bool) string {
+	t.Helper()
+	root := newRootCmd()
 	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
+	root.SetOut(&buf)
+	root.SetErr(&buf)
 
-	renderHelp(rootCmd, nil)
-	out := buf.String()
+	target := root
+	if name != "" {
+		found, _, err := root.Find([]string{name})
+		if err != nil || found == nil {
+			t.Fatalf("subcommand %q not found: %v", name, err)
+		}
+		target = found
+		target.SetOut(&buf)
+		target.SetErr(&buf)
+	}
+	if all {
+		if err := root.PersistentFlags().Set("all", "true"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := target.Help(); err != nil {
+		t.Fatalf("help: %v", err)
+	}
+	return buf.String()
+}
+
+func TestHelpOutputContainsSections(t *testing.T) {
+	out := helpFor(t, "", false)
 
 	requiredSections := []string{
 		"USAGE:",
@@ -44,12 +69,7 @@ func TestHelpOutputContainsSections(t *testing.T) {
 }
 
 func TestHelpWithAllShowsCategorizedOptions(t *testing.T) {
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
-
-	renderHelp(rootCmd, []string{"--all"})
-	out := buf.String()
+	out := helpFor(t, "", true)
 
 	categorizedSections := []string{
 		"OUTPUT & FORMATTING:",
@@ -67,12 +87,7 @@ func TestHelpWithAllShowsCategorizedOptions(t *testing.T) {
 }
 
 func TestSubcommandHelpShowsExamples(t *testing.T) {
-	var buf bytes.Buffer
-	dumpCmd.SetOut(&buf)
-	dumpCmd.SetErr(&buf)
-
-	renderHelp(dumpCmd, nil)
-	out := buf.String()
+	out := helpFor(t, "dump", false)
 
 	if !strings.Contains(out, "EXAMPLES:") {
 		t.Fatalf("dump help missing EXAMPLES section:\n%s", out)
@@ -84,12 +99,7 @@ func TestSubcommandHelpShowsExamples(t *testing.T) {
 }
 
 func TestSubcommandHelpShowsCommandSpecificOptions(t *testing.T) {
-	var buf bytes.Buffer
-	selectCmd.SetOut(&buf)
-	selectCmd.SetErr(&buf)
-
-	renderHelp(selectCmd, nil)
-	out := buf.String()
+	out := helpFor(t, "select", false)
 
 	if !strings.Contains(out, "COMMAND OPTIONS:") {
 		t.Fatalf("select help missing COMMAND OPTIONS section:\n%s", out)
@@ -101,12 +111,7 @@ func TestSubcommandHelpShowsCommandSpecificOptions(t *testing.T) {
 }
 
 func TestServeHelpShowsAppAndCommandOptions(t *testing.T) {
-	var buf bytes.Buffer
-	serveCmd.SetOut(&buf)
-	serveCmd.SetErr(&buf)
-
-	renderHelp(serveCmd, nil)
-	out := buf.String()
+	out := helpFor(t, "serve", false)
 
 	if !strings.Contains(out, "COMMAND OPTIONS:") {
 		t.Fatalf("serve help missing COMMAND OPTIONS section:\n%s", out)
@@ -124,12 +129,7 @@ func TestServeHelpShowsAppAndCommandOptions(t *testing.T) {
 }
 
 func TestDeltaHelpShowsPatchAndSinceAndMultipleExamples(t *testing.T) {
-	var buf bytes.Buffer
-	deltaCmd.SetOut(&buf)
-	deltaCmd.SetErr(&buf)
-
-	renderHelp(deltaCmd, nil)
-	out := buf.String()
+	out := helpFor(t, "delta", false)
 
 	if !strings.Contains(out, "COMMAND OPTIONS:") {
 		t.Fatalf("delta help missing COMMAND OPTIONS section:\n%s", out)
@@ -149,14 +149,55 @@ func TestDeltaHelpShowsPatchAndSinceAndMultipleExamples(t *testing.T) {
 }
 
 func TestHelpNoAnsiWhenNotTerminal(t *testing.T) {
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-
-	renderHelp(rootCmd, nil)
-	out := buf.String()
+	out := helpFor(t, "", false)
 
 	// A bytes.Buffer is not a terminal file descriptor, so getHelpTheme should return no ANSI escapes
 	if strings.Contains(out, "\x1b[") {
 		t.Errorf("help output written to non-terminal buffer contains raw ANSI escape codes")
+	}
+}
+
+// TestRootCommandsRunConcurrently builds and executes independent command
+// trees in parallel. Run with -race: it guards against package-level config or
+// flag state leaking across invocations.
+func TestRootCommandsRunConcurrently(t *testing.T) {
+	for i := 0; i < 6; i++ {
+		i := i
+		t.Run(string(rune('a'+i)), func(t *testing.T) {
+			t.Parallel()
+			root := newRootCmd()
+			var buf bytes.Buffer
+			root.SetOut(&buf)
+			root.SetErr(&buf)
+			root.SetArgs([]string{"dump", "--help"})
+			if err := root.Execute(); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if !strings.Contains(buf.String(), "USAGE:") {
+				t.Fatalf("sequential help output mismatch:\n%s", buf.String())
+			}
+		})
+	}
+}
+
+// TestIndependentRootsDoNotShareState proves two command trees can be built and
+// parsed without leaking flags into each other.
+func TestIndependentRootsDoNotShareState(t *testing.T) {
+	first := newRootCmd()
+	second := newRootCmd()
+
+	dumpFirst, _, err := first.Find([]string{"dump"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dumpSecond, _, err := second.Find([]string{"dump"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dumpFirst.Flags().Parse([]string{"--style", "xml"}); err != nil {
+		t.Fatal(err)
+	}
+	if dumpSecond.Flags().Changed("style") {
+		t.Fatal("flag change leaked between independent roots")
 	}
 }

@@ -15,39 +15,43 @@ import (
 	"github.com/bethropolis/sift/internal/selection"
 )
 
-var (
-	followDirection string
-	followDepth     int
-	followFullDepth int
-)
-
-func init() {
-	followCmd.Flags().StringVar(&followDirection, "direction", "dependents", "Which way to walk the import graph: deps, dependents, or both")
-	followCmd.Flags().IntVar(&followDepth, "depth", 2, "Max import hops from the seed file (-1 = unlimited, 0 = seed only)")
-	followCmd.Flags().IntVar(&followFullDepth, "full-depth", 1, "Files within N hops render in full; farther files render as signatures (-1 = all full)")
-	rootCmd.AddCommand(followCmd)
-	config.RegisterFlags(cfg, followCmd.Flags())
+// followOptions holds the flags specific to `sift follow`.
+type followOptions struct {
+	direction string
+	depth     int
+	fullDepth int
 }
 
-var followCmd = &cobra.Command{
-	Use:   "follow <file>",
-	Short: "Render a file plus the files connected to it through imports",
-	Long: `Render the seed file plus its import-graph neighbors, transitively.
+// newFollowCmd renders a file plus the files connected to it through imports.
+func newFollowCmd(cfg *config.Config) *cobra.Command {
+	opts := &followOptions{}
+	cmd := &cobra.Command{
+		Use:   "follow <file>",
+		Short: "Render a file plus the files connected to it through imports",
+		Long: `Render the seed file plus its import-graph neighbors, transitively.
 
 Dependents answers "what could break if I change this file". Deps answers
 "what do I need to understand this file". Both walks every visited node's
 imports and importers, which is the union of the two walks, not a path
 restricted to one direction.`,
-	Args: cobra.ExactArgs(1),
-	RunE: runFollow,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFollow(cfg, opts, cmd, args)
+		},
+	}
+	cmd.Flags().StringVar(&opts.direction, "direction", "dependents", "Which way to walk the import graph: deps, dependents, or both")
+	cmd.Flags().IntVar(&opts.depth, "depth", 2, "Max import hops from the seed file (-1 = unlimited, 0 = seed only)")
+	cmd.Flags().IntVar(&opts.fullDepth, "full-depth", 1, "Files within N hops render in full; farther files render as signatures (-1 = all full)")
+	config.RegisterFlags(cfg, cmd.Flags())
+	return cmd
 }
 
-func runFollow(cmd *cobra.Command, args []string) error {
-	direction, err := app.ParseFollowDirection(followDirection)
+func runFollow(cfg *config.Config, opts *followOptions, cmd *cobra.Command, args []string) error {
+	direction, err := app.ParseFollowDirection(opts.direction)
 	if err != nil {
 		return err
 	}
-	if err := applyProfile(cmd); err != nil {
+	if err := applyProfile(cfg, cmd); err != nil {
 		return err
 	}
 	// Bounded like select: a transitive walk without a budget is a footgun.
@@ -101,15 +105,16 @@ func runFollow(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("mode") {
 		modeOverride = cfg.Mode
 	}
-	sel, err := app.FollowCandidates(files, graph, preferred, seed, direction, followDepth, followFullDepth, modeOverride)
+	sel, err := app.FollowCandidates(files, graph, preferred, seed, direction, opts.depth, opts.fullDepth, modeOverride)
 	if err != nil {
 		return err
 	}
 	hits := sel.Hits
 	result := selection.Select(sel.Candidates, selection.Request{
-		Budget: cfg.Budget,
-		Prompt: cfg.Prompt,
-		Tuning: app.TuningFromScoring(cfg.Scoring),
+		Budget:   cfg.Budget,
+		Overhead: app.EstimatedDocumentOverhead(cfg, cfg.Prompt, files),
+		Prompt:   cfg.Prompt,
+		Tuning:   app.TuningFromScoring(cfg.Scoring),
 	})
 
 	wantMode := modeOverride
@@ -126,12 +131,12 @@ func runFollow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("sift follow: seed %q alone exceeds the token budget (%d)", args[0], cfg.Budget)
 	}
 	if len(hits) == 1 {
-		fmt.Fprintf(os.Stderr, "sift follow: no %s found for %s within depth %d; rendering the seed alone\n", direction, seed, followDepth)
+		fmt.Fprintf(os.Stderr, "sift follow: no %s found for %s within depth %d; rendering the seed alone\n", direction, seed, opts.depth)
 	}
 	if err := application.RenderFinal(result.Selected, skipped, time.Since(start), nil); err != nil {
 		return err
 	}
-	printFollowSummary(seed, direction, followDepth, hits, sel.Unanalyzed)
+	printFollowSummary(seed, direction, opts.depth, hits, sel.Unanalyzed)
 	return nil
 }
 

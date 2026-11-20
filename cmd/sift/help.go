@@ -11,14 +11,9 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/bethropolis/sift/internal/config"
 )
-
-var showAllFlags bool
-
-func init() {
-	rootCmd.PersistentFlags().BoolVar(&showAllFlags, "all", false, "Show all available flags and options in help")
-	setupCustomHelp(rootCmd)
-}
 
 type helpTheme struct {
 	Brand       lipgloss.Style
@@ -34,7 +29,7 @@ type helpTheme struct {
 	Dim         lipgloss.Style
 }
 
-func getHelpTheme(w io.Writer) helpTheme {
+func getHelpTheme(w io.Writer, cfg *config.Config) helpTheme {
 	useColor := isTerminalWriter(w) && os.Getenv("NO_COLOR") == "" && !cfg.NoColor
 	if !useColor {
 		return helpTheme{}
@@ -62,25 +57,29 @@ func isTerminalWriter(w io.Writer) bool {
 	return false
 }
 
-func setupCustomHelp(cmd *cobra.Command) {
-	cmd.SetHelpFunc(renderHelp)
-	cmd.SetUsageFunc(renderUsage)
+func setupCustomHelp(cmd *cobra.Command, cfg *config.Config, showAll *bool) {
+	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
+		renderHelp(cfg, showAll, c, args)
+	})
+	cmd.SetUsageFunc(func(c *cobra.Command) error {
+		return renderUsage(cfg, c)
+	})
 }
 
-func renderUsage(cmd *cobra.Command) error {
+func renderUsage(cfg *config.Config, cmd *cobra.Command) error {
 	w := cmd.OutOrStderr()
-	t := getHelpTheme(w)
+	t := getHelpTheme(w, cfg)
 
 	fmt.Fprintf(w, "%s\n    %s\n\n", t.Section.Render("USAGE:"), commandUsageLine(cmd, t))
 	fmt.Fprintf(w, "Run '%s' for usage and available options.\n", t.Command.Render(cmd.CommandPath()+" --help"))
 	return nil
 }
 
-func renderHelp(cmd *cobra.Command, args []string) {
+func renderHelp(cfg *config.Config, showAll *bool, cmd *cobra.Command, args []string) {
 	w := cmd.OutOrStdout()
-	t := getHelpTheme(w)
+	t := getHelpTheme(w, cfg)
 
-	isRoot := cmd == rootCmd || cmd.Parent() == nil
+	isRoot := cmd.Parent() == nil
 
 	// 1. Title / Brand Header
 	versionStr := cfg.Version
@@ -120,7 +119,7 @@ func renderHelp(cmd *cobra.Command, args []string) {
 	}
 
 	// 4. OPTIONS
-	allRequested := showAllFlags || hasFlag(args, "--all")
+	allRequested := (showAll != nil && *showAll) || hasFlag(args, "--all")
 	renderOptions(w, cmd, isRoot, allRequested, t)
 
 	// 5. EXAMPLES
@@ -509,6 +508,7 @@ var engineFlags = map[string]bool{
 	"force-secrets":       true,
 	"clipboard":           true,
 	"copy-on-generate":    true,
+	"no-cache":            true,
 	"config":              true,
 	"all":                 true,
 	"help":                true,
@@ -557,7 +557,7 @@ func getFlagCategory(name string) string {
 		"copy-on-generate", "secrets", "force-secrets", "json", "markdown",
 		"fallback-mode", "fallback-threshold":
 		return "output"
-	case "ext", "ignore", "smart", "smart-max-tokens", "hidden", "git", "binary", "max-size", "max-depth":
+	case "ext", "ignore", "smart", "smart-max-tokens", "hidden", "git", "binary", "max-size", "max-depth", "no-cache":
 		return "filter"
 	case "dir", "profile", "target", "timeout", "workers", "concurrent", "tokenize-model", "config":
 		return "config"

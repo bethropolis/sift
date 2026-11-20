@@ -20,23 +20,15 @@ import (
 	"github.com/bethropolis/sift/internal/tokenize"
 )
 
-var (
-	deltaSince string
-	deltaPatch bool
-)
+// newDeltaCmd dumps only the changes since the last recorded dump (or a ref).
+func newDeltaCmd(cfg *config.Config) *cobra.Command {
+	var deltaSince string
+	var deltaPatch bool
 
-func init() {
-	deltaCmd.Flags().StringVar(&deltaSince, "since", "", "Compare against a ref instead of the last recorded dump")
-	deltaCmd.Flags().BoolVar(&deltaPatch, "patch", false, "Output a raw unified diff patch instead of full file contents")
-	rootCmd.AddCommand(deltaCmd)
-	config.RegisterFlags(cfg, deltaCmd.Flags())
-}
-
-// deltaCmd dumps only the changes since the last recorded dump (or a ref).
-var deltaCmd = &cobra.Command{
-	Use:   "delta [path]",
-	Short: "Dump only the changes since the last recorded dump",
-	Long: `Dump a context document containing only what changed since the last
+	cmd := &cobra.Command{
+		Use:   "delta [path]",
+		Short: "Dump only the changes since the last recorded dump",
+		Long: `Dump a context document containing only what changed since the last
 recorded dump, feeding an LLM incremental context instead of the whole
 repository.
 
@@ -46,63 +38,67 @@ block, which is dramatically more token-efficient for iterative coding.
 
 The comparison base is the commit recorded by the most recent dump, pick,
 diff, or delta for this project, or --since to override it.`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			cfg.RootDir = args[0]
-		}
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				cfg.RootDir = args[0]
+			}
 
-		rootDir := cfg.RootDir
-		absRootDir, err := state.CanonicalRoot(rootDir)
-		if err != nil {
-			return fmt.Errorf("invalid root directory path '%s': %w", rootDir, err)
-		}
-
-		g := rank.New(absRootDir)
-		if !g.Available() {
-			return fmt.Errorf("sift delta: %q is not inside a git repository", absRootDir)
-		}
-
-		from := deltaSince
-		if from == "" {
-			st, err := state.Load()
+			rootDir := cfg.RootDir
+			absRootDir, err := state.CanonicalRoot(rootDir)
 			if err != nil {
-				return fmt.Errorf("sift delta: %w", err)
+				return fmt.Errorf("invalid root directory path '%s': %w", rootDir, err)
 			}
-			key := state.GetProjectKey(absRootDir)
-			if rec, ok := st.Get(key); ok && rec.LastCommitHash != "" {
-				from = rec.LastCommitHash
-			} else {
-				return fmt.Errorf("sift delta: no previous dump recorded for %q; run \"sift dump\" first or pass --since <ref>", absRootDir)
+
+			g := rank.New(absRootDir)
+			if !g.Available() {
+				return fmt.Errorf("sift delta: %q is not inside a git repository", absRootDir)
 			}
-		}
 
-		to := "HEAD"
-		if err := applyProfile(cmd); err != nil {
-			return err
-		}
+			from := deltaSince
+			if from == "" {
+				st, err := state.Load()
+				if err != nil {
+					return fmt.Errorf("sift delta: %w", err)
+				}
+				key := state.GetProjectKey(absRootDir)
+				if rec, ok := st.Get(key); ok && rec.LastCommitHash != "" {
+					from = rec.LastCommitHash
+				} else {
+					return fmt.Errorf("sift delta: no previous dump recorded for %q; run \"sift dump\" first or pass --since <ref>", absRootDir)
+				}
+			}
 
-		// Resolve HEAD to a concrete short hash so the envelope and the
-		// recorded baseline name an actual commit, not a symbolic ref.
-		to, _ = g.Head()
-		if to == "" {
-			return fmt.Errorf("sift delta: cannot resolve HEAD")
-		}
+			if err := applyProfile(cfg, cmd); err != nil {
+				return err
+			}
 
-		changed := g.ChangedBetween(from, to)
-		if len(changed) == 0 {
-			return fmt.Errorf("sift delta: no files changed since %s", from)
-		}
+			// Resolve HEAD to a concrete short hash so the envelope and the
+			// recorded baseline name an actual commit, not a symbolic ref.
+			to, _ := g.Head()
+			if to == "" {
+				return fmt.Errorf("sift delta: cannot resolve HEAD")
+			}
 
-		if deltaPatch {
-			return runDeltaPatch(g, absRootDir, from, to, changed)
-		}
-		return runDeltaFull(absRootDir, from, to, changed)
-	},
+			changed := g.ChangedBetween(from, to)
+			if len(changed) == 0 {
+				return fmt.Errorf("sift delta: no files changed since %s", from)
+			}
+
+			if deltaPatch {
+				return runDeltaPatch(cfg, g, absRootDir, from, to, changed)
+			}
+			return runDeltaFull(cfg, absRootDir, from, to, changed)
+		},
+	}
+	cmd.Flags().StringVar(&deltaSince, "since", "", "Compare against a ref instead of the last recorded dump")
+	cmd.Flags().BoolVar(&deltaPatch, "patch", false, "Output a raw unified diff patch instead of full file contents")
+	config.RegisterFlags(cfg, cmd.Flags())
+	return cmd
 }
 
 // runDeltaFull renders the full content of the files changed since from.
-func runDeltaFull(absRootDir, from, to string, changed []string) error {
+func runDeltaFull(cfg *config.Config, absRootDir, from, to string, changed []string) error {
 	application, err := app.New(cfg)
 	if err != nil {
 		return err
@@ -132,7 +128,7 @@ func runDeltaFull(absRootDir, from, to string, changed []string) error {
 }
 
 // runDeltaPatch emits the raw unified diff wrapped in a context_update block.
-func runDeltaPatch(g *rank.Git, absRootDir, from, to string, changed []string) error {
+func runDeltaPatch(cfg *config.Config, g *rank.Git, absRootDir, from, to string, changed []string) error {
 	patch := g.RawPatch(from, to)
 	patch = strings.TrimSpace(patch)
 	if patch == "" {

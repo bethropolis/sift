@@ -6,14 +6,26 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
-func TestSkillCommandBareShowsHelp(t *testing.T) {
-	buf := new(bytes.Buffer)
-	skillCmd.SetOut(buf)
-	skillCmd.SetErr(buf)
+func skillSub(t *testing.T, root *cobra.Command, name string) *cobra.Command {
+	t.Helper()
+	cmd, _, err := root.Find([]string{name})
+	if err != nil || cmd == nil {
+		t.Fatalf("skill subcommand %q not found: %v", name, err)
+	}
+	return cmd
+}
 
-	if err := skillCmd.RunE(skillCmd, nil); err != nil {
+func TestSkillCommandBareShowsHelp(t *testing.T) {
+	root := newSkillCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+
+	if err := root.RunE(root, nil); err != nil {
 		t.Fatalf("skill bare command failed: %v", err)
 	}
 
@@ -25,14 +37,13 @@ func TestSkillCommandBareShowsHelp(t *testing.T) {
 }
 
 func TestSkillCommandShow(t *testing.T) {
+	root := newSkillCmd()
 	buf := new(bytes.Buffer)
-	skillCmd.SetOut(buf)
-	skillCmd.SetErr(buf)
+	show := skillSub(t, root, "show")
+	show.SetOut(buf)
+	show.SetErr(buf)
 
-	skillShowCmd.SetOut(buf)
-	skillShowCmd.SetErr(buf)
-
-	if err := skillShowCmd.RunE(skillShowCmd, nil); err != nil {
+	if err := show.RunE(show, nil); err != nil {
 		t.Fatalf("skill show failed: %v", err)
 	}
 
@@ -43,11 +54,13 @@ func TestSkillCommandShow(t *testing.T) {
 }
 
 func TestSkillCommandStatus(t *testing.T) {
+	root := newSkillCmd()
 	buf := new(bytes.Buffer)
-	skillStatusCmd.SetOut(buf)
-	skillStatusCmd.SetErr(buf)
+	status := skillSub(t, root, "status")
+	status.SetOut(buf)
+	status.SetErr(buf)
 
-	if err := skillStatusCmd.RunE(skillStatusCmd, nil); err != nil {
+	if err := status.RunE(status, nil); err != nil {
 		t.Fatalf("skill status failed: %v", err)
 	}
 
@@ -68,14 +81,16 @@ func TestSkillCommandLocalLifecycle(t *testing.T) {
 	}
 	defer os.Chdir(origWd)
 
+	root := newSkillCmd()
 	buf := new(bytes.Buffer)
-	skillInstallCmd.SetOut(buf)
-	skillInstallCmd.SetErr(buf)
+	install := skillSub(t, root, "install")
+	install.SetOut(buf)
+	install.SetErr(buf)
+	if err := install.Flags().Set("local", "true"); err != nil {
+		t.Fatal(err)
+	}
 
-	skillLocalFlag = true
-	defer func() { skillLocalFlag = false }()
-
-	if err := skillInstallCmd.RunE(skillInstallCmd, nil); err != nil {
+	if err := install.RunE(install, nil); err != nil {
 		t.Fatalf("skill install --local failed: %v", err)
 	}
 
@@ -86,10 +101,14 @@ func TestSkillCommandLocalLifecycle(t *testing.T) {
 
 	// Uninstall
 	buf.Reset()
-	skillUninstallCmd.SetOut(buf)
-	skillUninstallCmd.SetErr(buf)
+	uninstall := skillSub(t, root, "uninstall")
+	uninstall.SetOut(buf)
+	uninstall.SetErr(buf)
+	if err := uninstall.Flags().Set("local", "true"); err != nil {
+		t.Fatal(err)
+	}
 
-	if err := skillUninstallCmd.RunE(skillUninstallCmd, nil); err != nil {
+	if err := uninstall.RunE(uninstall, nil); err != nil {
 		t.Fatalf("skill uninstall --local failed: %v", err)
 	}
 

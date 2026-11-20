@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bethropolis/sift/internal/config"
 )
 
 func TestCheckCmd_Valid(t *testing.T) {
@@ -27,12 +29,13 @@ budget = "100k"
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	cmd := checkCmd
+	cfg := config.New()
+	cmd := newCheckCmd(cfg)
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
-	err := runCheck(cmd, []string{configPath})
+	err := runCheck(cfg, cmd, []string{configPath})
 	if err != nil {
 		t.Fatalf("runCheck error: %v", err)
 	}
@@ -55,8 +58,9 @@ default_profile = "does_not_exist"
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	cmd := checkCmd
-	err := runCheck(cmd, []string{configPath})
+	cfg := config.New()
+	cmd := newCheckCmd(cfg)
+	err := runCheck(cfg, cmd, []string{configPath})
 	if err == nil {
 		t.Fatal("expected error for invalid config")
 	}
@@ -76,11 +80,10 @@ budget = 1000
 		t.Fatalf("WriteFile: %v", err)
 	}
 
+	cfg := config.New()
 	cfg.Quiet = true
-	defer func() { cfg.Quiet = false }()
-
-	cmd := checkCmd
-	err := runCheck(cmd, []string{configPath})
+	cmd := newCheckCmd(cfg)
+	err := runCheck(cfg, cmd, []string{configPath})
 	if err != nil {
 		t.Fatalf("expected nil error on valid quiet check, got: %v", err)
 	}

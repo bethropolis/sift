@@ -14,23 +14,24 @@ import (
 	"github.com/bethropolis/sift/internal/state"
 )
 
-func init() {
-	rootCmd.AddCommand(pickCmd)
-	config.RegisterFlags(cfg, pickCmd.Flags())
-}
-
-// pickCmd interactively selects files, then renders the chosen context.
-var pickCmd = &cobra.Command{
-	Use:   "pick [path]",
-	Short: "Interactively select files and render a context document",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runPick,
+// newPickCmd interactively selects files, then renders the chosen context.
+func newPickCmd(cfg *config.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "pick [path]",
+		Short: "Interactively select files and render a context document",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPick(cfg, cmd, args)
+		},
+	}
+	config.RegisterFlags(cfg, cmd.Flags())
+	return cmd
 }
 
 // runPick is shared by the pick subcommand and the bare root command, which
 // launches the picker when invoked without a subcommand. It assembles the
 // picker's options and delegates the entire workflow to the picker service.
-func runPick(cmd *cobra.Command, args []string) error {
+func runPick(cfg *config.Config, cmd *cobra.Command, args []string) error {
 	if !isatty.IsTerminal(os.Stdin.Fd()) {
 		return fmt.Errorf("sift pick requires an interactive terminal")
 	}
@@ -38,7 +39,7 @@ func runPick(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		cfg.RootDir = args[0]
 	}
-	if err := applyProfile(cmd); err != nil {
+	if err := applyProfile(cfg, cmd); err != nil {
 		return err
 	}
 	if prefs, err := state.LoadPreferences(); err == nil {
