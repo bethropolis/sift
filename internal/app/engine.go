@@ -186,6 +186,25 @@ func RenderBuffer(ctx context.Context, files []format.FileEntry, prompt string, 
 	return doc, err
 }
 
+// RenderBufferWithMetrics renders exactly the given files (no token budget)
+// and returns the post-redaction metrics, for callers that need an omission
+// summary alongside the document.
+func RenderBufferWithMetrics(ctx context.Context, files []format.FileEntry, prompt string, cfg *config.Config) ([]byte, RenderMetrics, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, RenderMetrics{}, err
+	}
+	a, err := NewBuffered(bufferedConfig("", cfg))
+	if err != nil {
+		return nil, RenderMetrics{}, err
+	}
+	var buf bytes.Buffer
+	metrics, err := a.renderDocumentTo(files, prompt, ctxErrWriter{ctx: ctx, w: &buf}, nil)
+	if err != nil {
+		return nil, metrics, err
+	}
+	return buf.Bytes(), metrics, nil
+}
+
 // RenderBufferSections renders exactly the given files (no token budget)
 // like RenderBuffer and additionally returns one byte range per rendered
 // file for outline navigation. Offsets index the returned document.

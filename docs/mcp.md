@@ -255,10 +255,11 @@ Via Cline's MCP settings UI, or `cline_mcp_settings.json` directly:
 
 | Tool | Params | What it does |
 | --- | --- | --- |
-| `pack_context` | `budget` (int, tokens), `prompt` (string, optional relevance hint), `mode` (`"full"` \| `"signatures"`, default `"full"`), `style` (output style, e.g. `markdown`/`xml`), `ext` (comma-separated string, e.g. `"go,md"`), `ignore` (comma-separated string, gitignore syntax) | Packs the directory into one ranked, token-budgeted context document. This is the primary tool — most sessions only need this one. |
+| `pack_context` | `budget` (int, tokens), `prompt` (string, optional relevance hint), `mode` (`"full"` \| `"signatures"`, default `"full"`), `style` (output style, e.g. `markdown`/`xml`), `ext` (comma-separated string, e.g. `"go,md"`), `ignore` (comma-separated string, gitignore syntax), `path` (subdirectory scope) | Packs the directory into one ranked, token-budgeted context document, ending with a manifest of included/omitted files. This is the primary tool — most sessions only need this one. |
 | `pack_diff` | `from` (git ref; omit/empty for uncommitted working-tree changes), `patch` (bool, default `false`), `with_context` (bool, default `false`), `context_depth` (int, default `1`) | Packs only what changed since `from`: full contents, a raw unified patch (`patch: true`), or the patch plus import-graph neighbors in signatures mode (`with_context: true`). |
-| `pack_follow` | `file` (seed file, required), `direction` (`"deps"` \| `"dependents"` \| `"both"`, default `"dependents"`), `depth` (int, default `2`, `-1` unlimited), `full_depth` (int, default `1`), `budget` (int, tokens), `mode` (`"full"` \| `"signatures"`) | Packs one file plus its import-graph neighbors: dependents show what could break, deps show what the file needs. |
-| `list_tree` | `ext` (comma-separated string), `ignore` (comma-separated string) | Lists the repository structure — paths only, no content. Cheap way to orient before calling `pack_context`. |
+| `pack_follow` | `file` (seed file, required), `direction` (`"deps"` \| `"dependents"` \| `"both"`, default `"dependents"`), `depth` (int, default `2`, `-1` unlimited), `full_depth` (int, default `1`), `budget` (int, tokens), `mode` (`"full"` \| `"signatures"`), `path` (subdirectory scope) | Packs one file plus its import-graph neighbors: dependents show what could break, deps show what the file needs. Ends with an omission manifest. |
+| `list_tree` | `ext` (comma-separated string), `ignore` (comma-separated string), `path` (subdirectory scope), `with_tokens` (bool) | Lists the repository structure — paths only, no content. With `with_tokens`, adds role tags, approximate token counts, and directory totals. |
+| `pack_files` | `files` (array of `{path, mode?, symbol?, lines?}`), `style`, `prompt`, `path` | Packs an explicit file list with per-file density (`full`, `signatures`, `outline`) and optional symbol or line-range focus. Every path is jailed. |
 | `get_skill` | `name` (string, optional, default `"sift-project-dotfile"`) | Retrieves instructions and guidelines for an embedded Sift agent skill (e.g. for authoring `.sift.toml`). |
 
 There is no separate `get_file_signatures` tool — call `pack_context` with
@@ -300,7 +301,9 @@ Response (truncated — a tree, then one fenced block per file):
 These methods are implemented:
 
 - `initialize` (advertises `tools`, `prompts`, and `resources` capabilities)
+- `ping`
 - `notifications/initialized`
+- `roots/list` requests when the client advertises the roots capability, refreshed on `notifications/roots/list_changed`
 - `tools/list` & `tools/call`
 - `prompts/list` & `prompts/get` (exposes embedded skills like `sift-project-dotfile`)
 - `resources/list` & `resources/read` (exposes readable skills via `skill://<name>`)
@@ -310,6 +313,8 @@ These methods are implemented:
 The server never reads or writes the shared delta baseline
 (`~/.config/sift/state.json`):
 
+- Every tool accepts an optional `path` scope, jailed to the active roots
+  (startup `[path]`/cwd or the client's `roots/list`).
 - `pack_diff` requires an explicit `from` ref (or defaults to uncommitted
   changes) — it never falls back to a recorded baseline.
 - `pack_context` never records a dump.

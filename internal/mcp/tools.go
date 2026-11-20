@@ -14,6 +14,7 @@ import (
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/scan"
 	"github.com/bethropolis/sift/internal/selection"
+	"github.com/bethropolis/sift/internal/serve/jail"
 	"github.com/bethropolis/sift/internal/state"
 	embedded "github.com/bethropolis/sift/skills"
 )
@@ -37,6 +38,7 @@ func toolDefinitions() []Tool {
 				"style":  str("Output style."),
 				"ext":    str("Only include these extensions (comma-separated, e.g. 'go,md')."),
 				"ignore": str("Extra ignore patterns (comma-separated, gitignore syntax)."),
+				"path":   str("Optional subdirectory, relative to the active root or absolute inside it."),
 			}},
 		},
 		{
@@ -59,15 +61,37 @@ func toolDefinitions() []Tool {
 				"full_depth": {Type: "number", Description: "Files within N hops render in full; farther files render as signatures."},
 				"budget":     {Type: "number", Description: "Maximum tokens for the document."},
 				"mode":       {Type: "string", Description: "Context density.", Enum: []string{"full", "signatures"}},
+				"path":       str("Optional subdirectory, relative to the active root or absolute inside it."),
 			}},
 		},
 		{
 			Name:        "list_tree",
 			Description: "List the repository structure (paths only, no content) for cheap orientation before a bigger call.",
 			InputSchema: Schema{Type: "object", Properties: map[string]Property{
-				"ext":    str("Only include these extensions (comma-separated, e.g. 'go,md')."),
-				"ignore": str("Extra ignore patterns (comma-separated, gitignore syntax)."),
+				"ext":         str("Only include these extensions (comma-separated, e.g. 'go,md')."),
+				"ignore":      str("Extra ignore patterns (comma-separated, gitignore syntax)."),
+				"path":        str("Optional subdirectory, relative to the active root or absolute inside it."),
+				"with_tokens": {Type: "boolean", Description: "Show role tags, approximate token counts, and directory totals."},
 			}},
+		},
+		{
+			Name:        "pack_files",
+			Description: "Pack an explicit list of files, each with its own full/signatures/outline mode and optional symbol or line-range focus.",
+			InputSchema: Schema{Type: "object", Properties: map[string]Property{
+				"files": {
+					Type:        "array",
+					Description: "Files to pack.",
+					Items: &Schema{Type: "object", Properties: map[string]Property{
+						"path":   str("File path, relative to the active root or absolute inside it."),
+						"mode":   {Type: "string", Description: "Per-file density.", Enum: []string{"full", "signatures", "outline"}},
+						"symbol": str("Optional declaration name to expand in full (e.g. Config or Type.Method)."),
+						"lines":  str("Optional 1-based line range, e.g. 10-25."),
+					}, Required: []string{"path"}},
+				},
+				"style":  str("Output style."),
+				"prompt": str("Optional task directive prepended to the output."),
+				"path":   str("Optional subdirectory, relative to the active root or absolute inside it."),
+			}, Required: []string{"files"}},
 		},
 		{
 			Name:        "get_skill",
@@ -86,10 +110,30 @@ func toolDefinitions() []Tool {
 type session struct {
 	cfg   *config.Config
 	cache *scan.ContentCache
+
+	// roots are the active project roots. They start from cfg.RootDir and are
+	// replaced when the client advertises the roots capability.
+	roots []string
+	jail  *jail.Jail
+
+	rootsSupported bool
+	rootsRequested bool
+	nextRootsID    int
+	pendingRootsID string
 }
 
 func newSession(cfg *config.Config) *session {
-	return &session{cfg: cfg, cache: app.NewContentCache(cfg)}
+	s := &session{cfg: cfg, cache: app.NewContentCache(cfg)}
+	if abs, err := filepath.Abs(cfg.RootDir); err == nil {
+		if j, err := jail.New([]string{abs}, nil); err == nil {
+			s.jail = j
+			s.roots = j.Roots()
+		}
+	}
+	if len(s.roots) == 0 {
+		s.roots = []string{cfg.RootDir}
+	}
+	return s
 }
 
 func callTool(ctx context.Context, name string, args map[string]any, s *session) (text string, err error, ok bool) {
@@ -105,6 +149,9 @@ func callTool(ctx context.Context, name string, args map[string]any, s *session)
 		return text, err, true
 	case "list_tree":
 		text, err := handleListTreeSession(ctx, args, s)
+		return text, err, true
+	case "pack_files":
+		text, err := handlePackFilesSession(ctx, args, s)
 		return text, err, true
 	case "get_skill":
 		text, err := handleGetSkill(args)
@@ -138,8 +185,13 @@ func handlePackContextSession(ctx context.Context, args map[string]any, s *sessi
 	}
 	runCfg.SmartFilter = true
 	runCfg.OutputFile = "-" // never touch disk
+	root, err := s.scopeRoot(args)
+	if err != nil {
+		return "", err
+	}
+	runCfg.RootDir = root
 
-	files, _, err := app.ScanPickerWithCache(ctx, runCfg.RootDir, &runCfg, s.cache)
+	files, _, err := app.ScanPickerWithCache(ctx, root, &runCfg, s.cache)
 	if err != nil {
 		return "", err
 	}
@@ -185,8 +237,11 @@ func handlePackContextSession(ctx context.Context, args map[string]any, s *sessi
 		selected = forceSelectionMode(selected, runCfg.Mode, runCfg.Budget)
 	}
 
-	buf, err := app.RenderBuffer(ctx, selected, runCfg.Prompt, &runCfg)
-	return string(buf), err
+	buf, metrics, err := app.RenderBufferWithMetrics(ctx, selected, runCfg.Prompt, &runCfg)
+	if err != nil {
+		return "", err
+	}
+	return string(buf) + omissionManifest(files, selected, runCfg.Budget, metrics), nil
 }
 
 // forceSelectionMode rewrites the optimizer's picks to an explicit caller mode.
@@ -351,7 +406,12 @@ func handlePackFollowSession(ctx context.Context, args map[string]any, s *sessio
 	runCfg.SmartFilter = true
 	runCfg.OutputFile = "-" // never touch disk
 
-	absRoot, err := state.CanonicalRoot(runCfg.RootDir)
+	root, err := s.scopeRoot(args)
+	if err != nil {
+		return "", err
+	}
+	runCfg.RootDir = root
+	absRoot, err := state.CanonicalRoot(root)
 	if err != nil {
 		return "", err
 	}
@@ -359,10 +419,15 @@ func handlePackFollowSession(ctx context.Context, args map[string]any, s *sessio
 	if err != nil {
 		return "", err
 	}
-	files, _, err := app.ScanPickerWithCache(ctx, runCfg.RootDir, &runCfg, s.cache)
+	files, _, err := app.ScanPickerWithCache(ctx, root, &runCfg, s.cache)
 	if err != nil {
 		return "", err
 	}
+	seedRel, err := s.resolveFile(root, seed)
+	if err != nil {
+		return "", err
+	}
+	seed = seedRel
 	seedPresent := false
 	for _, f := range files {
 		if filepath.ToSlash(f.Path) == seed {
@@ -410,8 +475,15 @@ func handlePackFollowSession(ctx context.Context, args map[string]any, s *sessio
 	}
 	for _, d := range result.Decisions {
 		if filepath.ToSlash(d.Path) == seed && d.Selected && string(d.Mode) == wantMode {
-			buf, err := app.RenderBuffer(ctx, result.Selected, runCfg.Prompt, &runCfg)
-			return string(buf), err
+			buf, metrics, err := app.RenderBufferWithMetrics(ctx, result.Selected, runCfg.Prompt, &runCfg)
+			if err != nil {
+				return "", err
+			}
+			candidates := make([]format.FileEntry, 0, len(sel.Candidates))
+			for _, c := range sel.Candidates {
+				candidates = append(candidates, c.File)
+			}
+			return string(buf) + omissionManifest(candidates, result.Selected, runCfg.Budget, metrics), nil
 		}
 	}
 	return "", fmt.Errorf("seed %q alone exceeds the token budget (%d)", file, runCfg.Budget)
@@ -428,11 +500,18 @@ func handleListTreeSession(ctx context.Context, args map[string]any, s *session)
 	stringArg(args, "ext", &runCfg.Extensions)
 	stringArg(args, "ignore", &runCfg.CustomIgnore)
 	runCfg.OutputFile = "-" // app.New must not create codebase.md
-
-	metas, _, err := app.SkeletonWithCache(ctx, runCfg.RootDir, &runCfg, s.cache)
+	root, err := s.scopeRoot(args)
 	if err != nil {
 		return "", err
 	}
+	runCfg.RootDir = root
+
+	metas, _, err := app.SkeletonWithCache(ctx, root, &runCfg, s.cache)
+	if err != nil {
+		return "", err
+	}
+	var withTokens bool
+	boolArg(args, "with_tokens", &withTokens)
 	dirs := map[string]bool{}
 	for _, m := range metas {
 		for d := filepath.Dir(m.Path); d != "."; d = filepath.Dir(d) {
@@ -448,6 +527,21 @@ func handleListTreeSession(ctx context.Context, args map[string]any, s *session)
 	}
 	sort.Strings(paths) // lexical order puts parents before children
 
+	tokens := map[string]int{}
+	if withTokens {
+		for _, m := range metas {
+			t := int(m.Size) / 4
+			if t < 1 {
+				t = 1
+			}
+			tokens[filepath.ToSlash(m.Path)] += t
+			tokens["."] += t
+			for d := filepath.Dir(filepath.ToSlash(m.Path)); d != "."; d = filepath.Dir(d) {
+				tokens[filepath.ToSlash(d)] += t
+			}
+		}
+	}
+
 	var b strings.Builder
 	for _, p := range paths {
 		depth := strings.Count(p, "/")
@@ -455,10 +549,18 @@ func handleListTreeSession(ctx context.Context, args map[string]any, s *session)
 		b.WriteString(strings.Repeat("  ", depth) + name)
 		if dirs[p] {
 			b.WriteString("/")
+			if withTokens {
+				fmt.Fprintf(&b, "  ~%d tokens", tokens[p])
+			}
+		} else if withTokens {
+			fmt.Fprintf(&b, "  [%s] ~%d tokens", lang.Classify(p).Role, tokens[p])
 		}
 		b.WriteString("\n")
 	}
 	fmt.Fprintf(&b, "\n%d files, %d dirs", len(metas), len(dirs))
+	if withTokens {
+		fmt.Fprintf(&b, ", ~%d tokens", tokens["."])
+	}
 	return b.String(), nil
 }
 
@@ -492,4 +594,148 @@ func handleGetSkill(args map[string]any) (string, error) {
 		return "", err
 	}
 	return string(content), nil
+}
+
+// handlePackFilesSession packs an explicit file list. Each file can select its
+// own density and an optional symbol or line range; every path is jailed and
+// processed through the shared cache before one formatted document is
+// rendered.
+func handlePackFilesSession(ctx context.Context, args map[string]any, s *session) (string, error) {
+	runCfg := *s.cfg
+	if _, ok := args["style"]; ok {
+		runCfg.JSONOutput = false
+		runCfg.MarkdownOutput = false
+	}
+	stringArg(args, "style", &runCfg.Style)
+	stringArg(args, "prompt", &runCfg.Prompt)
+	runCfg.OutputFile = "-"
+
+	root, err := s.scopeRoot(args)
+	if err != nil {
+		return "", err
+	}
+	runCfg.RootDir = root
+
+	raw, _ := args["files"].([]any)
+	if len(raw) == 0 {
+		return "", fmt.Errorf("files is required and must be a non-empty array")
+	}
+
+	application, err := app.NewBufferedWithCache(&runCfg, s.cache)
+	if err != nil {
+		return "", err
+	}
+	defer application.Close()
+
+	entries := make([]format.FileEntry, 0, len(raw))
+	for i, item := range raw {
+		spec, ok := item.(map[string]any)
+		if !ok {
+			return "", fmt.Errorf("files[%d] must be an object", i)
+		}
+		var path, mode, symbol, lines string
+		stringArg(spec, "path", &path)
+		stringArg(spec, "mode", &mode)
+		stringArg(spec, "symbol", &symbol)
+		stringArg(spec, "lines", &lines)
+		if path == "" {
+			return "", fmt.Errorf("files[%d].path is required", i)
+		}
+		if symbol != "" && lines != "" {
+			return "", fmt.Errorf("files[%d]: specify either symbol or lines, not both", i)
+		}
+		if mode == "" {
+			mode = "full"
+		}
+		if mode != "full" && mode != "signatures" && mode != "outline" {
+			return "", fmt.Errorf("files[%d].mode %q: want full, signatures, or outline", i, mode)
+		}
+		rel, err := s.resolveFile(root, path)
+		if err != nil {
+			return "", err
+		}
+		entry, err := application.ReadEntry(rel)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", path, err)
+		}
+
+		switch mode {
+		case "signatures":
+			if len(entry.SigContent) > 0 {
+				entry.Content = entry.SigContent
+				entry.Tokens = entry.TokensSig
+				entry.IsCompressed = true
+			}
+		case "outline":
+			entry, err = app.OutlineEntry(entry, runCfg.TokenizeModel)
+			if err != nil {
+				return "", err
+			}
+		}
+
+		if symbol != "" || lines != "" {
+			spec := rel
+			if symbol != "" {
+				spec += "#" + symbol
+			} else {
+				spec += ":" + lines
+			}
+			target, err := app.ParseTarget(spec)
+			if err != nil {
+				return "", fmt.Errorf("%s: %w", path, err)
+			}
+			entry, err = app.FocusEntry(entry, target, runCfg.TokenizeModel)
+			if err != nil {
+				return "", err
+			}
+		}
+		entries = append(entries, entry)
+	}
+
+	buf, _, err := app.RenderBufferWithMetrics(ctx, entries, runCfg.Prompt, &runCfg)
+	return string(buf), err
+}
+
+// omissionManifest summarizes what a budgeted response included and cut, so an
+// agent can ask for a specific omitted file with pack_files.
+func omissionManifest(all, selected []format.FileEntry, budget int, metrics app.RenderMetrics) string {
+	selectedPaths := make(map[string]bool, len(selected))
+	full, sigs := 0, 0
+	for _, f := range selected {
+		selectedPaths[filepath.ToSlash(f.Path)] = true
+		if f.IsCompressed {
+			sigs++
+		} else {
+			full++
+		}
+	}
+	var omitted []format.FileEntry
+	for _, f := range all {
+		if !selectedPaths[filepath.ToSlash(f.Path)] {
+			omitted = append(omitted, f)
+		}
+	}
+	sort.SliceStable(omitted, func(i, j int) bool {
+		if omitted[i].TokensFull != omitted[j].TokensFull {
+			return omitted[i].TokensFull > omitted[j].TokensFull
+		}
+		return omitted[i].Path < omitted[j].Path
+	})
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n\n[manifest] included: %d full, %d signatures; tokens: %d", full, sigs, metrics.Tokens)
+	if budget > 0 {
+		fmt.Fprintf(&b, "/%d", budget)
+	}
+	fmt.Fprintf(&b, "; secrets redacted: %d; omitted: %d", metrics.Secrets, len(omitted))
+	if len(omitted) > 0 {
+		b.WriteString("; largest omitted:")
+		limit := len(omitted)
+		if limit > 8 {
+			limit = 8
+		}
+		for _, f := range omitted[:limit] {
+			fmt.Fprintf(&b, " %s (%d)", f.Path, f.TokensFull)
+		}
+	}
+	return b.String()
 }

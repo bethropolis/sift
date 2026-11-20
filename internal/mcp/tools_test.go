@@ -151,6 +151,9 @@ func TestPackContextRespectsBudget(t *testing.T) {
 	if strings.Contains(text, `println("hi")`) {
 		t.Error("pack_context leaked the function body in signatures mode")
 	}
+	if !strings.Contains(text, "[manifest] included:") || !strings.Contains(text, "tokens:") {
+		t.Errorf("pack_context manifest missing:\n%s", text)
+	}
 }
 
 func TestPackContextRejectsBadMode(t *testing.T) {
@@ -296,5 +299,80 @@ func TestStdioEndToEnd(t *testing.T) {
 	block, _ := content[0].(map[string]any)
 	if !strings.Contains(block["text"].(string), "main.go") {
 		t.Errorf("tools/call list_tree missing main.go: %v", block["text"])
+	}
+}
+
+func TestPackFilesModesAndFocus(t *testing.T) {
+	requireCompression(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte(`package main
+
+// Keep runs.
+func Keep() int { return 1 }
+
+func Other() int { return 2 }
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "schema.sql"), []byte("CREATE TABLE t (id int);\nINSERT INTO t VALUES (1);\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := mcpTestConfig(root)
+	text, err := handlePackFilesSession(context.Background(), map[string]any{
+		"style": "plain",
+		"files": []any{
+			map[string]any{"path": "main.go", "symbol": "Keep"},
+			map[string]any{"path": "schema.sql", "mode": "signatures"},
+		},
+	}, newSession(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "return 1") || strings.Contains(text, "return 2") {
+		t.Fatalf("symbol focus not applied:\n%s", text)
+	}
+	if !strings.Contains(text, "CREATE TABLE t") || strings.Contains(text, "VALUES (1)") {
+		t.Fatalf("SQL summary not applied:\n%s", text)
+	}
+
+	outline, err := handlePackFilesSession(context.Background(), map[string]any{
+		"style": "plain",
+		"files": []any{map[string]any{"path": "main.go", "mode": "outline"}},
+	}, newSession(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(outline, "Keep runs") {
+		t.Fatalf("outline kept doc comments:\n%s", outline)
+	}
+	if !strings.Contains(outline, "func Keep()") {
+		t.Fatalf("outline lost declarations:\n%s", outline)
+	}
+
+	ranged, err := handlePackFilesSession(context.Background(), map[string]any{
+		"style": "plain",
+		"files": []any{map[string]any{"path": "main.go", "lines": "2-2"}},
+	}, newSession(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ranged, "omitted by sift focus") {
+		t.Fatalf("line range markers missing:\n%s", ranged)
+	}
+}
+
+func TestListTreeWithTokens(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	text, err := handleListTreeSession(context.Background(), map[string]any{"with_tokens": true}, newSession(mcpTestConfig(root)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"[entrypoint]", "tokens", "main.go"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("list_tree with_tokens missing %q:\n%s", want, text)
+		}
 	}
 }

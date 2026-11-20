@@ -54,6 +54,8 @@ type Property struct {
 	Type        string   `json:"type"`
 	Description string   `json:"description,omitempty"`
 	Enum        []string `json:"enum,omitempty"`
+	// Items describes array elements (for array-typed properties).
+	Items *Schema `json:"items,omitempty"`
 }
 
 // InitializeResult is the response payload for initialize.
@@ -69,6 +71,27 @@ type Capabilities struct {
 	Tools     map[string]any `json:"tools"`
 	Prompts   map[string]any `json:"prompts"`
 	Resources map[string]any `json:"resources"`
+}
+
+// InitializeParams is the client's initialize payload. Only the roots
+// capability is relevant to sift.
+type InitializeParams struct {
+	Capabilities struct {
+		Roots *struct {
+			ListChanged bool `json:"listChanged,omitempty"`
+		} `json:"roots,omitempty"`
+	} `json:"capabilities"`
+}
+
+// Root is one filesystem root reported by the client.
+type Root struct {
+	URI  string `json:"uri"`
+	Name string `json:"name,omitempty"`
+}
+
+// RootsListResult is the client's reply to roots/list.
+type RootsListResult struct {
+	Roots []Root `json:"roots"`
 }
 
 // ServerInfo identifies this server to clients.

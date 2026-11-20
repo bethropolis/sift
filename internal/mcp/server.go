@@ -33,6 +33,26 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, cfg *config.Config) erro
 		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
 			continue // malformed line: keep the loop alive
 		}
+		// A message without a method is a reply to a server-initiated
+		// request. The only one sift sends is roots/list.
+		if req.Method == "" {
+			var replyID string
+			_ = json.Unmarshal(req.ID, &replyID)
+			if sess.pendingRootsID != "" && replyID == sess.pendingRootsID {
+				if err := sess.handleRootsResult(rawResult(scanner.Bytes())); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if req.Method == "notifications/roots/list_changed" {
+			if sess.rootsSupported {
+				if err := sess.sendRootsRequest(enc); err != nil {
+					return err
+				}
+			}
+			continue
+		}
 		resp := dispatch(ctx, req, sess)
 		if resp == nil {
 			continue // notification (e.g. notifications/initialized): no reply
@@ -40,8 +60,24 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, cfg *config.Config) erro
 		if err := enc.Encode(resp); err != nil {
 			return err
 		}
+		if sess.rootsSupported && !sess.rootsRequested {
+			if err := sess.sendRootsRequest(enc); err != nil {
+				return err
+			}
+		}
 	}
 	return scanner.Err()
+}
+
+// rawResult extracts the JSON-RPC "result" field from a raw message.
+func rawResult(msg []byte) json.RawMessage {
+	var envelope struct {
+		Result json.RawMessage `json:"result"`
+	}
+	if err := json.Unmarshal(msg, &envelope); err != nil {
+		return nil
+	}
+	return envelope.Result
 }
 
 // dispatch routes one request to its handler. It returns nil for
@@ -60,6 +96,11 @@ func dispatch(ctx context.Context, req Request, s *session) *Response {
 
 	switch req.Method {
 	case "initialize":
+		var params InitializeParams
+		if len(req.Params) > 0 {
+			_ = json.Unmarshal(req.Params, &params)
+		}
+		s.rootsSupported = params.Capabilities.Roots != nil
 		return reply(InitializeResult{
 			ProtocolVersion: protocolVersion,
 			Capabilities: Capabilities{
@@ -70,6 +111,8 @@ func dispatch(ctx context.Context, req Request, s *session) *Response {
 			ServerInfo:   ServerInfo{Name: "sift", Version: cfg.Version},
 			Instructions: "Sift packs repository context for LLMs. If you need to author or update a .sift.toml configuration file for this project, use the 'sift-project-dotfile' prompt or call the 'get_skill' tool.",
 		})
+	case "ping":
+		return reply(struct{}{})
 	case "tools/list":
 		return reply(ToolsListResult{Tools: toolDefinitions()})
 	case "tools/call":
