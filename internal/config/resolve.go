@@ -173,6 +173,9 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) error {
 			c.CustomIgnore = strings.Join(unique, ",")
 		}
 	}
+	if len(t.Roots) > 0 {
+		c.Roots = append([]string(nil), t.Roots...)
+	}
 	if t.SmartFilter != nil && !changed("smart") {
 		c.SmartFilter = *t.SmartFilter
 	}
@@ -347,6 +350,10 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	// Merge global + local into one view for resolution.
 	merged := mergeConfigFiles(globalCF, localCF)
 
+	if merged.Automation != nil {
+		c.Automation = *merged.Automation
+	}
+
 	// Expand profile extends chains.
 	if len(merged.Profiles) > 0 {
 		expanded, err := resolveExtends(merged.Profiles)
@@ -515,6 +522,9 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) error
 	if len(s.Ignore) > 0 && !changed("ignore") {
 		c.CustomIgnore = strings.Join([]string(s.Ignore), ",")
 	}
+	if len(s.Roots) > 0 {
+		c.Roots = append([]string(nil), s.Roots...)
+	}
 	if s.SmartFilter != nil && !changed("smart") {
 		c.SmartFilter = *s.SmartFilter
 	}
@@ -640,6 +650,9 @@ func mergeConfigFiles(global, local configFile) configFile {
 			if len(ls.Extensions) > 0 {
 				s.Extensions = ls.Extensions
 			}
+			if len(ls.Roots) > 0 {
+				s.Roots = ls.Roots
+			}
 			if len(ls.Ignore) > 0 {
 				s.Ignore = ls.Ignore
 			}
@@ -748,4 +761,39 @@ func LoadConfigFile() (configFile, error) {
 		merged.Profiles = expanded
 	}
 	return merged, nil
+}
+
+// TargetNames returns the [[targets]] names visible to c, in file order with
+// local targets after global ones. It reads the same files ResolveConfig uses
+// without mutating c, so batch commands can enumerate targets before applying
+// any one of them.
+func TargetNames(c *Config) ([]string, error) {
+	globalCF, err := readConfigFile(globalConfigPath())
+	if err != nil {
+		return nil, fmt.Errorf("read global config: %w", err)
+	}
+	localPath := ""
+	if c.ConfigFile != "" {
+		if _, err := os.Stat(c.ConfigFile); err != nil {
+			return nil, fmt.Errorf("config file %q: %w", c.ConfigFile, err)
+		}
+		localPath = c.ConfigFile
+	} else {
+		localPath = localConfigPathFor(c)
+	}
+	localCF, err := readConfigFile(localPath)
+	if err != nil {
+		return nil, fmt.Errorf("read config file: %w", err)
+	}
+	merged := mergeConfigFiles(globalCF, localCF)
+	seen := map[string]bool{}
+	names := make([]string, 0, len(merged.Targets))
+	for _, t := range merged.Targets {
+		if t.Name == "" || seen[t.Name] {
+			continue
+		}
+		seen[t.Name] = true
+		names = append(names, t.Name)
+	}
+	return names, nil
 }

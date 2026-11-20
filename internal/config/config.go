@@ -26,6 +26,9 @@ type Config struct {
 	// Directory settings
 	RootDir    string
 	ConfigFile string
+	// Roots lists additional scan roots for multi-root dumps. A single root
+	// keeps the historical RootDir behavior and unnamespaced paths.
+	Roots []string
 
 	// Logging settings
 	Verbose     bool
@@ -113,6 +116,9 @@ type Config struct {
 	ForceSecrets   bool
 	Clipboard      bool
 	CopyOnGenerate bool
+
+	// Automation holds optional hook settings from [automation].
+	Automation Automation
 
 	// Version info
 	ShowVersion bool

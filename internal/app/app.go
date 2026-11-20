@@ -133,6 +133,19 @@ func New(cfg *config.Config) (*App, error) {
 	}, nil
 }
 
+// NewWithCache is New with a caller-provided content cache, so batch commands
+// can share tokenizer and signature work across targets and roots.
+func NewWithCache(cfg *config.Config, cache *scan.ContentCache) (*App, error) {
+	a, err := New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if cache != nil {
+		a.contentCache = cache
+	}
+	return a, nil
+}
+
 func (a *App) getModesMatcher() *config.ModesMatcher {
 	a.modeOnce.Do(func() {
 		if a.modesMatcher == nil && a.cfg != nil {

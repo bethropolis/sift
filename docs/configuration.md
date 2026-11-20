@@ -224,6 +224,45 @@ skip = [
 - `outline`: Like `signatures`, but also drops doc comments for denser output.
 - `skip`/`full`/`outline`/`signatures` precedence is skip, full, outline, signatures.
 
+## Multiple roots
+
+`dump` accepts several directory paths, and `roots` declares them in config:
+
+```toml
+[sift]
+roots = ["services/api", "services/worker"]
+```
+
+With more than one root, each tree is walked with its own ignore rules and its
+paths are namespaced under a unique root label (`api/...`, `worker/...`), so
+duplicate basenames stay distinct. A single root keeps unnamespaced paths.
+
+## All targets at once
+
+`[[targets]]` entries can be rendered in one run:
+
+```sh
+sift dump --all-targets
+```
+
+`--all-targets` rejects `--target`, requires at least one target, and refuses
+to run when two targets write the same output path. Targets share one content
+cache.
+
+## Git hooks (`[automation]`)
+
+```toml
+[automation]
+git_hook = "pre-commit"
+hook_targets = ["docs", "code"]
+```
+
+`sift hook install` resolves the real hooks directory with
+`git rev-parse --git-path hooks`, writes a script that runs the listed targets,
+and refuses to overwrite an unmanaged hook without `--force`. `sift hook
+status` reports installed/foreign/missing, and `sift hook uninstall` removes
+only scripts carrying Sift's ownership marker.
+
 ## Progressive Fallback Compression (`fallback_mode`)
 
 When dumping a codebase against a token budget, `compress_mode = "full"` ordinarily drops remaining files completely once the budget ceiling is hit. Setting `fallback_mode = "signatures"` automatically converts overflowing and remaining files to tree-sitter signatures:

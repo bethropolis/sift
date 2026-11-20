@@ -27,6 +27,7 @@ type SiftDefaults struct {
 	IgnoreHidden      *bool        `toml:"ignore_hidden"`
 	IgnoreGit         *bool        `toml:"ignore_git"`
 	Extensions        StringList   `toml:"extensions"`
+	Roots             StringList   `toml:"roots"`
 	Ignore            StringList   `toml:"ignore"`
 	SmartFilter       *bool        `toml:"smart_filter"`
 	SmartMaxTokens    int          `toml:"smart_max_tokens"`
@@ -80,6 +81,7 @@ type Target struct {
 	IgnoreHidden      *bool        `toml:"ignore_hidden"`
 	IgnoreGit         *bool        `toml:"ignore_git"`
 	Extensions        StringList   `toml:"extensions"`
+	Roots             StringList   `toml:"roots"`
 	Ignore            StringList   `toml:"ignore"`
 	OverrideIgnore    bool         `toml:"override_ignore"`
 	SmartFilter       *bool        `toml:"smart_filter"`

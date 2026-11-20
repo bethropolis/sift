@@ -29,7 +29,7 @@ sift
 | Command | Description |
 | --- | --- |
 | `sift` | Launch the interactive picker |
-| `sift dump [path]` | Render every eligible file in the tree |
+| `sift dump [path...]` | Render every eligible file in one or more trees |
 | `sift pick [path]` | Select files interactively, then render |
 | `sift select [path]` | Auto-select the most useful files and render them |
 | `sift clone <repository>` | Temporarily shallow-clone a repository and dump it in the current directory |
@@ -152,6 +152,8 @@ sift dump . --show-skipped
 sift diff                # files changed in the uncommitted working tree
 sift diff main           # files changed since the main branch
 sift diff --with-context # patch first, then 1-hop neighbors as signatures
+sift dump --all-targets  # render every [[targets]] entry
+sift dump svc/api svc/worker  # namespace multiple roots in one document
 sift delta               # changes since the last recorded dump
 sift delta --patch       # raw unified diff in a <context_update> block
 ```

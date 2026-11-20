@@ -20,6 +20,7 @@ import (
 
 // newWatchCmd re-renders the context document whenever files change.
 func newWatchCmd(cfg *config.Config) *cobra.Command {
+	allTargets := false
 	cmd := &cobra.Command{
 		Use:   "watch [path]",
 		Short: "Watch a directory and re-render on changes",
@@ -39,6 +40,44 @@ func newWatchCmd(cfg *config.Config) *cobra.Command {
 
 			// A watch is persistent; a per-collect timeout would abort renders.
 			cfg.Timeout = 0
+
+			if allTargets {
+				if cfg.Target != "" {
+					return fmt.Errorf("--all-targets cannot be combined with --target")
+				}
+				initial := *cfg
+				runs, err := prepareTargetRuns(initial, cmd.Flags())
+				if err != nil {
+					return err
+				}
+				defer closeTargetRuns(runs)
+				for _, run := range runs {
+					run.cfg.Timeout = 0
+				}
+				if err := renderTargetRuns(runs); err != nil {
+					return err
+				}
+				outputs := map[string]bool{}
+				for _, run := range runs {
+					if p := run.app.OutputPath(); p != "" {
+						outputs[p] = true
+					}
+				}
+				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+				defer stop()
+				return watch.Run(ctx, watch.Options{
+					Root: absRootDir,
+					Ignore: func(path string) bool {
+						if strings.Contains(path, string(filepath.Separator)+".git") {
+							return true
+						}
+						return outputs[path]
+					},
+					OnChange: func() error {
+						return renderTargetRuns(runs)
+					},
+				})
+			}
 
 			application, err := app.New(cfg)
 			if err != nil {
@@ -93,6 +132,7 @@ func newWatchCmd(cfg *config.Config) *cobra.Command {
 			})
 		},
 	}
+	cmd.Flags().BoolVar(&allTargets, "all-targets", allTargets, "Watch and render every [[targets]] entry (rejects --target)")
 	config.RegisterFlags(cfg, cmd.Flags())
 	return cmd
 }

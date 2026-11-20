@@ -30,6 +30,7 @@ type Profile struct {
 	IgnoreHidden      *bool        `toml:"ignore_hidden"`
 	IgnoreGit         *bool        `toml:"ignore_git"`
 	Extensions        StringList   `toml:"extensions"`
+	Roots             StringList   `toml:"roots"`
 	Ignore            StringList   `toml:"ignore"`
 	OverrideIgnore    bool         `toml:"override_ignore"`
 	SmartFilter       *bool        `toml:"smart_filter"`
@@ -192,6 +193,9 @@ func overlay(dst, src Profile) Profile {
 	if len(src.Extensions) > 0 {
 		dst.Extensions = src.Extensions
 	}
+	if len(src.Roots) > 0 {
+		dst.Roots = src.Roots
+	}
 	if len(src.Ignore) > 0 {
 		if src.OverrideIgnore {
 			dst.Ignore = src.Ignore
@@ -343,6 +347,9 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) error {
 			}
 			c.CustomIgnore = strings.Join(unique, ",")
 		}
+	}
+	if len(p.Roots) > 0 {
+		c.Roots = append([]string(nil), p.Roots...)
 	}
 	if p.SmartFilter != nil && !fs.Changed("smart") {
 		c.SmartFilter = *p.SmartFilter

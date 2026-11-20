@@ -328,6 +328,7 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 		if cf.Sift.PromptFile != "" {
 			checkFileExists(root, cf.Sift.PromptFile, "[sift].prompt_file", result)
 		}
+		checkRoots(root, cf.Sift.Roots, "[sift].roots", result)
 		if cf.Sift.UIThemeFile != "" {
 			checkFileExists(root, cf.Sift.UIThemeFile, "[sift].ui_theme_file", result)
 		}
@@ -351,6 +352,7 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 					Message:  fmt.Sprintf("invalid compress_mode %q", p.Mode),
 				})
 			}
+			checkRoots(root, p.Roots, prefix+".roots", result)
 			if p.FallbackMode != "" && p.FallbackMode != "signatures" && p.FallbackMode != "sigs" {
 				result.Issues = append(result.Issues, ValidationIssue{
 					Severity: SeverityError,
@@ -455,6 +457,7 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 		if t.PromptFile != "" {
 			checkFileExists(root, t.PromptFile, prefix+".prompt_file", result)
 		}
+		checkRoots(root, t.Roots, prefix+".roots", result)
 		if t.Mode != "" && !validModes[strings.ToLower(t.Mode)] {
 			result.Issues = append(result.Issues, ValidationIssue{
 				Severity: SeverityError,
@@ -515,6 +518,23 @@ func validateModes(m *ModesConfig, result *CheckResult) {
 	checkList(m.Outline, "outline")
 	checkList(m.Signatures, "signatures")
 	checkList(m.Skip, "skip")
+}
+
+func checkRoots(root string, roots []string, field string, result *CheckResult) {
+	for _, rel := range roots {
+		target := rel
+		if !filepath.IsAbs(target) && root != "" {
+			target = filepath.Join(root, rel)
+		}
+		info, err := os.Stat(target)
+		if err != nil || !info.IsDir() {
+			result.Issues = append(result.Issues, ValidationIssue{
+				Severity: SeverityWarning,
+				Field:    field,
+				Message:  fmt.Sprintf("root %q is not a directory", rel),
+			})
+		}
+	}
 }
 
 func checkFileExists(root, relPath, field string, result *CheckResult) {

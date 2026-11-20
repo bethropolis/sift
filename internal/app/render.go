@@ -59,6 +59,13 @@ func (a *App) RenderFinalWithPrompt(files []format.FileEntry, skippedItems []wal
 	return err
 }
 
+// RenderEntriesWithMetrics applies the token budget and renders an explicit
+// entry set through this App's output destination. Multi-root commands use it
+// after prefixing each root's files with a unique label.
+func (a *App) RenderEntriesWithMetrics(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) (RenderMetrics, error) {
+	return a.renderWithPrompt(files, skippedItems, duration, runErr, true, a.cfg.Prompt)
+}
+
 // RenderPatchWithMetrics renders a diff plus its signature-mode neighbors.
 // The patch is charged against the budget before any file body is considered.
 func (a *App) RenderPatchWithMetrics(files []format.FileEntry, patch string, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) (RenderMetrics, error) {
