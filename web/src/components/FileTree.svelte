@@ -41,6 +41,8 @@
     onEmptyContextMenu?: (e: MouseEvent) => void;
   }
 
+  const totalTokens = $derived(files.reduce((sum, f) => sum + f.tokens, 0));
+
   // Re-exported via bind:filterInput so parents can focus the filter box.
 
   let {
@@ -379,8 +381,25 @@
                   >{/each}</span
               >
 
+              {#if !row.isDir && node.file?.gitStatus}
+                <span
+                  class="git-badge"
+                  class:git-mod={node.file.gitStatus === 'M'}
+                  class:git-add={node.file.gitStatus === 'A'}
+                  class:git-ren={node.file.gitStatus === 'R'}
+                  title={`Working tree: ${node.file.gitStatus}`}>{node.file.gitStatus}</span
+                >
+              {/if}
+
               {#if !row.isDir && node.file && node.file.score >= 0.75}
                 <span class="rel-dot" title={`Git relevance: ${Math.round(node.file.score * 100)}%`}></span>
+              {/if}
+
+              {#if totalTokens > 0}
+                {@const weight = row.isDir ? row.aggregateTokens : (node.file?.tokens ?? 0)}
+                <span class="row-heat" title={`${Math.round((weight / totalTokens) * 100)}% of project tokens`}>
+                  <span style:width={`${Math.min(100, (weight / totalTokens) * 400)}%`}></span>
+                </span>
               {/if}
 
               {#if row.isDir}
@@ -489,6 +508,38 @@
     font-size: 10px;
     color: var(--status-warn);
     pointer-events: none;
+  }
+  .git-badge {
+    flex: none;
+    margin-left: 4px;
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--ink-faint);
+  }
+  .git-badge.git-mod {
+    color: var(--status-warn);
+  }
+  .git-badge.git-add {
+    color: var(--status-ok);
+  }
+  .git-badge.git-ren {
+    color: var(--accent);
+  }
+  .row-heat {
+    flex: none;
+    width: 26px;
+    height: 4px;
+    margin-left: 6px;
+    background: var(--border-subtle);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .row-heat span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    opacity: 0.65;
   }
   .row-name .hl {
     background-color: rgba(128, 128, 128, 0.3);

@@ -413,6 +413,34 @@ func TestDataEndpoints(t *testing.T) {
 		t.Fatalf("modes TOML = %q", modes.TOML)
 	}
 
+	// Preset round-trip.
+	rec = do(srv, "POST", "/api/presets", map[string]any{
+		"root": root, "name": "review", "selections": map[string]string{"main.go": "full"},
+		"prompt": "review", "style": "xml", "budget": 1000,
+	}, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("save preset = %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = do(srv, "GET", "/api/presets?root="+root, nil, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list presets = %d", rec.Code)
+	}
+	var presetList struct {
+		Presets []struct {
+			Name       string            `json:"name"`
+			Selections map[string]string `json:"selections"`
+		} `json:"presets"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&presetList); err != nil {
+		t.Fatal(err)
+	}
+	if len(presetList.Presets) != 1 || presetList.Presets[0].Name != "review" {
+		t.Fatalf("presets = %+v", presetList.Presets)
+	}
+	if rec := do(srv, "DELETE", "/api/presets?root="+root+"&name=review", nil, cookies); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete preset = %d", rec.Code)
+	}
+
 	// Recents round-trip.
 	if rec := do(srv, "POST", "/api/recents", map[string]string{"root": root}, cookies); rec.Code != http.StatusNoContent {
 		t.Fatalf("recents post = %d", rec.Code)

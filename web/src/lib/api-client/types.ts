@@ -84,6 +84,8 @@ export interface TreeFile {
   score: number; // 0 to 1 (git relevance score)
   /** True when the server can walk this file's imports (follow menu). */
   followable: boolean;
+  /** Working-tree status letter (M, A, ?, R, D), when known. */
+  gitStatus?: string;
 }
 
 export interface TreeResult {
@@ -143,6 +145,28 @@ export interface PackPayload {
   style: string;
   prompt: string;
   redact: boolean;
+}
+
+export interface Preset {
+  name: string;
+  selections: Record<string, SelectionMode>;
+  prompt?: string;
+  style?: string;
+  budget?: number;
+  updated_at?: string;
+}
+
+export interface PresetsResult {
+  presets: Preset[];
+}
+
+export interface PresetPayload {
+  root: string;
+  name: string;
+  selections: Record<string, SelectionMode>;
+  prompt?: string;
+  style?: string;
+  budget?: number;
 }
 
 export interface ModesPayload {

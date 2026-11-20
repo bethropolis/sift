@@ -18,6 +18,9 @@ import type {
   ModesPayload,
   ModesResult,
   PackPayload,
+  Preset,
+  PresetPayload,
+  PresetsResult,
   PackResult,
   RecentProject,
   SettingsData,
@@ -110,6 +113,32 @@ export async function smartSelect(root: string, budget: number): Promise<SmartSe
     if (res.status === 401) handle401();
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+}
+
+export async function listPresets(root: string): Promise<PresetsResult> {
+    const res = await fetch(`/api/presets?root=${encodeURIComponent(root)}`);
+    if (res.status === 401) handle401();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+export async function savePreset(payload: PresetPayload): Promise<Preset> {
+    const res = await fetch('/api/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.status === 401) handle401();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+export async function deletePreset(root: string, name: string): Promise<void> {
+    const res = await fetch(`/api/presets?root=${encodeURIComponent(root)}&name=${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    });
+    if (res.status === 401) handle401();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 export async function exportModes(payload: ModesPayload): Promise<ModesResult> {

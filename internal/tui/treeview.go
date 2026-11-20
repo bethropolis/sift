@@ -113,6 +113,20 @@ func (m model) treeRow(n *TreeNode, width int) string {
 		secret = " " + m.styles.warning.Render(fmt.Sprintf("%s%d", strings.TrimSpace(m.glyphs.Warning), n.SecretCount))
 	}
 
+	status := ""
+	if n.Kind == KindFile && n.GitStatus != "" {
+		style := m.styles.muted
+		switch n.GitStatus {
+		case "M":
+			style = m.styles.warning
+		case "A":
+			style = m.styles.success
+		case "R":
+			style = lipgloss.NewStyle().Foreground(m.styles.accentSoft)
+		}
+		status = " " + style.Render(n.GitStatus)
+	}
+
 	modeStr := ""
 	if n.Kind == KindFile {
 		switch n.Mode {
@@ -126,7 +140,16 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	}
 
 	treeGuide := m.styles.treeGuide.Render(prefix)
-	left := fmt.Sprintf("%s%s %s %s%s%s%s%s", cursorMark, treeGuide, mark, icon, name, relevant, modeStr, secret)
+	left := fmt.Sprintf("%s%s %s %s%s%s%s%s%s", cursorMark, treeGuide, mark, icon, name, status, relevant, modeStr, secret)
+
+	heat := ""
+	if width >= 72 && m.root != nil && m.root.TokensFull > 0 && n.TokensFull > 0 {
+		cells := 1 + (n.TokensFull*4)/m.root.TokensFull
+		if cells > 4 {
+			cells = 4
+		}
+		heat = m.styles.dim.Render(strings.Repeat(m.glyphs.HeatBar, cells)+strings.Repeat("·", 4-cells)) + " "
+	}
 
 	// Style the token count based on budget usage and zero-state.
 	var right string
@@ -137,17 +160,18 @@ func (m model) treeRow(n *TreeNode, width int) string {
 	} else {
 		right = lipgloss.NewStyle().Foreground(m.tokenColor(tokens)).Render(fmt.Sprintf("%6s", formatTokenCount(tokens)))
 	}
+	right = heat + right
 
 	leftWidth := ansi.StringWidth(left)
 	rightWidth := ansi.StringWidth(right)
 	compose := func(name string) string {
-		return fmt.Sprintf("%s%s %s %s%s%s%s%s", cursorMark, treeGuide, mark, icon, name, relevant, modeStr, secret)
+		return fmt.Sprintf("%s%s %s %s%s%s%s%s%s", cursorMark, treeGuide, mark, icon, name, status, relevant, modeStr, secret)
 	}
 
 	if leftWidth+rightWidth > width {
 		fixed := ansi.StringWidth(cursorMark) + ansi.StringWidth(treeGuide) + ansi.StringWidth(mark) +
-			ansi.StringWidth(icon) + ansi.StringWidth(relevant) + ansi.StringWidth(modeStr) +
-			ansi.StringWidth(secret) + 2
+			ansi.StringWidth(icon) + ansi.StringWidth(status) + ansi.StringWidth(relevant) +
+			ansi.StringWidth(modeStr) + ansi.StringWidth(secret) + 2
 		nameSpace := width - rightWidth - fixed
 		if nameSpace >= 2 && ansi.StringWidth(name) > nameSpace {
 			name = ansi.Truncate(name, nameSpace, "…")

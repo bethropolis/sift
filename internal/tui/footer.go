@@ -58,7 +58,7 @@ func (m model) budgetMeter(active int) string {
 
 func (m model) contextualActions(width int) string {
 	sep := m.styles.subtle.Render(" · ")
-	if !m.filtering && !m.helpOpen && !m.themeOpen && !m.promptOpen && !m.deltaOpen {
+	if !m.filtering && !m.helpOpen && !m.themeOpen && !m.promptOpen && !m.presetsOpen && !m.deltaOpen {
 		actions := m.footerActions(width)
 		parts := make([]string, 0, len(actions))
 		for _, action := range actions {
@@ -140,7 +140,7 @@ func (m model) renderFooterAction(action footerAction) string {
 }
 
 func (m model) footerActionAt(x int) string {
-	if m.filtering || m.helpOpen || m.themeOpen || m.promptOpen || m.deltaOpen {
+	if m.filtering || m.helpOpen || m.themeOpen || m.promptOpen || m.presetsOpen || m.deltaOpen {
 		return ""
 	}
 	rows := strings.Split(ansi.Strip(m.renderFooter(m.width)), "\n")

@@ -7,6 +7,7 @@ import (
 
 	"github.com/bethropolis/sift/internal/highlight"
 	"github.com/bethropolis/sift/internal/selection"
+	"github.com/bethropolis/sift/internal/state"
 	"github.com/bethropolis/sift/internal/theme"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -115,6 +116,15 @@ type model struct {
 	helpOffset       int
 	onGenerate       func([]Selection) error
 	onGeneratePrompt func([]Selection, string) error
+
+	// Preset modal state.
+	presetsOpen  bool
+	presets      []state.Preset
+	presetCursor int
+	presetOffset int
+	presetSaving bool
+	presetInput  string
+	presetError  string
 
 	// Theme modal state.
 	themeOpen     bool
@@ -541,6 +551,9 @@ func (m model) View() string {
 	}
 	if m.promptOpen {
 		view = m.renderPromptModal(view, width, height)
+	}
+	if m.presetsOpen {
+		view = m.renderPresetModal(view, width, height)
 	}
 	return clampViewHeight(view, width, height)
 }

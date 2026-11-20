@@ -150,6 +150,9 @@ func (s *Server) routes() []route {
 		{"POST", "/api/smart-select", false},
 		{"POST", "/api/pack", false},
 		{"POST", "/api/modes", false},
+		{"GET", "/api/presets", false},
+		{"POST", "/api/presets", false},
+		{"DELETE", "/api/presets", false},
 		{"POST", "/api/follow", false},
 		{"GET", "/api/settings", false},
 		{"PUT", "/api/settings", false},
@@ -185,6 +188,9 @@ func (s *Server) registerRoutes() {
 	mux.Handle("POST /api/smart-select", s.apiChain(http.HandlerFunc(s.handleSmartSelect), false))
 	mux.Handle("POST /api/pack", s.apiChain(http.HandlerFunc(s.handlePack), false))
 	mux.Handle("POST /api/modes", s.apiChain(http.HandlerFunc(s.handleModes), false))
+	mux.Handle("GET /api/presets", s.apiChain(http.HandlerFunc(s.handlePresetsGet), false))
+	mux.Handle("POST /api/presets", s.apiChain(http.HandlerFunc(s.handlePresetsPost), false))
+	mux.Handle("DELETE /api/presets", s.apiChain(http.HandlerFunc(s.handlePresetsDelete), false))
 	mux.Handle("POST /api/follow", s.apiChain(http.HandlerFunc(s.handleFollow), false))
 	mux.Handle("GET /api/settings", s.apiChain(http.HandlerFunc(s.handleSettingsGet), false))
 	mux.Handle("PUT /api/settings", s.apiChain(http.HandlerFunc(s.handleSettingsPut), false))

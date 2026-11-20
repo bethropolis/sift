@@ -50,6 +50,7 @@ cursor.
 | `Space` | Select / deselect the current file or folder |
 | `m` | Cycle a file's mode: `FULL` → `SIGS` → `SKIP` |
 | `M` | Copy the current modes as a minimal `[modes]` TOML block |
+| `P` | Open selection presets (load, save, delete) |
 | `s` | Smart-select files by Git history and budget |
 | `f` / `F` | Follow imports from the cursor file (dependents / dependencies) |
 | `a` | Select all / deselect all |
@@ -185,3 +186,13 @@ copy is treated as successful once they have taken the payload rather than when
 they exit — waiting for exit would hang the picker indefinitely. `xsel` and
 `pbcopy` return once the data is delivered, so those are waited on as normal,
 with a 30-second bound.
+
+## Visual cues
+
+Modified/added/renamed files show a colored single-letter Git badge next to
+the filename (`M`, `A`, `?`, `R`). Wide terminals also show a compact token
+heat bar, relative to the project total, so heavy files and folders stand out.
+Narrow panes and `--no-nerd-fonts` degrade to plain text.
+
+Per-project presets are stored under `presets.json` in Sift's config directory
+and remember each selection's modes, task prompt, style, and budget.

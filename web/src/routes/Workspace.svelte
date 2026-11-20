@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     api,
+    type Preset,
     type TreeFile,
     type PackResult,
     type RecentProject,
@@ -472,6 +473,59 @@
     return tokens;
   });
 
+  async function handleSavePreset() {
+    const name = window.prompt('Preset name');
+    if (!name?.trim()) return;
+    try {
+      await api.savePreset({
+        root: projectRoot,
+        name: name.trim(),
+        selections,
+        prompt: taskPrompt,
+        style: selectedStyle,
+        budget,
+      });
+      toast({ id: 'preset', kind: 'success', message: `Saved preset “${name.trim()}”`, duration: 2200 });
+    } catch (err) {
+      console.error(err);
+      toast({ id: 'preset', kind: 'error', message: 'Couldn’t save preset', duration: 2200 });
+    }
+  }
+
+  async function handleLoadPreset() {
+    try {
+      const result = await api.listPresets(projectRoot);
+      if (result.presets.length === 0) {
+        toast({ id: 'preset', kind: 'info', message: 'No saved presets', duration: 2200 });
+        return;
+      }
+      const name = window.prompt(`Load preset (${result.presets.map((p) => p.name).join(', ')})`);
+      if (!name) return;
+      const preset = result.presets.find((p) => p.name === name);
+      if (!preset) {
+        toast({ id: 'preset', kind: 'error', message: 'Preset not found', duration: 2200 });
+        return;
+      }
+      applyPreset(preset);
+      toast({ id: 'preset', kind: 'success', message: `Loaded “${preset.name}”`, duration: 2200 });
+    } catch (err) {
+      console.error(err);
+      toast({ id: 'preset', kind: 'error', message: 'Couldn’t load presets', duration: 2200 });
+    }
+  }
+
+  function applyPreset(preset: Preset) {
+    const known = new Set(files.map((f) => f.path));
+    const next: Record<string, FileSelectionMode> = {};
+    for (const [path, mode] of Object.entries(preset.selections)) {
+      if (known.has(path)) next[path] = mode;
+    }
+    selections = next;
+    if (preset.prompt !== undefined) taskPrompt = preset.prompt;
+    if (preset.style) selectedStyle = preset.style;
+    if (preset.budget) budget = preset.budget;
+  }
+
   async function handleExportModes() {
     try {
       const result = await api.exportModes({ root: projectRoot, selections });
@@ -781,6 +835,12 @@
               title="Copy the current modes as a [modes] TOML block"
             >
               Modes
+            </button>
+            <button class="btn btn-sm btn-ghost" onclick={() => void handleSavePreset()} title="Save the current selection as a preset">
+              Save
+            </button>
+            <button class="btn btn-sm btn-ghost" onclick={() => void handleLoadPreset()} title="Load a saved selection preset">
+              Presets
             </button>
 
             <div class="segmented-control">

@@ -61,6 +61,7 @@ func helpSections() []helpSection {
 				{"p", "Prompt / task directive"},
 				{"d", "Incremental delta dump"},
 				{"t", "Color theme picker"},
+				{"P", "Selection presets (load / save / delete)"},
 			},
 		},
 		{

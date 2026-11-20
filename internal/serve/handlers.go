@@ -338,6 +338,7 @@ func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
 		Language   string  `json:"language"`
 		Score      float64 `json:"score"`
 		Followable bool    `json:"followable"`
+		GitStatus  string  `json:"gitStatus,omitempty"`
 	}
 	out := make([]file, 0, len(files))
 	for _, f := range files {
@@ -349,6 +350,7 @@ func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
 			Language:   f.Language,
 			Score:      f.RankScore,
 			Followable: lang.HasImportScanner(p),
+			GitStatus:  f.GitStatus,
 		})
 	}
 	// The budget rides along so the client displays and sends the resolved
@@ -612,6 +614,67 @@ func followErrorText(err error) string {
 
 // handlePack renders the browser's explicit selections into the document.
 // At most 2 packs run concurrently; request cancellation stops the work.
+// handlePresetsGet lists a project's saved selection presets.
+func (s *Server) handlePresetsGet(w http.ResponseWriter, r *http.Request) {
+	root, err := s.openProject(r.URL.Query().Get("root"))
+	if err != nil {
+		writeAPIError(w, http.StatusForbidden, "cannot open that project")
+		return
+	}
+	presets, err := state.ListPresets(root)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "cannot read presets")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"presets": presets})
+}
+
+func (s *Server) handlePresetsPost(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Root       string            `json:"root"`
+		Name       string            `json:"name"`
+		Selections map[string]string `json:"selections"`
+		Prompt     string            `json:"prompt"`
+		Style      string            `json:"style"`
+		Budget     int               `json:"budget"`
+	}
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	root, err := s.openProject(body.Root)
+	if err != nil {
+		writeAPIError(w, http.StatusForbidden, "cannot open that project")
+		return
+	}
+	preset, err := state.SavePreset(root, state.Preset{
+		Name: body.Name, Selections: body.Selections,
+		Prompt: body.Prompt, Style: body.Style, Budget: body.Budget,
+	})
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, preset)
+}
+
+func (s *Server) handlePresetsDelete(w http.ResponseWriter, r *http.Request) {
+	root, err := s.openProject(r.URL.Query().Get("root"))
+	if err != nil {
+		writeAPIError(w, http.StatusForbidden, "cannot open that project")
+		return
+	}
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		writeAPIError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if err := state.DeletePreset(root, name); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "cannot delete preset")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleModes exports the current per-file modes as a minimal [modes] TOML
 // block. It never scans: assignments come from the client's tree state.
 func (s *Server) handleModes(w http.ResponseWriter, r *http.Request) {

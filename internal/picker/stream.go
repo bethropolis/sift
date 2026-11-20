@@ -138,6 +138,7 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 			SecretCount:   e.SecretCount,
 			Hidden:        e.Hidden,
 			GitIgnored:    e.GitIgnored,
+			GitStatus:     e.GitStatus,
 			PreferredMode: tui.CompressMode(preferredModes[e.Path]),
 		}
 		mu.Lock()
@@ -195,6 +196,7 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 				rankBatch = append(rankBatch, tui.Item{
 					Path:          f.Path,
 					RankScore:     f.RankScore,
+					GitStatus:     f.GitStatus,
 					PreferredMode: tui.CompressMode(res.PreferredMode),
 					ModeReason:    res.Reason,
 					TestAffinity:  testAffinity[filepath.ToSlash(f.Path)],

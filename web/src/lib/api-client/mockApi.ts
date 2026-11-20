@@ -17,6 +17,9 @@ import type {
   ModesPayload,
   ModesResult,
   PackPayload,
+  Preset,
+  PresetPayload,
+  PresetsResult,
   PackResult,
   PackSection,
   RecentProject,
@@ -347,6 +350,36 @@ export async function follow(payload: FollowPayload): Promise<FollowResult> {
     })),
   ];
   return { seed: path, direction, depth: 2, hits, unanalyzed: 3 };
+}
+
+const mockPresets = new Map<string, Preset[]>();
+
+export async function listPresets(root: string): Promise<PresetsResult> {
+  await delay(20);
+  return { presets: [...(mockPresets.get(root) ?? [])].sort((a, b) => a.name.localeCompare(b.name)) };
+}
+
+export async function savePreset(payload: PresetPayload): Promise<Preset> {
+  await delay(20);
+  const preset: Preset = {
+    name: payload.name,
+    selections: { ...payload.selections },
+    prompt: payload.prompt,
+    style: payload.style,
+    budget: payload.budget,
+    updated_at: new Date().toISOString(),
+  };
+  const list = mockPresets.get(payload.root) ?? [];
+  const index = list.findIndex((p) => p.name === preset.name);
+  if (index >= 0) list[index] = preset;
+  else list.push(preset);
+  mockPresets.set(payload.root, list);
+  return preset;
+}
+
+export async function deletePreset(root: string, name: string): Promise<void> {
+  await delay(20);
+  mockPresets.set(root, (mockPresets.get(root) ?? []).filter((p) => p.name !== name));
 }
 
 export async function exportModes(payload: ModesPayload): Promise<ModesResult> {

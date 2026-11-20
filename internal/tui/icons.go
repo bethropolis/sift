@@ -18,6 +18,7 @@ type Glyphs struct {
 	ModeFull     string
 	ModeSigns    string
 	ModeSkip     string
+	HeatBar      string
 
 	TreePipe   string
 	TreeMiddle string
@@ -47,6 +48,7 @@ func NewNerdFontGlyphs() Glyphs {
 		ModeFull:     "[FULL]",
 		ModeSigns:    "[SIGS]",
 		ModeSkip:     "[SKIP]",
+		HeatBar:      "█",
 
 		TreePipe:   "│   ",
 		TreeMiddle: "├── ",
@@ -77,6 +79,7 @@ func NewASCIIGlyphs() Glyphs {
 		ModeFull:     "[FULL]",
 		ModeSigns:    "[SIGS]",
 		ModeSkip:     "[SKIP]",
+		HeatBar:      "█",
 
 		TreePipe:   "|   ",
 		TreeMiddle: "|-- ",

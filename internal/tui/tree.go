@@ -66,6 +66,7 @@ type TreeNode struct {
 	SelectedCountVal int // Cached selected file count for O(1) lookup
 	SecretCount      int
 	RankScore        float64
+	GitStatus        string
 	ModeReason       string
 	TestAffinity     float64
 	// ApproxTokens is a byte-based token estimate shown with a "~" until the
@@ -107,6 +108,8 @@ type Item struct {
 	GitIgnored  bool
 	// RankScore is the git relevance score.
 	RankScore float64
+	// GitStatus is the working-tree status letter (M, A, ?, R, D).
+	GitStatus string
 	// ModeReason explains the automatic mode recommendation when available.
 	ModeReason   string
 	TestAffinity float64
@@ -163,6 +166,7 @@ func BuildTree(items []Item) *TreeNode {
 				child.Hidden = it.Hidden || child.Hidden
 				child.GitIgnored = it.GitIgnored
 				child.RankScore = it.RankScore
+				child.GitStatus = it.GitStatus
 				child.ModeReason = it.ModeReason
 				child.TestAffinity = it.TestAffinity
 				child.ApproxTokens = it.ApproxTokens

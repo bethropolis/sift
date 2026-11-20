@@ -207,6 +207,9 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.promptOpen {
 		return m.updatePromptKey(msg)
 	}
+	if m.presetsOpen {
+		return m.updatePresetKey(msg)
+	}
 
 	if m.filtering {
 		switch msg.Type {
@@ -358,6 +361,8 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.openDelta()
 		case "?":
 			m.helpOpen = !m.helpOpen
+		case "P":
+			return m, m.openPresets()
 		case "t":
 			m.themeOpen = !m.themeOpen
 			if m.themeOpen {
