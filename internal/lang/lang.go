@@ -105,6 +105,12 @@ func ResolveImports(path, moduleRoot string, content []byte, exists func(string)
 	return registry.ResolveImports(path, moduleRoot, content, exists)
 }
 
+// ResolveImportsInRoot resolves imports with access to the absolute project
+// root for drivers that read tsconfig.json, Cargo.toml, or pyproject.toml.
+func ResolveImportsInRoot(path, root, moduleRoot string, content []byte, exists func(string) bool) []string {
+	return registry.ResolveImportsInRoot(path, root, moduleRoot, content, exists)
+}
+
 // ShouldSkipSmart reports whether any registered language's smart rules skip
 // the file.
 func ShouldSkipSmart(path, filename string, content []byte) (bool, string) {

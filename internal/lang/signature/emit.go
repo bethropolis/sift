@@ -41,6 +41,16 @@ func New() *Engine {
 // reports whether any declaration was emitted; false means the source should be
 // kept unchanged (no registered grammar, parse failure, or nothing to strip).
 func (e *Engine) Signature(src []byte, id types.ID) (string, bool) {
+	return e.signature(src, id, true)
+}
+
+// SignatureOutline is Signature without doc comments: same declarations and
+// structure, but comment-only lines are dropped for maximum token density.
+func (e *Engine) SignatureOutline(src []byte, id types.ID) (string, bool) {
+	return e.signature(src, id, false)
+}
+
+func (e *Engine) signature(src []byte, id types.ID, includeDocs bool) (string, bool) {
 	spec, ok := Lookup(id)
 	if !ok {
 		return string(src), false
@@ -60,7 +70,7 @@ func (e *Engine) Signature(src []byte, id types.ID) (string, bool) {
 	root := tree.RootNode()
 
 	var b strings.Builder
-	e.walk(root, src, spec, &b)
+	e.walk(root, src, spec, &b, includeDocs)
 	if b.Len() == 0 {
 		return string(src), false
 	}
@@ -71,14 +81,14 @@ func (e *Engine) Signature(src []byte, id types.ID) (string, bool) {
 // summarize. Nodes handled by emitNode are emitted with their full structure
 // (headers, type bodies, placeholders) and their interiors are not re-walked,
 // so class members and import specs are never emitted twice.
-func (e *Engine) walk(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) {
+func (e *Engine) walk(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder, includeDocs bool) {
 	if n.IsNamed() && spec.Declarations[n.Type()] {
-		if e.emitNode(n, src, spec, b) {
+		if e.emitNode(n, src, spec, b, includeDocs) {
 			return
 		}
 	}
 	for i := 0; i < int(n.ChildCount()); i++ {
-		e.walk(n.Child(i), src, spec, b)
+		e.walk(n.Child(i), src, spec, b, includeDocs)
 	}
 }
 
@@ -91,11 +101,11 @@ func (e *Engine) walk(n *sitter.Node, src []byte, spec *SignatureSpec, b *string
 //   - type definitions: structure preserved (fields and interface contracts),
 //     with class/interface method bodies compressed;
 //   - functions and methods: header signature plus a body placeholder.
-func (e *Engine) emitNode(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) bool {
+func (e *Engine) emitNode(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder, includeDocs bool) bool {
 	nodeType := n.Type()
 
 	if spec.VariableWithFunction != nil && spec.VariableWithFunction(n, src) {
-		e.emitVariableFunctionSignature(n, src, spec, b)
+		e.emitVariableFunctionSignature(n, src, spec, b, includeDocs)
 		return true
 	}
 
@@ -106,7 +116,7 @@ func (e *Engine) emitNode(n *sitter.Node, src []byte, spec *SignatureSpec, b *st
 	}
 
 	if spec.TypeDefinition(nodeType) {
-		e.emitTypeWithStructure(n, src, spec, b)
+		e.emitTypeWithStructure(n, src, spec, b, includeDocs)
 		return true
 	}
 
@@ -116,7 +126,10 @@ func (e *Engine) emitNode(n *sitter.Node, src []byte, spec *SignatureSpec, b *st
 			b.WriteString("\n\n")
 			return true
 		}
-		doc := docComment(src, n)
+		doc := ""
+		if includeDocs {
+			doc = docComment(src, n)
+		}
 		sig := signatureFrom(declStart(n), src, n, spec)
 		if sig == "" {
 			return true
@@ -161,8 +174,8 @@ func isExportWrapper(n *sitter.Node) bool {
 // emitVariableFunctionSignature emits a const/let/var declaration that
 // initialises an arrow function or function expression, replacing only the
 // function body with a placeholder (e.g. const foo = (a, b) => { /* ... */ }).
-func (e *Engine) emitVariableFunctionSignature(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) {
-	if doc := docComment(src, n); doc != "" {
+func (e *Engine) emitVariableFunctionSignature(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder, includeDocs bool) {
+	if doc := docComment(src, n); includeDocs && doc != "" {
 		b.WriteString(doc)
 	}
 
@@ -192,14 +205,14 @@ func (e *Engine) emitVariableFunctionSignature(n *sitter.Node, src []byte, spec 
 // emitTypeWithStructure emits a type definition preserving its interior:
 // structs, interfaces, enums, and aliases contain only declarations so their
 // full text is kept; classes contain method bodies which are compressed.
-func (e *Engine) emitTypeWithStructure(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder) {
-	if doc := docComment(src, n); doc != "" {
+func (e *Engine) emitTypeWithStructure(n *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder, includeDocs bool) {
+	if doc := docComment(src, n); includeDocs && doc != "" {
 		b.WriteString(doc)
 	}
 
 	if isContainerType(n.Type()) {
 		if body := containerBody(n); body != nil {
-			e.emitContainer(n, body, src, spec, b, "")
+			e.emitContainer(n, body, src, spec, b, "", includeDocs)
 			return
 		}
 	}
@@ -212,7 +225,7 @@ func (e *Engine) emitTypeWithStructure(n *sitter.Node, src []byte, spec *Signatu
 // emitContainer writes a class/container header followed by its members
 // indented, compressing method bodies. Python classes end at the header colon
 // (no closing brace).
-func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder, indent string) {
+func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *SignatureSpec, b *strings.Builder, indent string, includeDocs bool) {
 	header := strings.TrimRight(string(src[declStart(n):int(body.StartByte())]), " \t\r\n")
 	if indent != "" {
 		b.WriteString(indentBlock(header, indent))
@@ -234,7 +247,7 @@ func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *Signature
 		switch {
 		case isContainerType(child.Type()):
 			if childBody := containerBody(child); childBody != nil {
-				e.emitContainer(child, childBody, src, spec, b, childIndent)
+				e.emitContainer(child, childBody, src, spec, b, childIndent, includeDocs)
 			} else {
 				text := strings.TrimSpace(child.Content(src))
 				if text != "" {
@@ -249,7 +262,7 @@ func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *Signature
 				}
 				continue
 			}
-			if doc := docComment(src, child); doc != "" {
+			if doc := docComment(src, child); includeDocs && doc != "" {
 				b.WriteString(indentBlock(strings.TrimSpace(doc), childIndent) + "\n")
 			}
 			sig := signatureFrom(declStart(child), src, child, spec)
@@ -262,6 +275,9 @@ func (e *Engine) emitContainer(n, body *sitter.Node, src []byte, spec *Signature
 				}
 			}
 		case isComment(child.Type()):
+			if !includeDocs {
+				continue
+			}
 			// A comment immediately above a method is its doc and is emitted
 			// by that branch; only standalone comments are written here.
 			if next := child.NextNamedSibling(); next != nil && spec.FunctionOrMethod(next.Type()) && attached(src, child, next) {

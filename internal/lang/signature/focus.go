@@ -61,12 +61,12 @@ func (e *Engine) Focus(src []byte, id types.ID, symbol string, start, end int) (
 			continue
 		}
 		if spec.Declarations[n.Type()] {
-			e.emitNode(n, src, spec, &b)
+			e.emitNode(n, src, spec, &b, true)
 			continue
 		}
 		// Wrappers such as export_statement: walk so nested declarations are
 		// still emitted as signatures.
-		e.walk(n, src, spec, &b)
+		e.walk(n, src, spec, &b, true)
 	}
 	if b.Len() == 0 {
 		return "", false, fmt.Errorf("focus: symbol %q is not in a top-level declaration", symbol)

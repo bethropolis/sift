@@ -35,6 +35,7 @@ type Profile struct {
 	SmartFilter       *bool        `toml:"smart_filter"`
 	SmartMaxTokens    int          `toml:"smart_max_tokens"`
 	IncludeGraph      *bool        `toml:"include_graph"`
+	CollapseTests     *bool        `toml:"collapse_tests"`
 	Highlight         *bool        `toml:"highlight"`
 	NoHighlight       *bool        `toml:"no_highlight"`
 	Theme             string       `toml:"theme"`
@@ -210,6 +211,9 @@ func overlay(dst, src Profile) Profile {
 	if src.IncludeGraph != nil {
 		dst.IncludeGraph = src.IncludeGraph
 	}
+	if src.CollapseTests != nil {
+		dst.CollapseTests = src.CollapseTests
+	}
 	if src.Highlight != nil {
 		dst.Highlight = src.Highlight
 	}
@@ -348,6 +352,9 @@ func (p Profile) Apply(c *Config, fs *pflag.FlagSet) error {
 	}
 	if p.IncludeGraph != nil && !fs.Changed("include-graph") {
 		c.IncludeGraph = *p.IncludeGraph
+	}
+	if p.CollapseTests != nil && !fs.Changed("collapse-tests") {
+		c.CollapseTests = *p.CollapseTests
 	}
 	if p.Highlight != nil && !fs.Changed("highlight") {
 		c.Highlight = *p.Highlight

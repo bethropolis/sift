@@ -182,6 +182,9 @@ func (t *Target) applyTo(c *Config, fs *pflag.FlagSet) error {
 	if t.IncludeGraph != nil && !changed("include-graph") {
 		c.IncludeGraph = *t.IncludeGraph
 	}
+	if t.CollapseTests != nil && !changed("collapse-tests") {
+		c.CollapseTests = *t.CollapseTests
+	}
 	if t.Scoring != nil {
 		c.Scoring.Merge(*t.Scoring)
 	}
@@ -521,6 +524,9 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) error
 	if s.IncludeGraph != nil && !changed("include-graph") {
 		c.IncludeGraph = *s.IncludeGraph
 	}
+	if s.CollapseTests != nil && !changed("collapse-tests") {
+		c.CollapseTests = *s.CollapseTests
+	}
 	if s.Highlight != nil && !changed("highlight") {
 		c.Highlight = *s.Highlight
 	}
@@ -645,6 +651,9 @@ func mergeConfigFiles(global, local configFile) configFile {
 			}
 			if ls.IncludeGraph != nil {
 				s.IncludeGraph = ls.IncludeGraph
+			}
+			if ls.CollapseTests != nil {
+				s.CollapseTests = ls.CollapseTests
 			}
 			if ls.Highlight != nil {
 				s.Highlight = ls.Highlight

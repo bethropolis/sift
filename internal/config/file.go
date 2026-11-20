@@ -31,6 +31,7 @@ type SiftDefaults struct {
 	SmartFilter       *bool        `toml:"smart_filter"`
 	SmartMaxTokens    int          `toml:"smart_max_tokens"`
 	IncludeGraph      *bool        `toml:"include_graph"`
+	CollapseTests     *bool        `toml:"collapse_tests"`
 	Highlight         *bool        `toml:"highlight"`
 	NoHighlight       *bool        `toml:"no_highlight"`
 	Theme             string       `toml:"theme"`
@@ -84,6 +85,7 @@ type Target struct {
 	SmartFilter       *bool        `toml:"smart_filter"`
 	SmartMaxTokens    int          `toml:"smart_max_tokens"`
 	IncludeGraph      *bool        `toml:"include_graph"`
+	CollapseTests     *bool        `toml:"collapse_tests"`
 	UIThemeFile       string       `toml:"ui_theme_file"`
 	CopyOnGenerate    *bool        `toml:"copy_on_generate"`
 	Scoring           *Scoring     `toml:"scoring"`

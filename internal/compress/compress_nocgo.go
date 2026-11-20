@@ -29,6 +29,11 @@ func (c *Compressor) Compress(_ []byte, _ lang.ID) (string, bool) {
 	return "", false
 }
 
+// CompressOutline has no tree-sitter fallback in static builds.
+func (c *Compressor) CompressOutline(_ []byte, _ lang.ID) (string, bool) {
+	return "", false
+}
+
 // Focus falls back to a line slice; symbol focus needs tree-sitter.
 func (c *Compressor) Focus(src []byte, path, symbol string, start, end int) ([]byte, error) {
 	if symbol != "" {

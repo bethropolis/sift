@@ -150,8 +150,18 @@ func Imports(path, moduleRoot string, content []byte) []string {
 // ImportScanner prefix output through extension/index expansion against
 // exists. Nothing regresses for unsupported languages.
 func ResolveImports(path, moduleRoot string, content []byte, exists func(string) bool) []string {
+	return ResolveImportsInRoot(path, "", moduleRoot, content, exists)
+}
+
+// ResolveImportsInRoot is ResolveImports with the absolute project root, for
+// drivers that consult tsconfig.json, Cargo.toml, or pyproject.toml. An empty
+// root preserves the in-memory behavior.
+func ResolveImportsInRoot(path, root, moduleRoot string, content []byte, exists func(string) bool) []string {
 	norm := strings.ToLower(filepath.ToSlash(path))
 	if l, ok := ForPath(norm); ok {
+		if r, ok := l.(types.ImportResolverInRoot); ok && root != "" {
+			return r.ResolveImportsInRoot(norm, root, moduleRoot, content, exists)
+		}
 		if r, ok := l.(types.ImportResolver); ok {
 			return r.ResolveImports(norm, moduleRoot, content, exists)
 		}

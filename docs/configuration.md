@@ -48,7 +48,7 @@ TOML keys are **snake_case** and do not always match the flag spelling:
 
 | TOML key | Flag | Notes |
 | --- | --- | --- |
-| `compress_mode` | `--mode` | Values: `full`, `signatures`, `skip` |
+| `compress_mode` | `--mode` | Values: `full`, `signatures`, `outline`, `skip` |
 | `extensions` | `--ext` | Comma-separated on the CLI, a TOML array in the file |
 | `ignore` | `--ignore` | Globs in the file, comma-separated on the CLI |
 | `smart_filter` | `--smart` | Name differs from the flag |
@@ -58,6 +58,7 @@ TOML keys are **snake_case** and do not always match the flag spelling:
 | `fallback_mode` | `--fallback-mode` | Fallback compression mode when budget exceeded (e.g. `signatures`) |
 | `fallback_threshold` | `--fallback-threshold` | Budget threshold fraction before fallback activates (default: `1.0`) |
 | `include_graph` | `--include-graph` | Emit a compact directory-level dependency map in the header |
+| `collapse_tests` | `--collapse-tests` | Render test files as signatures while non-test files stay full |
 | `ui_theme_file` | `--ui-theme-file` | Picker themes only |
 
 ### Inverted booleans
@@ -204,6 +205,9 @@ signatures = [
   "**/ui/**",
   "**/components/**"
 ]
+outline = [
+  "**/generated/**"
+]
 skip = [
   "**/test/**",
   "**/*_test.go"
@@ -213,6 +217,8 @@ skip = [
 - `skip`: Paths matching these globs are skipped.
 - `full`: Paths matching these globs are rendered in full fidelity.
 - `signatures`: Paths matching these globs are compressed using tree-sitter signatures (stripping function/method bodies while keeping structure and types).
+- `outline`: Like `signatures`, but also drops doc comments for denser output.
+- `skip`/`full`/`outline`/`signatures` precedence is skip, full, outline, signatures.
 
 ## Progressive Fallback Compression (`fallback_mode`)
 
@@ -461,7 +467,7 @@ directory prefixes to custom area names; the longest matching prefix wins.
 | --- | --- | --- | --- |
 | `--output` | `codebase.md` | `output` | Output file; `-` writes to stdout |
 | `--style` | `markdown` | `style` | `plain`, `markdown`, `json`, or `xml` |
-| `--mode` | `full` | `compress_mode` | `full` content or `signatures` outline |
+| `--mode` | `full` | `compress_mode` | `full` content, `signatures`, or comment-free `outline` |
 | `--clipboard` | off | — | Copy the rendered output to the system clipboard |
 | `--copy-on-generate` | off | `copy_on_generate` | Also copy generated documents while writing them to the output file |
 | `--target` | — | — | Target from `.sift.toml` (`--target NAME`) |

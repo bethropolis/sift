@@ -90,6 +90,14 @@ type ImportResolver interface {
 	ResolveImports(path, moduleRoot string, content []byte, exists func(string) bool) []string
 }
 
+// ImportResolverInRoot is an optional capability for drivers that need to read
+// project configuration (tsconfig, Cargo.toml, pyproject) from disk. root is
+// the absolute scan root; path remains repo-relative. Drivers that do not
+// implement it fall back to ImportResolver.
+type ImportResolverInRoot interface {
+	ResolveImportsInRoot(path, root, moduleRoot string, content []byte, exists func(string) bool) []string
+}
+
 // ResolveCandidates lists the file paths to probe for a resolved import
 // base: the raw path first, then extension fallbacks, then index fallbacks
 // for directory imports. Callers confirm each candidate with exists.

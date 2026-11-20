@@ -52,6 +52,7 @@ var (
 	jsImportFrom = regexp.MustCompile(`\bimport\b[^'"]*?from\s*['"]([^'"]+)['"]`)
 	jsImportSide = regexp.MustCompile(`\bimport\s*['"]([^'"]+)['"]`)
 	jsRequire    = regexp.MustCompile(`\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)`)
+	jsExportFrom = regexp.MustCompile(`\bexport\b[^'"]*?from\s*['"]([^'"]+)['"]`)
 )
 
 // Imports returns the local import targets of a JS/JSX file. Bare package
@@ -81,6 +82,9 @@ func (jsDriver) Imports(path, _ string, content []byte) []string {
 		add(string(m[1]))
 	}
 	for _, m := range jsRequire.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range jsExportFrom.FindAllSubmatch(content, -1) {
 		add(string(m[1]))
 	}
 	return targets
@@ -122,6 +126,9 @@ func (jsDriver) ResolveImports(path, _ string, content []byte, exists func(strin
 		add(string(m[1]))
 	}
 	for _, m := range jsRequire.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
+	for _, m := range jsExportFrom.FindAllSubmatch(content, -1) {
 		add(string(m[1]))
 	}
 	return out

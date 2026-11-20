@@ -30,6 +30,8 @@ const (
 	// ModeSignatures renders the compressed signature summary into Content,
 	// with token counts reflecting the compressed text.
 	ModeSignatures
+	// ModeOutline is ModeSignatures without doc comments.
+	ModeOutline
 )
 
 // ErrFileSkipped is returned by Process when the smart filter rejects the
@@ -129,12 +131,22 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 	var cacheHash [32]byte
 	cacheMiss := false
 	signatureLanguage := languageForPath(path)
+	compressedMode := mode == ModeSignatures || mode == ModeOutline
 	if p.cache != nil {
 		cacheHash = sha256.Sum256(content)
 		if cached, hit := p.cache.GetHashed(cacheHash, mode, p.model, signatureLanguage); hit {
+			if compressedMode && !cached.IsCompressed {
+				// Older caches could store an uncompressed entry for a
+				// compressed mode when no compressor was attached, then
+				// replay it forever. Treat that as a miss and rewrite it.
+				hit = false
+			}
+			if !hit {
+				goto process
+			}
 			// Disk hits carry no raw source; fill it from the caller. A
 			// signature-mode hit renders the compressed text.
-			if mode == ModeSignatures && cached.IsCompressed && len(cached.SigContent) > 0 {
+			if mode != ModeFull && cached.IsCompressed && len(cached.SigContent) > 0 {
 				cached.Content = cached.SigContent
 			} else if len(cached.Content) == 0 {
 				cached.Content = content
@@ -153,6 +165,7 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 		cacheMiss = true
 	}
 
+process:
 	if p.evaluator != nil {
 		// Token guardrail after the cache lookup: only cache misses pay the
 		// count, which is then reused as TokensFull below.
@@ -176,13 +189,9 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 		if smartTokens < 0 {
 			entry.TokensFull = p.countTokens(content, path)
 		}
-		if p.compressor != nil {
-			if lang, ok := p.compressor.LanguageForPath(path); ok {
-				if compressed, didCompress := p.compressor.Compress(content, lang); didCompress {
-					entry.SigContent = []byte(compressed)
-					entry.Language = string(lang)
-				}
-			}
+		if compressed, didCompress := p.compress(path, content, false); didCompress {
+			entry.SigContent = []byte(compressed)
+			entry.Language = languageLabel(p, path)
 		}
 		if entry.SigContent != nil {
 			entry.TokensSig = p.countTokens(entry.SigContent, path)
@@ -190,17 +199,13 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 			entry.TokensSig = entry.TokensFull
 		}
 
-	case ModeSignatures:
-		if p.compressor != nil {
-			if lang, ok := p.compressor.LanguageForPath(path); ok {
-				if compressed, didCompress := p.compressor.Compress(content, lang); didCompress {
-					content = []byte(compressed)
-					entry.Content = content
-					entry.SigContent = content
-					entry.IsCompressed = true
-					entry.Language = string(lang)
-				}
-			}
+	case ModeSignatures, ModeOutline:
+		if compressed, didCompress := p.compress(path, content, mode == ModeOutline); didCompress {
+			content = []byte(compressed)
+			entry.Content = content
+			entry.SigContent = content
+			entry.IsCompressed = true
+			entry.Language = languageLabel(p, path)
 		}
 		// Reuse the guardrail's count when the content stayed verbatim;
 		// compressed output is new text and must be counted on its own.
@@ -224,7 +229,7 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 		entry.TokensSig = entry.Tokens
 	}
 
-	if cacheMiss {
+	if cacheMiss && (mode != ModeSignatures && mode != ModeOutline || p.compressor != nil) {
 		p.cache.PutHashed(cacheHash, mode, p.model, signatureLanguage, CachedResult{
 			Content:      entry.Content,
 			Tokens:       entry.Tokens,
@@ -237,6 +242,28 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 	}
 
 	return entry, nil
+}
+
+// compress produces a signature or outline summary, falling back to the SQL,
+// JSON, and YAML structural summarizers when no tree-sitter grammar exists.
+func (p *Processor) compress(path string, content []byte, outline bool) (string, bool) {
+	if p.compressor == nil {
+		return "", false
+	}
+	if lang, ok := p.compressor.LanguageForPath(path); ok {
+		if outline {
+			return p.compressor.CompressOutline(content, lang)
+		}
+		return p.compressor.Compress(content, lang)
+	}
+	return compress.SummarizePath(content, path)
+}
+
+func languageLabel(p *Processor, path string) string {
+	if lang, ok := p.compressor.LanguageForPath(path); ok {
+		return string(lang)
+	}
+	return ""
 }
 
 // countTokens counts tokens for content, logging a warning on failure and

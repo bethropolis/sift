@@ -49,6 +49,11 @@ func (c *Compressor) Compress(src []byte, id lang.ID) (string, bool) {
 	return c.engine.Signature(src, id)
 }
 
+// CompressOutline behaves like Compress but drops doc and standalone comments.
+func (c *Compressor) CompressOutline(src []byte, id lang.ID) (string, bool) {
+	return c.engine.SignatureOutline(src, id)
+}
+
 // Focus renders one symbol in full while compressing siblings, or returns a
 // marked line slice for a range.
 func (c *Compressor) Focus(src []byte, path, symbol string, start, end int) ([]byte, error) {

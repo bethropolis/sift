@@ -259,6 +259,7 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 		"full":       true,
 		"signatures": true,
 		"sigs":       true,
+		"outline":    true,
 	}
 
 	// Check default_profile reference
@@ -291,7 +292,7 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 			result.Issues = append(result.Issues, ValidationIssue{
 				Severity: SeverityError,
 				Field:    "[sift].compress_mode",
-				Message:  fmt.Sprintf("invalid compress_mode %q (supported: full, signatures)", cf.Sift.Mode),
+				Message:  fmt.Sprintf("invalid compress_mode %q (supported: full, signatures, outline)", cf.Sift.Mode),
 			})
 		}
 		if cf.Sift.FallbackMode != "" && cf.Sift.FallbackMode != "signatures" && cf.Sift.FallbackMode != "sigs" {
@@ -445,11 +446,11 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 		if t.PromptFile != "" {
 			checkFileExists(root, t.PromptFile, prefix+".prompt_file", result)
 		}
-		if t.Mode != "" && t.Mode != "full" && t.Mode != "signatures" {
+		if t.Mode != "" && !validModes[strings.ToLower(t.Mode)] {
 			result.Issues = append(result.Issues, ValidationIssue{
 				Severity: SeverityError,
 				Field:    prefix + ".compress_mode",
-				Message:  fmt.Sprintf("invalid compress_mode %q (supported: full, signatures)", t.Mode),
+				Message:  fmt.Sprintf("invalid compress_mode %q (supported: full, signatures, outline)", t.Mode),
 			})
 		}
 		if t.FallbackMode != "" && t.FallbackMode != "signatures" {
@@ -502,6 +503,7 @@ func validateModes(m *ModesConfig, result *CheckResult) {
 		}
 	}
 	checkList(m.Full, "full")
+	checkList(m.Outline, "outline")
 	checkList(m.Signatures, "signatures")
 	checkList(m.Skip, "skip")
 }

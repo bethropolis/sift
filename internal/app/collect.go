@@ -12,6 +12,7 @@ import (
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/ignore"
+	"github.com/bethropolis/sift/internal/lang"
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/scan"
 	"github.com/bethropolis/sift/internal/setup"
@@ -195,7 +196,9 @@ func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
 		cache = scan.NewContentCache()
 	}
 	needCompress := mode == collectPicker ||
-		(mode == collectBlocking && (a.cfg.Mode == "signatures" || (a.cfg != nil && len(a.cfg.Modes.Signatures) > 0)))
+		(mode == collectBlocking && (a.cfg.Mode == "signatures" || a.cfg.Mode == "outline" ||
+			a.cfg.CollapseTests ||
+			len(a.cfg.Modes.Signatures) > 0 || len(a.cfg.Modes.Outline) > 0))
 
 	processor, err := scan.New(scan.Options{
 		TokenizeModel:  a.cfg.TokenizeModel,
@@ -212,9 +215,13 @@ func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
 	if a.cfg.SmartFilter {
 		a.log.Debug("Smart filter enabled (max %d tokens/file)", a.cfg.SmartMaxTokens)
 	}
-	if a.cfg.Mode == "signatures" {
+	switch a.cfg.Mode {
+	case "signatures":
 		a.log.Debug("Compression mode: signatures (tree-sitter)")
-	} else if a.cfg.FallbackMode == "signatures" {
+	case "outline":
+		a.log.Debug("Compression mode: outline (signatures without doc comments)")
+	}
+	if a.cfg.FallbackMode == "signatures" {
 		a.log.Debug("Compression mode: fallback signatures (threshold %.2f)", a.cfg.FallbackThreshold)
 	}
 	return processor, nil
@@ -262,13 +269,17 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 		case collectPicker:
 			procMode = scan.ModePicker
 		case collectBlocking:
-			if a.cfg.Mode == "signatures" {
+			switch a.cfg.Mode {
+			case "signatures":
 				procMode = scan.ModeSignatures
+			case "outline":
+				procMode = scan.ModeOutline
 			}
 			// fallback_mode stays ModeFull here: signatures are produced
 			// lazily during budget fitting, only for files that overflow.
 		}
 
+		pinnedFull := false
 		if mm := a.getModesMatcher(); mm != nil {
 			switch mm.Match(relativePath) {
 			case config.ModeDecisionSkip:
@@ -277,13 +288,22 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 				*smartSkipped = append(*smartSkipped, walker.SkippedItem{Path: relativePath, Reason: walker.ReasonFilteredPath})
 				smartMu.Unlock()
 				return nil
+			case config.ModeDecisionOutline:
+				procMode = scan.ModeOutline
 			case config.ModeDecisionSignatures:
 				procMode = scan.ModeSignatures
 			case config.ModeDecisionFull:
 				// An explicit [modes].full pin wins over fallback-mode
 				// compression: the file is never rendered as signatures.
 				procMode = scan.ModeFull
+				pinnedFull = true
 			}
+		}
+		if mode == collectBlocking && a.cfg.CollapseTests && procMode == scan.ModeFull && !pinnedFull &&
+			lang.Classify(relativePath).Role == lang.RoleTest {
+			// Test files are low-signal for a broad dump: keep declarations
+			// visible but drop bodies unless [modes] explicitly pinned full.
+			procMode = scan.ModeSignatures
 		}
 
 		entry, err := processor.Process(relativePath, content, procMode)

@@ -237,7 +237,7 @@ func (r *Ranker) computeFanIn(files []format.FileEntry) (map[string]int, map[str
 		// One resolution pass per file: the resolved targets are confirmed
 		// repo paths, so they serve both the dependency graph and fan-in. The
 		// previous code parsed imports twice (Imports + ResolveImports).
-		targets := lang.ResolveImports(filePath, mod.moduleName, f.Content, exists)
+		targets := lang.ResolveImportsInRoot(filePath, r.rootDir, mod.moduleName, f.Content, exists)
 		mapped := make([]string, 0, len(targets))
 		for _, t := range targets {
 			if mappedTarget, ok := toRoot(t); ok && mappedTarget != "" {

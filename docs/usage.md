@@ -156,6 +156,11 @@ sift delta --patch       # raw unified diff in a <context_update> block
 
 `--context-depth N` widens the neighbor walk around changed files.
 
+Signature mode also summarizes files tree-sitter cannot parse: SQL keeps DDL
+and replaces bulk `INSERT`/`COPY` rows with a count, while JSON and YAML keep
+their key/schema shape. Use `--mode outline` to drop doc comments as well, and
+`--collapse-tests` to compress only test files.
+
 `diff` and `delta` require the scanned directory to be inside a Git repository.
 See [Incremental deltas](delta.md) for details.
 

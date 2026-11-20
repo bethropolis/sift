@@ -104,6 +104,9 @@ type Config struct {
 	// IncludeGraph emits a compact directory-level dependency map in the
 	// document header.
 	IncludeGraph bool
+	// CollapseTests renders test files as signatures in dump output while
+	// leaving non-test files full.
+	CollapseTests bool
 
 	// Safety
 	SecretScan     bool
@@ -204,6 +207,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.BoolVar(&c.SmartFilter, "smart", c.SmartFilter, "Skip generated, lockfile, minified, and oversized files")
 	fs.BoolVar(&c.NoCache, "no-cache", c.NoCache, "Disable the persistent on-disk signature cache")
 	fs.BoolVar(&c.IncludeGraph, "include-graph", c.IncludeGraph, "Emit a compact directory-level dependency map in the header")
+	fs.BoolVar(&c.CollapseTests, "collapse-tests", c.CollapseTests, "Render test files as signatures while keeping other files full")
 	fs.IntVar(&c.SmartMaxTokens, "smart-max-tokens", c.SmartMaxTokens, "Per-file token ceiling for the smart filter (default: 15000)")
 	fs.BoolVar(&c.NoColor, "no-color", c.NoColor, "Disable color output")
 	fs.BoolVar(&c.Highlight, "highlight", c.Highlight, "Enable syntax highlighting for terminal output")
@@ -229,7 +233,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.StringVar(&c.Target, "target", c.Target, "Target to use from .sift.toml (see [[targets]])")
 	fs.Var(&budgetFlag{val: &c.Budget}, "budget", "Maximum token budget (0 = no limit, supports '200k', '1.5M')")
 	fs.StringVar(&c.TokenizeModel, "tokenize-model", c.TokenizeModel, "Tokenizer model encoding (default: cl100k_base)")
-	fs.StringVar(&c.Mode, "mode", c.Mode, "Compression mode: full, signatures")
+	fs.StringVar(&c.Mode, "mode", c.Mode, "Compression mode: full, signatures, outline")
 	fs.StringVar(&c.FallbackMode, "fallback-mode", c.FallbackMode, "Fallback compression mode when budget exceeded (e.g. 'signatures')")
 	fs.Float64Var(&c.FallbackThreshold, "fallback-threshold", c.FallbackThreshold, "Threshold of budget before switching to fallback mode (default: 1.0)")
 	fs.IntVar(&c.MaxDepth, "max-depth", c.MaxDepth, "Dependency expansion depth from selected files (0 = disabled, -1 = unlimited)")

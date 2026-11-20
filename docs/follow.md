@@ -79,3 +79,9 @@ seed, direction, and hop counts. **Clear** restores the previous selection.
 report shows what follow picks. Each decision's signals carry the hop
 `distance` (visible in `json`/`ndjson` reports; the seed itself is distance
 0), and the walk summary prints to stderr ahead of the report.
+
+Dependency resolution is project-aware: TypeScript aliases from
+`tsconfig.json`/`jsconfig.json` (JSONC and local `extends` included) and
+barrel `export ... from` re-exports are followed, Rust workspace crates are
+matched by package name, and Python absolute imports are probed under `src/`
+and pyproject-configured source roots.

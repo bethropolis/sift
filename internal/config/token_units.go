@@ -19,7 +19,8 @@ func CanonicalStyle(style string) string {
 	}
 }
 
-// CanonicalMode maps compression-mode aliases to "full" or "signatures".
+// CanonicalMode maps compression-mode aliases to "full", "signatures", or
+// "outline".
 func CanonicalMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "sigs", "signature":

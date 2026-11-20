@@ -61,6 +61,7 @@ var (
 	tsImportFrom = regexp.MustCompile(`\bimport\b[^'"]*?from\s*['"]([^'"]+)['"]`)
 	tsImportSide = regexp.MustCompile(`\bimport\s*['"]([^'"]+)['"]`)
 	tsImportType = regexp.MustCompile(`\bimport\s+type\s+[^'"]*?from\s*['"]([^'"]+)['"]`)
+	tsExportFrom = regexp.MustCompile(`\bexport\b[^'"]*?from\s*['"]([^'"]+)['"]`)
 )
 
 // Imports returns the local import targets of a TS/TSX file. Bare package
@@ -97,6 +98,9 @@ func tsImports(path string, content []byte) []string {
 	for _, m := range tsImportSide.FindAllSubmatch(content, -1) {
 		add(string(m[1]))
 	}
+	for _, m := range tsExportFrom.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
 	return targets
 }
 
@@ -108,15 +112,26 @@ var (
 // ResolveImports resolves a TS/TSX file's local imports to confirmed,
 // existing repo-relative file paths. See jsDriver.ResolveImports.
 func (tsDriver) ResolveImports(path, _ string, content []byte, exists func(string) bool) []string {
-	return tsResolve(path, content, exists)
+	return tsResolve(path, content, exists, nil)
 }
 
 // ResolveImports resolves a TSX file's local imports. See tsDriver.
 func (tsxDriver) ResolveImports(path, _ string, content []byte, exists func(string) bool) []string {
-	return tsResolve(path, content, exists)
+	return tsResolve(path, content, exists, nil)
 }
 
-func tsResolve(path string, content []byte, exists func(string) bool) []string {
+// ResolveImportsInRoot resolves TS imports using the nearest tsconfig.json or
+// jsconfig.json for baseUrl and path aliases.
+func (tsDriver) ResolveImportsInRoot(path, root, _ string, content []byte, exists func(string) bool) []string {
+	return tsResolve(path, content, exists, loadTSConfig(root, path))
+}
+
+// ResolveImportsInRoot resolves TSX imports with tsconfig aliases.
+func (tsxDriver) ResolveImportsInRoot(path, root, _ string, content []byte, exists func(string) bool) []string {
+	return tsResolve(path, content, exists, loadTSConfig(root, path))
+}
+
+func tsResolve(path string, content []byte, exists func(string) bool, cfg *tsConfig) []string {
 	dir := filepath.ToSlash(filepath.Dir(path))
 	var out []string
 	seen := map[string]bool{}
@@ -128,14 +143,16 @@ func tsResolve(path string, content []byte, exists func(string) bool) []string {
 		case strings.HasPrefix(spec, "@/") || strings.HasPrefix(spec, "~/"):
 			base = filepath.ToSlash(filepath.Clean(spec[2:]))
 		default:
-			return // bare specifier: external
-		}
-		for _, cand := range types.ResolveCandidates(base, tsResolveExts, tsIndexFiles) {
-			if !seen[cand] && exists(cand) {
-				seen[cand] = true
-				out = append(out, cand)
+			bases := cfg.match(spec)
+			if len(bases) == 0 {
+				return // bare specifier: external
 			}
+			for _, candidate := range bases {
+				addResolved(candidate, exists, seen, &out)
+			}
+			return
 		}
+		addResolved(base, exists, seen, &out)
 	}
 	for _, m := range tsImportFrom.FindAllSubmatch(content, -1) {
 		add(string(m[1]))
@@ -146,5 +163,17 @@ func tsResolve(path string, content []byte, exists func(string) bool) []string {
 	for _, m := range tsImportSide.FindAllSubmatch(content, -1) {
 		add(string(m[1]))
 	}
+	for _, m := range tsExportFrom.FindAllSubmatch(content, -1) {
+		add(string(m[1]))
+	}
 	return out
+}
+
+func addResolved(base string, exists func(string) bool, seen map[string]bool, out *[]string) {
+	for _, cand := range types.ResolveCandidates(base, tsResolveExts, tsIndexFiles) {
+		if !seen[cand] && exists(cand) {
+			seen[cand] = true
+			*out = append(*out, cand)
+		}
+	}
 }
