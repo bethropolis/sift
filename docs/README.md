@@ -42,7 +42,11 @@ most important context fits in a model's window.
 | `sift delta [path]` | Render only changes since the last recorded dump |
 | `sift follow <file>` | Render a file plus its import-graph neighbors |
 | `sift watch [path]` | Re-render the document whenever files change |
+| `sift serve` | Serve the browser picker on `127.0.0.1:7777` |
 | `sift mcp [path]` | Start an MCP server over stdio for coding agents |
+| `sift check [path]` | Validate `.sift.toml` (and `sift config` to inspect it) |
+| `sift skill <status\|install\|show\|uninstall>` | Manage bundled agent skills |
+| `sift desktop` | Launch the desktop app wrapper |
 
 Every command accepts `--help`; `sift --help` lists the shared flags.
 

@@ -141,15 +141,16 @@ func parseLine(language, line string, state *scanState) []Span {
 		}
 		spans = append(spans, Span{Start: start, End: end, Kind: kind})
 	}
+	i := 0
 	if state.inString {
 		end := strings.Index(line, state.stringEnd)
 		if end < 0 {
 			appendSpan(0, len(line), TokenString)
 			return spans
 		}
-		appendSpan(0, end+len(state.stringEnd), TokenString)
+		i = end + len(state.stringEnd)
+		appendSpan(0, i, TokenString)
 		state.inString = false
-		return spans
 	}
 	commentPrefixes := []string{"//"}
 	if language == "go" || language == "c" || language == "cpp" || language == "csharp" || language == "java" || language == "javascript" || language == "typescript" || language == "tsx" || language == "dart" || language == "zig" {
@@ -171,7 +172,7 @@ func parseLine(language, line string, state *scanState) []Span {
 	builtins := state.wordSets.builtins
 	types := state.wordSets.types
 
-	for i := 0; i < len(line); {
+	for i < len(line) {
 		if state.blockEnd != "" {
 			end := strings.Index(line[i:], state.blockEnd)
 			if end < 0 {
@@ -284,12 +285,14 @@ func parseLine(language, line string, state *scanState) []Span {
 				kind = TokenNull
 			case builtins[word]:
 				kind = TokenBuiltin
+			case j < len(line) && line[j] == '(':
+				// A call site wins over the uppercase type heuristic, so
+				// exported functions like fmt.Println are not styled as types.
+				kind = TokenFunction
+			case isConstantName(word) && language != "json":
+				kind = TokenConstant
 			case types[word] || (unicode.IsUpper(rune(word[0])) && language != "json"):
 				kind = TokenType
-			case j < len(line) && line[j] == '(':
-				kind = TokenFunction
-			case unicode.IsUpper(rune(word[0])):
-				kind = TokenConstant
 			}
 			if kind != TokenPlain {
 				appendSpan(i, j, kind)

@@ -177,6 +177,51 @@ func TestPythonTripleQuotedStringState(t *testing.T) {
 	}
 }
 
+func TestMultiLineStringContinuesAfterClose(t *testing.T) {
+	state := scanState{}
+	parseLine("typescript", "const s = `hello", &state)
+	if !state.inString {
+		t.Fatal("backtick string not marked open")
+	}
+	line := "world` + 42"
+	spans := parseLine("typescript", line, &state)
+	if state.inString {
+		t.Fatal("string state not cleared after closing delimiter")
+	}
+	if !hasSpan(Line{Text: line, Spans: spans}, "world`", TokenString) {
+		t.Errorf("closed string span missing: %+v", spans)
+	}
+	if !hasSpan(Line{Text: line, Spans: spans}, "42", TokenNumber) {
+		t.Errorf("text after closed string was not scanned: %+v", spans)
+	}
+}
+
+func TestFunctionCallBeatsUppercaseTypeHeuristic(t *testing.T) {
+	doc := Parse("main.go", []byte(`fmt.Println("x")`), Options{Enabled: true, Theme: ThemeAuto})
+	if !hasSpan(doc.Lines[0], "Println", TokenFunction) {
+		t.Errorf("exported call not classified as function: %+v", doc.Lines[0].Spans)
+	}
+}
+
+func TestAllCapsConstantIsReachable(t *testing.T) {
+	doc := Parse("main.go", []byte("MAX_SIZE := 10"), Options{Enabled: true, Theme: ThemeAuto})
+	if !hasSpan(doc.Lines[0], "MAX_SIZE", TokenConstant) {
+		t.Errorf("ALL_CAPS name not classified as constant: %+v", doc.Lines[0].Spans)
+	}
+}
+
+func TestLineCommentsAreLanguageAware(t *testing.T) {
+	opts := Options{Enabled: true, Theme: ThemeAuto}
+	goLine := RenderLine("main.go", "x := 1 # not a comment", opts)
+	if strings.Contains(goLine, "\033[2m# not a comment") {
+		t.Errorf("legacy renderer treated # as a Go comment: %q", goLine)
+	}
+	pyLine := RenderLine("a.py", "# note", opts)
+	if !strings.Contains(pyLine, "\033[2m# note") {
+		t.Errorf("python comment not highlighted: %q", pyLine)
+	}
+}
+
 func hasSpan(line Line, text string, kind TokenKind) bool {
 	for _, span := range line.Spans {
 		if span.Kind == kind && line.Text[span.Start:span.End] == text {

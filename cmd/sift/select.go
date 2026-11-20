@@ -103,7 +103,7 @@ func runSelectFollow(cmd *cobra.Command, files []format.FileEntry, skipped []wal
 	}
 	for _, d := range result.Decisions {
 		if filepath.ToSlash(d.Path) == seed && d.Selected && string(d.Mode) == wantMode {
-			printFollowSummary(seed, direction, sel.Hits, sel.Unanalyzed)
+			printFollowSummary(seed, direction, selFollowDepth, sel.Hits, sel.Unanalyzed)
 			return result, nil
 		}
 	}

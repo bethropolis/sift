@@ -79,12 +79,20 @@ func RenderLine(path, line string, options Options) string {
 	}
 	styles = profilePalette(styles, options.Profile)
 	keywordSet := keywords(path)
+	commentPrefixes := lineCommentPrefixes(languageForPath(path))
 	var b strings.Builder
 	for i := 0; i < len(line); {
-		if strings.HasPrefix(line[i:], "//") || strings.HasPrefix(line[i:], "#") || strings.HasPrefix(line[i:], "--") {
-			b.WriteString(styles.Comment)
-			b.WriteString(line[i:])
-			b.WriteString(reset)
+		matchedComment := false
+		for _, prefix := range commentPrefixes {
+			if strings.HasPrefix(line[i:], prefix) {
+				b.WriteString(styles.Comment)
+				b.WriteString(line[i:])
+				b.WriteString(reset)
+				matchedComment = true
+				break
+			}
+		}
+		if matchedComment {
 			break
 		}
 		if line[i] == '"' || line[i] == '\'' || line[i] == '`' {
@@ -229,6 +237,36 @@ func keywords(path string) map[string]bool {
 
 func isTypeName(word string) bool {
 	return len(word) > 0 && unicode.IsUpper(rune(word[0]))
+}
+
+// lineCommentPrefixes returns the line-comment delimiters for a language.
+func lineCommentPrefixes(language string) []string {
+	switch language {
+	case "python", "sh", "bash", "zsh", "yaml", "yml", "toml", "ruby",
+		"gitignore", ".env", "dockerfile", "makefile", "justfile", "license", "r", "perl":
+		return []string{"#"}
+	case "sql", "lua":
+		return []string{"--"}
+	case "html", "xml", "vue", "svelte", "astro":
+		return []string{"<!--"}
+	default:
+		return []string{"//"}
+	}
+}
+
+// isConstantName reports whether word looks like an ALL_CAPS constant (at
+// least one letter, no lowercase).
+func isConstantName(word string) bool {
+	hasLetter := false
+	for _, r := range word {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+		}
+		if unicode.IsLower(r) {
+			return false
+		}
+	}
+	return hasLetter
 }
 
 func isIdentStart(b byte) bool { return b == '_' || unicode.IsLetter(rune(b)) }

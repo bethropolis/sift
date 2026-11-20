@@ -131,14 +131,14 @@ func runFollow(cmd *cobra.Command, args []string) error {
 	if err := application.RenderFinal(result.Selected, skipped, time.Since(start), nil); err != nil {
 		return err
 	}
-	printFollowSummary(seed, direction, hits, sel.Unanalyzed)
+	printFollowSummary(seed, direction, followDepth, hits, sel.Unanalyzed)
 	return nil
 }
 
 // printFollowSummary reports the walk shape to stderr even when the document
 // goes to a file: which seed and direction, per-hop file counts, and how many
 // eligible files the graph is blind to.
-func printFollowSummary(seed, direction string, hits []app.FollowHit, unanalyzed int) {
+func printFollowSummary(seed, direction string, depth int, hits []app.FollowHit, unanalyzed int) {
 	byHop := map[int]int{}
 	maxHop := 0
 	for _, h := range hits {
@@ -151,7 +151,7 @@ func printFollowSummary(seed, direction string, hits []app.FollowHit, unanalyzed
 		}
 	}
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "follow: %s, %s, depth %d: %d file%s", seed, direction, followDepth, len(hits), plural(len(hits)))
+	fmt.Fprintf(&sb, "follow: %s, %s, depth %d: %d file%s", seed, direction, depth, len(hits), plural(len(hits)))
 	if maxHop > 0 {
 		hops := make([]string, 0, maxHop)
 		for d := 1; d <= maxHop; d++ {

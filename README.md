@@ -45,7 +45,10 @@ Go, Rust, JavaScript/TypeScript (including TSX), Python, PHP, Java, Kotlin, C#, 
 | `follow` | Render a file plus its import-graph neighbors     |
 | `watch`  | Re-render whenever files change                   |
 | `serve`  | Run sift from a browser                           |
+| `mcp`    | Serve context tools over stdio to coding agents   |
+| `check`  | Validate `.sift.toml` and print its resolved config |
 | `skill`  | Install and manage agent skills for AI tools      |
+| `desktop`| Launch the desktop app wrapper                    |
 
 Running `sift` with no command opens the picker.
 

@@ -53,8 +53,13 @@ func attachedComments(src []byte, n *sitter.Node) []string {
 		if !attached(src, prev, cur) {
 			break
 		}
+		// Walking previous siblings collects comments newest-first; restore
+		// top-to-bottom source order so multi-line docs stay readable.
 		parts = append(parts, prev.Content(src))
 		cur = prev
+	}
+	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+		parts[i], parts[j] = parts[j], parts[i]
 	}
 	return parts
 }

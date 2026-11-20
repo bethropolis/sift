@@ -28,9 +28,11 @@ sift delta --patch --clipboard
 
 ### Full content (default)
 
-The default strategy renders the full content of every changed file, wrapped in
-the same `<context_update>` envelope as the patch strategy. This is useful when
-the consumer benefits from complete surrounding context.
+The default strategy renders the full content of every changed file using the
+configured output style (`xml`, `markdown`, `json`, or `plain`) and the normal
+rendering pipeline, including secret redaction and token accounting. It does
+not add a `<context_update>` wrapper; that envelope belongs to `--patch` only.
+This is useful when the consumer benefits from complete surrounding context.
 
 ### Raw patch (`--patch`)
 

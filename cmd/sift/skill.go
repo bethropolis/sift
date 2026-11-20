@@ -3,7 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -79,7 +80,7 @@ Use --local to install into the current project workspace (.agents/skills).`,
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "%s %s skill at %s\n", strings.Title(res.Action), res.DisplayName, res.Path)
+			fmt.Fprintf(out, "%s %s skill at %s\n", capitalize(res.Action), res.DisplayName, res.Path)
 			return nil
 		}
 
@@ -102,7 +103,7 @@ Use --local to install into the current project workspace (.agents/skills).`,
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "%s %s skill at %s\n", strings.Title(res.Action), res.DisplayName, res.Path)
+				fmt.Fprintf(out, "%s %s skill at %s\n", capitalize(res.Action), res.DisplayName, res.Path)
 			}
 			return nil
 		}
@@ -135,7 +136,7 @@ Use --local to install into the current project workspace (.agents/skills).`,
 		}
 
 		for _, res := range results {
-			fmt.Fprintf(out, "%s %s skill: %s\n", strings.Title(res.Action), res.DisplayName, res.Path)
+			fmt.Fprintf(out, "%s %s skill: %s\n", capitalize(res.Action), res.DisplayName, res.Path)
 		}
 		return nil
 	},
@@ -276,4 +277,14 @@ var skillShowCmd = &cobra.Command{
 		_, err = cmd.OutOrStdout().Write(content)
 		return err
 	},
+}
+
+// capitalize upper-cases the first rune, replacing the deprecated
+// strings.Title for the short status words printed by skill commands.
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	r, size := utf8.DecodeRuneInString(s)
+	return string(unicode.ToUpper(r)) + s[size:]
 }

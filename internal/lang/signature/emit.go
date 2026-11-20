@@ -124,7 +124,8 @@ func (e *Engine) emitNode(n *sitter.Node, src []byte, spec *SignatureSpec, b *st
 		if doc != "" {
 			b.WriteString(doc)
 		}
-		sig = indentBlock(sig, "")
+		// Keep the declaration's own line breaks and relative indentation:
+		// multi-line parameter lists must not be flattened by a trim pass.
 		b.WriteString(sig)
 		if spec.PythonLike {
 			b.WriteString(" ...\n\n")

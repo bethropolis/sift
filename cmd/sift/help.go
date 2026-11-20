@@ -501,12 +501,15 @@ var engineFlags = map[string]bool{
 	"budget":              true,
 	"tokenize-model":      true,
 	"mode":                true,
+	"fallback-mode":       true,
+	"fallback-threshold":  true,
 	"max-depth":           true,
 	"prompt":              true,
 	"secrets":             true,
 	"force-secrets":       true,
 	"clipboard":           true,
 	"copy-on-generate":    true,
+	"config":              true,
 	"all":                 true,
 	"help":                true,
 }
@@ -551,11 +554,12 @@ func renderCategorizedOptions(w io.Writer, cmd *cobra.Command, allItems []flagIt
 func getFlagCategory(name string) string {
 	switch name {
 	case "output", "style", "format", "budget", "mode", "prompt", "clipboard",
-		"copy-on-generate", "secrets", "force-secrets", "json", "markdown":
+		"copy-on-generate", "secrets", "force-secrets", "json", "markdown",
+		"fallback-mode", "fallback-threshold":
 		return "output"
 	case "ext", "ignore", "smart", "smart-max-tokens", "hidden", "git", "binary", "max-size", "max-depth":
 		return "filter"
-	case "dir", "profile", "target", "timeout", "workers", "concurrent", "tokenize-model":
+	case "dir", "profile", "target", "timeout", "workers", "concurrent", "tokenize-model", "config":
 		return "config"
 	case "theme", "ui-theme-file", "highlight", "no-highlight", "highlight-max-bytes",
 		"no-nerd-fonts", "window-title", "no-window-title", "progress", "show-skipped":
@@ -703,7 +707,7 @@ func getCommandExamples(cmd *cobra.Command) []exampleItem {
 		}
 	case "serve":
 		return []exampleItem{
-			{"sift serve", "Start browser file picker UI on localhost:5173"},
+			{"sift serve", "Start browser file picker UI on 127.0.0.1:7777"},
 			{"sift serve --app", "Open in chromeless app window and stop server on close"},
 			{"sift serve --open", "Start server and automatically open default browser"},
 			{"sift serve --listen :8080", "Bind server to port 8080 on loopback"},

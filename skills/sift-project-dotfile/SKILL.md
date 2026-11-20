@@ -275,7 +275,7 @@ The `**/*.md` rule excludes Markdown at every depth. The negated, root-anchored 
 Important caveats:
 
 - Do not exclude a parent directory and then attempt to re-include a file inside it. Git-ignore semantics cannot re-include a file when its parent directory has already been pruned.
-- These custom patterns do not magically override a separate `.gitignore` rule. If a permitted file is itself Git-ignored, inspect and resolve that conflict deliberately.
+- Custom ignore patterns are evaluated before repository `.gitignore` rules, so a custom `!` negation can re-include a file that `.gitignore` excludes (unless a parent directory was pruned before the file was reached). Use this deliberately and verify the result with `sift dump --show-skipped`.
 - If the user wants `README.md` and `AGENTS.md` at any depth, remove the leading `/` from the two negations. The default above is root-only.
 - A Markdown-only target still needs both `extensions = ["md"]` and the root `[sift].ignore` allowlist. Profiles and targets retain the inherited ignore rules unless explicitly overridden; the extension filter alone includes every Markdown file.
 - If neither permitted file exists, do not pretend the guidance target contains documentation. Omit the target or keep it with an explicit empty-source warning, depending on the user's intended workflow.
@@ -306,7 +306,7 @@ fallback_mode = "signatures"
 fallback_threshold = 0.9
 ```
 
-`fallback_threshold` is a fraction of the budget; `0.9` (or `"90%"`) starts fallback around 90% usage, while `1.0` waits until the budget is reached. Choose the threshold based on the trade-off: a lower value reserves more room for signatures, while `1.0` maximizes full-fidelity content before fallback begins. Do not claim every file is guaranteed to fit: files without a supported tree-sitter signature parser may not compress as expected, and the total output still remains constrained by the token budget. Verify real output on the target repository.
+`fallback_threshold` is a fraction of the budget; `0.9` starts fallback around 90% usage, while `1.0` waits until the budget is reached. Choose the threshold based on the trade-off: a lower value reserves more room for signatures, while `1.0` maximizes full-fidelity content before fallback begins. Do not claim every file is guaranteed to fit: files without a supported tree-sitter signature parser may not compress as expected, and the total output still remains constrained by the token budget. Verify real output on the target repository.
 
 Fallback is often a good complement to a 150k full-mode dump when the user values seeing more of the repository. It is not mandatory: use it when broad coverage is more valuable than having the overflow files omitted, and explain the fidelity trade-off.
 
@@ -576,11 +576,11 @@ When authoring or revising a dotfile, consider the following capabilities. Use o
 | Profile ignore inheritance | `[sift].ignore`, `override_ignore` | Share repository exclusions automatically; opt out only for isolated profiles. |
 | Alternate config path | `--config path.toml` | Test or use a separate config without replacing the repository dotfile. |
 | Configuration check & validation | `sift check [path]`, `sift config check` | Verify `.sift.toml` syntax, profile inheritance, mode mappings, and safety constraints before dumping. |
-| Skill distribution and MCP support | `sift skill ...`, `sift://skill`, `sift_skill` | Discover/install Sift's own usage skill in supported agent environments. This is separate from the project-specific `.sift.toml` being authored here. |
+| Skill distribution and MCP support | `sift skill ...`, `get_skill`, `skill://sift-project-dotfile` | Discover/install Sift's own usage skills in supported agent environments. This is separate from the project-specific `.sift.toml` being authored here. |
 
 Sift's repository includes its own self-dumping `.sift.toml`. Study it as a practical reference for profile and mode composition, but do not copy its Go-specific globs, extension list, or exclusions into unrelated repositories.
 
-For Sift usage guidance in supported coding-agent environments, Sift provides `sift skill status`, `sift skill install`, `sift skill show`, and `sift skill uninstall`. These manage Sift's bundled usage skill; they do not automatically install this custom project-dotfile authoring skill.
+For Sift usage guidance in supported coding-agent environments, Sift provides `sift skill status`, `sift skill install`, `sift skill show`, and `sift skill uninstall`. These manage Sift's bundled skills; `sift skill install` installs the bundled `sift-project-dotfile` skill (this one) by default, and `sift skill show` displays it.
 
 ## 13. Canonical references
 

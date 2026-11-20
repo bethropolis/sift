@@ -36,8 +36,14 @@ sift
 | `sift copy [file]` | Copy `codebase.md` (or another document) to the clipboard |
 | `sift diff [ref]` | Render only files changed relative to a Git ref (default `HEAD`) |
 | `sift delta [path]` | Render only changes since the last recorded dump |
+| `sift follow <file>` | Render a file plus its import-graph neighbors |
 | `sift watch [path]` | Re-render the document whenever files change |
 | `sift serve` | Serve the browser file picker (embedded web UI) |
+| `sift mcp [path]` | Start an MCP stdio server for coding agents |
+| `sift check [path]` | Validate a `.sift.toml` and show resolved settings |
+| `sift config` | Show the merged configuration |
+| `sift skill <cmd>` | Install or manage bundled agent skills |
+| `sift desktop` | Launch the desktop app wrapper |
 
 Run `sift <command> --help` for each command's options, and `sift --help` for
 the shared flags.
