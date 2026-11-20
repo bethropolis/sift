@@ -52,6 +52,25 @@ type App struct {
 	modesMatcher *config.ModesMatcher
 }
 
+// NewContentCache returns a bounded in-memory cache for one process. Callers
+// that serve many projects (MCP, serve) share one instance across requests.
+func NewContentCache(cfg *config.Config) *scan.ContentCache {
+	return scan.NewContentCache()
+}
+
+// NewContentCacheWithDisk is NewContentCache with the persistent layer
+// attached unless cfg.NoCache is set. Long-lived CLI processes use it so
+// consecutive runs skip tokenizer and signature work.
+func NewContentCacheWithDisk(cfg *config.Config) *scan.ContentCache {
+	c := scan.NewContentCache()
+	if cfg != nil && !cfg.NoCache {
+		if d := scan.DefaultDiskCache(); d != nil {
+			c.EnableDisk(d)
+		}
+	}
+	return c
+}
+
 // Config returns the resolved application configuration. It is exposed to
 // picker orchestration so streaming rank updates use the same scoring policy
 // as non-interactive selection.
@@ -101,7 +120,7 @@ func New(cfg *config.Config) (*App, error) {
 		log:          log,
 		output:       output,
 		outputPath:   outputPath,
-		contentCache: scan.NewContentCache(),
+		contentCache: NewContentCacheWithDisk(cfg),
 		modesMatcher: config.NewModesMatcher(cfg.RootDir, cfg.Modes),
 	}, nil
 }

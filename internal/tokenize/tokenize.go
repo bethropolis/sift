@@ -90,11 +90,25 @@ func FitToBudget(files []format.FileEntry, budget int) ([]format.FileEntry, int)
 	return kept, used
 }
 
-// FitToBudgetWithFallback packs files against budget.
-// Files are packed in full fidelity until threshold * budget is reached (or until a file overflows in full mode).
-// When fallback is active, subsequent files are packed as signatures using their SigContent and TokensSig.
-// Returns the kept files and the total tokens used.
+// SignatureProvider lazily produces a signature rendering and its token count
+// for a file. ok is false when the file cannot be compressed (unsupported
+// language, parse failure, or a no-cgo build).
+type SignatureProvider func(format.FileEntry) (content []byte, tokens int, ok bool)
+
+// FitToBudgetWithFallback packs files against budget using signatures already
+// present on the entries. See FitToBudgetWithFallbackLazy.
 func FitToBudgetWithFallback(files []format.FileEntry, budget int, threshold float64) ([]format.FileEntry, int) {
+	return FitToBudgetWithFallbackLazy(files, budget, threshold, nil)
+}
+
+// FitToBudgetWithFallbackLazy packs files against budget. Files are packed in
+// full fidelity until threshold * budget is reached (or until a file overflows
+// in full mode). When fallback activates, provide is called on demand for the
+// signature rendering and token count, so tree-sitter and BPE work only runs
+// for files that actually fall back.
+//
+// Returns the kept files and the total tokens used.
+func FitToBudgetWithFallbackLazy(files []format.FileEntry, budget int, threshold float64, provide SignatureProvider) ([]format.FileEntry, int) {
 	if budget <= 0 {
 		total := 0
 		for _, f := range files {
@@ -146,13 +160,13 @@ func FitToBudgetWithFallback(files []format.FileEntry, budget int, threshold flo
 				// Downgrade just this file (or skip it) instead of flipping
 				// the global switch and compressing every smaller file behind
 				// it.
-				sigTokens := f.TokensSig
-				if sigTokens <= 0 {
-					sigTokens = fullTokens
+				sigContent, sigTokens, ok := signatureVariant(f, fullTokens, provide)
+				if !ok || sigTokens >= fullTokens {
+					continue
 				}
-				if sigTokens < fullTokens && used+sigTokens <= budget {
-					if len(f.SigContent) > 0 {
-						f.Content = f.SigContent
+				if used+sigTokens <= budget {
+					if len(sigContent) > 0 {
+						f.Content = sigContent
 						f.IsCompressed = true
 					}
 					f.Tokens = sigTokens
@@ -164,23 +178,38 @@ func FitToBudgetWithFallback(files []format.FileEntry, budget int, threshold flo
 			fallbackTriggered = true
 		}
 
-		// Fallback active: try to pack as signature
-		sigTokens := f.TokensSig
-		if sigTokens <= 0 {
+		// Fallback active: try to pack as signature.
+		sigContent, sigTokens, ok := signatureVariant(f, f.Tokens, provide)
+		if !ok {
 			sigTokens = f.Tokens
+			sigContent = nil
 		}
 		if used+sigTokens <= budget {
-			if len(f.SigContent) > 0 {
-				f.Content = f.SigContent
-				f.Tokens = sigTokens
+			if len(sigContent) > 0 {
+				f.Content = sigContent
 				f.IsCompressed = true
-			} else {
-				f.Tokens = sigTokens
 			}
+			f.Tokens = sigTokens
 			kept = append(kept, f)
 			used += sigTokens
 		}
 	}
 
 	return kept, used
+}
+
+// signatureVariant returns the signature content and token count for f,
+// consulting provide only when the entry does not already carry them.
+func signatureVariant(f format.FileEntry, fullTokens int, provide SignatureProvider) ([]byte, int, bool) {
+	if f.TokensSig > 0 {
+		return f.SigContent, f.TokensSig, true
+	}
+	if provide == nil {
+		return nil, fullTokens, false
+	}
+	content, tokens, ok := provide(f)
+	if !ok || tokens <= 0 {
+		return nil, fullTokens, false
+	}
+	return content, tokens, true
 }

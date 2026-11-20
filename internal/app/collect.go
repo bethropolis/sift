@@ -195,7 +195,7 @@ func (a *App) newProcessor(mode collectMode) (*scan.Processor, error) {
 		cache = scan.NewContentCache()
 	}
 	needCompress := mode == collectPicker ||
-		(mode == collectBlocking && (a.cfg.Mode == "signatures" || a.cfg.FallbackMode == "signatures" || (a.cfg != nil && len(a.cfg.Modes.Signatures) > 0)))
+		(mode == collectBlocking && (a.cfg.Mode == "signatures" || (a.cfg != nil && len(a.cfg.Modes.Signatures) > 0)))
 
 	processor, err := scan.New(scan.Options{
 		TokenizeModel:  a.cfg.TokenizeModel,
@@ -264,9 +264,9 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 		case collectBlocking:
 			if a.cfg.Mode == "signatures" {
 				procMode = scan.ModeSignatures
-			} else if a.cfg.FallbackMode == "signatures" {
-				procMode = scan.ModePicker
 			}
+			// fallback_mode stays ModeFull here: signatures are produced
+			// lazily during budget fitting, only for files that overflow.
 		}
 
 		if mm := a.getModesMatcher(); mm != nil {
@@ -300,6 +300,13 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 		}
 		if mode == collectBlocking && procMode == scan.ModePicker {
 			entry.Tokens = entry.TokensFull
+		}
+		if mode == collectBlocking && a.cfg.FallbackMode == "signatures" && procMode == scan.ModeFull {
+			// Lazy fallback: no signature exists yet, so clear the full-mode
+			// TokensSig=Tokens placeholder and let the budget fitter ask for
+			// one only when this file actually overflows.
+			entry.SigContent = nil
+			entry.TokensSig = 0
 		}
 		if mode == collectPicker && matcher != nil {
 			visibility := matcher.ClassifyVisibility(relativePath, false)

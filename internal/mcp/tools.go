@@ -12,6 +12,7 @@ import (
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/lang"
 	"github.com/bethropolis/sift/internal/rank"
+	"github.com/bethropolis/sift/internal/scan"
 	"github.com/bethropolis/sift/internal/selection"
 	"github.com/bethropolis/sift/internal/state"
 	embedded "github.com/bethropolis/sift/skills"
@@ -77,19 +78,31 @@ func toolDefinitions() []Tool {
 }
 
 // callTool runs one tool by name. ok is false for unknown tools.
-func callTool(ctx context.Context, name string, args map[string]any, cfg *config.Config) (text string, err error, ok bool) {
+// session is one MCP server process's shared state: the configuration and a
+// cache reused across tool calls so repeat requests skip tree-sitter and BPE
+// work.
+type session struct {
+	cfg   *config.Config
+	cache *scan.ContentCache
+}
+
+func newSession(cfg *config.Config) *session {
+	return &session{cfg: cfg, cache: app.NewContentCache(cfg)}
+}
+
+func callTool(ctx context.Context, name string, args map[string]any, s *session) (text string, err error, ok bool) {
 	switch name {
 	case "pack_context":
-		text, err := handlePackContext(ctx, args, cfg)
+		text, err := handlePackContextSession(ctx, args, s)
 		return text, err, true
 	case "pack_diff":
-		text, err := handlePackDiff(ctx, args, cfg)
+		text, err := handlePackDiffSession(ctx, args, s)
 		return text, err, true
 	case "pack_follow":
-		text, err := handlePackFollow(ctx, args, cfg)
+		text, err := handlePackFollowSession(ctx, args, s)
 		return text, err, true
 	case "list_tree":
-		text, err := handleListTree(ctx, args, cfg)
+		text, err := handleListTreeSession(ctx, args, s)
 		return text, err, true
 	case "get_skill":
 		text, err := handleGetSkill(args)
@@ -101,7 +114,8 @@ func callTool(ctx context.Context, name string, args map[string]any, cfg *config
 
 // handlePackContext mirrors runSelect minus the file writes: collect with
 // picker enrichment, rank, run the budget optimizer, render to a buffer.
-func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Config) (string, error) {
+func handlePackContextSession(ctx context.Context, args map[string]any, s *session) (string, error) {
+	cfg := s.cfg
 	_ = ctx
 	runCfg := *cfg
 	intArg(args, "budget", &runCfg.Budget)
@@ -123,7 +137,7 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 	runCfg.SmartFilter = true
 	runCfg.OutputFile = "-" // never touch disk
 
-	files, _, err := app.ScanPicker(ctx, runCfg.RootDir, &runCfg)
+	files, _, err := app.ScanPickerWithCache(ctx, runCfg.RootDir, &runCfg, s.cache)
 	if err != nil {
 		return "", err
 	}
@@ -158,6 +172,7 @@ func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Con
 		Graph:      graph,
 		Preferred:  preferred,
 		Budget:     runCfg.Budget,
+		Overhead:   app.EstimatedDocumentOverhead(&runCfg, runCfg.Prompt, files),
 		Prompt:     runCfg.Prompt,
 		Tuning:     app.TuningFromScoring(runCfg.Scoring),
 		MaxDepth:   runCfg.MaxDepth,
@@ -205,7 +220,8 @@ func forceSelectionMode(files []format.FileEntry, mode string, budget int) []for
 // handlePackDiff packs what changed. from="" means uncommitted working-tree
 // changes (ChangedSinceRef("HEAD")); otherwise the from..HEAD range. It
 // never consults the recorded delta baseline.
-func handlePackDiff(ctx context.Context, args map[string]any, cfg *config.Config) (string, error) {
+func handlePackDiffSession(ctx context.Context, args map[string]any, s *session) (string, error) {
+	cfg := s.cfg
 	_ = ctx
 	absRoot, err := state.CanonicalRoot(cfg.RootDir)
 	if err != nil {
@@ -256,7 +272,7 @@ func handlePackDiff(ctx context.Context, args map[string]any, cfg *config.Config
 
 	// OnlyPaths is an App-level restriction; apply it through a buffered
 	// app since the engine Scan always walks the whole root.
-	application, err := app.NewBuffered(&runCfg)
+	application, err := app.NewBufferedWithCache(&runCfg, s.cache)
 	if err != nil {
 		return "", err
 	}
@@ -275,7 +291,8 @@ func handlePackDiff(ctx context.Context, args map[string]any, cfg *config.Config
 // mirrors runFollow minus the file writes: collect, walk from the seed,
 // run the budget optimizer over the walk, render to a buffer. It never
 // touches the delta baseline.
-func handlePackFollow(ctx context.Context, args map[string]any, cfg *config.Config) (string, error) {
+func handlePackFollowSession(ctx context.Context, args map[string]any, s *session) (string, error) {
+	cfg := s.cfg
 	var file string
 	stringArg(args, "file", &file)
 	if strings.TrimSpace(file) == "" {
@@ -313,7 +330,7 @@ func handlePackFollow(ctx context.Context, args map[string]any, cfg *config.Conf
 	if err != nil {
 		return "", err
 	}
-	files, _, err := app.ScanPicker(ctx, runCfg.RootDir, &runCfg)
+	files, _, err := app.ScanPickerWithCache(ctx, runCfg.RootDir, &runCfg, s.cache)
 	if err != nil {
 		return "", err
 	}
@@ -342,9 +359,10 @@ func handlePackFollow(ctx context.Context, args map[string]any, cfg *config.Conf
 		return "", err
 	}
 	result := selection.Select(sel.Candidates, selection.Request{
-		Budget: runCfg.Budget,
-		Prompt: runCfg.Prompt,
-		Tuning: app.TuningFromScoring(runCfg.Scoring),
+		Budget:   runCfg.Budget,
+		Overhead: app.EstimatedDocumentOverhead(&runCfg, runCfg.Prompt, files),
+		Prompt:   runCfg.Prompt,
+		Tuning:   app.TuningFromScoring(runCfg.Scoring),
 	})
 	wantMode := modeOverride
 	if wantMode == "" {
@@ -364,13 +382,14 @@ func handlePackFollow(ctx context.Context, args map[string]any, cfg *config.Conf
 // file/dir count line. WalkMeta only emits files, so directory entries are
 // derived from the files' ancestor paths — the tree shows exactly the
 // structure sift would pack, honoring every ignore and ext filter.
-func handleListTree(ctx context.Context, args map[string]any, cfg *config.Config) (string, error) {
+func handleListTreeSession(ctx context.Context, args map[string]any, s *session) (string, error) {
+	cfg := s.cfg
 	runCfg := *cfg
 	stringArg(args, "ext", &runCfg.Extensions)
 	stringArg(args, "ignore", &runCfg.CustomIgnore)
 	runCfg.OutputFile = "-" // app.New must not create codebase.md
 
-	metas, _, err := app.Skeleton(ctx, runCfg.RootDir, &runCfg)
+	metas, _, err := app.SkeletonWithCache(ctx, runCfg.RootDir, &runCfg, s.cache)
 	if err != nil {
 		return "", err
 	}
@@ -401,6 +420,25 @@ func handleListTree(ctx context.Context, args map[string]any, cfg *config.Config
 	}
 	fmt.Fprintf(&b, "\n%d files, %d dirs", len(metas), len(dirs))
 	return b.String(), nil
+}
+
+// The non-session handlers preserve the original call shape for tests and
+// one-shot callers; the server always uses the session variants.
+
+func handlePackContext(ctx context.Context, args map[string]any, cfg *config.Config) (string, error) {
+	return handlePackContextSession(ctx, args, newSession(cfg))
+}
+
+func handlePackDiff(ctx context.Context, args map[string]any, cfg *config.Config) (string, error) {
+	return handlePackDiffSession(ctx, args, newSession(cfg))
+}
+
+func handlePackFollow(ctx context.Context, args map[string]any, cfg *config.Config) (string, error) {
+	return handlePackFollowSession(ctx, args, newSession(cfg))
+}
+
+func handleListTree(ctx context.Context, args map[string]any, cfg *config.Config) (string, error) {
+	return handleListTreeSession(ctx, args, newSession(cfg))
 }
 
 func handleGetSkill(args map[string]any) (string, error) {

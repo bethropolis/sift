@@ -23,7 +23,10 @@ const (
 
 // Request controls automatic selection.
 type Request struct {
-	Budget    int
+	Budget int
+	// Overhead is the token cost of the document around the files (prompt,
+	// tree, wrapper, framing). It is reserved before files are selected.
+	Overhead  int
 	MaxStates int    // zero uses the default sparse-DP state limit.
 	Prompt    string // optional task text used to improve path relevance.
 	// Tuning carries the optimizer's numeric knobs. The zero value means the
@@ -316,6 +319,12 @@ func Select(candidates []Candidate, request Request) Result {
 	if request.Budget <= 0 {
 		return selectUnlimited(ordered, result, request.Prompt, tuning)
 	}
+	// Reserve room for the prompt, tree, and wrapper framing so the rendered
+	// document, not just the file bodies, stays inside the budget.
+	effectiveBudget := request.Budget - request.Overhead
+	if effectiveBudget <= 0 {
+		return result
+	}
 
 	// Reserve high-retention files before the DP, with at most two such
 	// reservations per area (and one recent implementation file per area), so
@@ -332,7 +341,7 @@ func Select(candidates []Candidate, request Request) Result {
 	protected := make([]bool, len(ordered))
 	protectedImplAreas := make(map[string]bool)
 	protectedRoleAreas := make(map[string]int)
-	remaining := request.Budget
+	remaining := effectiveBudget
 	for index, candidate := range ordered {
 		if candidate.File.Hidden || candidate.File.GitIgnored {
 			continue

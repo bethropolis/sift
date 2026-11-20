@@ -23,8 +23,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/highlight"
+	"github.com/bethropolis/sift/internal/scan"
 	"github.com/bethropolis/sift/internal/serve/auth"
 	"github.com/bethropolis/sift/internal/serve/jail"
 	"github.com/bethropolis/sift/web"
@@ -63,6 +65,9 @@ type Server struct {
 
 	// Shared theme-independent syntax documents for preview spans.
 	syntaxCache *highlight.SyntaxCache
+	// contentCache is shared across requests so repeated previews and packs
+	// skip tokenizer and signature work. Keyed by content, safe across roots.
+	contentCache *scan.ContentCache
 
 	httpSrv *http.Server
 
@@ -111,6 +116,7 @@ func New(cfg *Config, engineCfg *config.Config, log *slog.Logger) (*Server, erro
 		log:          log,
 		packSem:      make(chan struct{}, 2),
 		syntaxCache:  highlight.NewSyntaxCache(),
+		contentCache: app.NewContentCache(engineCfg),
 		launchTokens: newLaunchTokens(),
 		done:         make(chan struct{}),
 		clones:       newCloneState(),

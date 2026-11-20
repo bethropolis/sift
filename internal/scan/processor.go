@@ -132,6 +132,13 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 	if p.cache != nil {
 		cacheHash = sha256.Sum256(content)
 		if cached, hit := p.cache.GetHashed(cacheHash, mode, p.model, signatureLanguage); hit {
+			// Disk hits carry no raw source; fill it from the caller. A
+			// signature-mode hit renders the compressed text.
+			if mode == ModeSignatures && cached.IsCompressed && len(cached.SigContent) > 0 {
+				cached.Content = cached.SigContent
+			} else if len(cached.Content) == 0 {
+				cached.Content = content
+			}
 			return format.FileEntry{
 				Path:         path,
 				Content:      cached.Content,
@@ -189,6 +196,7 @@ func (p *Processor) Process(path string, content []byte, mode Mode) (format.File
 				if compressed, didCompress := p.compressor.Compress(content, lang); didCompress {
 					content = []byte(compressed)
 					entry.Content = content
+					entry.SigContent = content
 					entry.IsCompressed = true
 					entry.Language = string(lang)
 				}

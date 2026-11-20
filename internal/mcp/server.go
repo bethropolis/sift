@@ -22,6 +22,7 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, cfg *config.Config) erro
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	enc := json.NewEncoder(w)
 
+	sess := newSession(cfg)
 	fmt.Fprintf(os.Stderr, "sift mcp %s — root: %s, %d tools ready\n", cfg.Version, cfg.RootDir, len(toolDefinitions()))
 
 	for scanner.Scan() {
@@ -32,7 +33,7 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, cfg *config.Config) erro
 		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
 			continue // malformed line: keep the loop alive
 		}
-		resp := dispatch(ctx, req, cfg)
+		resp := dispatch(ctx, req, sess)
 		if resp == nil {
 			continue // notification (e.g. notifications/initialized): no reply
 		}
@@ -45,7 +46,8 @@ func Run(ctx context.Context, r io.Reader, w io.Writer, cfg *config.Config) erro
 
 // dispatch routes one request to its handler. It returns nil for
 // notifications, which receive no reply.
-func dispatch(ctx context.Context, req Request, cfg *config.Config) *Response {
+func dispatch(ctx context.Context, req Request, s *session) *Response {
+	cfg := s.cfg
 	if !req.HasID() {
 		return nil
 	}
@@ -80,7 +82,7 @@ func dispatch(ctx context.Context, req Request, cfg *config.Config) *Response {
 		if params.Name == "" {
 			return fail(-32602, "missing tool name")
 		}
-		text, toolErr, ok := callTool(ctx, params.Name, params.Arguments, cfg)
+		text, toolErr, ok := callTool(ctx, params.Name, params.Arguments, s)
 		if !ok {
 			return fail(-32601, "unknown tool: "+params.Name)
 		}

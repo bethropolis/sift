@@ -31,6 +31,17 @@ import (
 // logging) by continuing to use New; only the multi-frontend engine paths
 // use NewBuffered.
 
+func NewBufferedWithCache(cfg *config.Config, cache *scan.ContentCache) (*App, error) {
+	a, err := NewBuffered(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if cache != nil {
+		a.contentCache = cache
+	}
+	return a, nil
+}
+
 // NewBuffered creates an App that renders to buffers only. Unlike New it
 // never creates the configured output file and never writes to stdout, so it
 // is safe to use for serving many projects inside one process.
@@ -48,7 +59,7 @@ func NewBuffered(cfg *config.Config) (*App, error) {
 		cfg:          cfg,
 		log:          log,
 		output:       io.Discard,
-		contentCache: scan.NewContentCache(),
+		contentCache: NewContentCache(cfg),
 		modesMatcher: config.NewModesMatcher(cfg.RootDir, cfg.Modes),
 	}, nil
 }
@@ -70,7 +81,7 @@ func bufferedConfig(root string, cfg *config.Config) *config.Config {
 // against an explicit root with the caller's context. It mirrors collect()
 // but never derives a context from the config timeout alone: when
 // cfg.Timeout is set it bounds the caller's context instead of replacing it.
-func scanWithRoot(ctx context.Context, mode collectMode, root string, cfg *config.Config) ([]format.FileEntry, []walker.SkippedItem, error) {
+func scanWithRoot(ctx context.Context, mode collectMode, root string, cfg *config.Config, cache *scan.ContentCache) ([]format.FileEntry, []walker.SkippedItem, error) {
 	runCfg := bufferedConfig(root, cfg)
 	if runCfg.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -78,7 +89,7 @@ func scanWithRoot(ctx context.Context, mode collectMode, root string, cfg *confi
 		defer cancel()
 	}
 
-	a, err := NewBuffered(runCfg)
+	a, err := NewBufferedWithCache(runCfg, cache)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -108,29 +119,44 @@ func scanWithRoot(ctx context.Context, mode collectMode, root string, cfg *confi
 // content) mode, returning entries ordered by git relevance. The token budget
 // is not applied; callers curate the selection first.
 func Scan(ctx context.Context, root string, cfg *config.Config) ([]format.FileEntry, []walker.SkippedItem, error) {
+	return ScanWithCache(ctx, root, cfg, nil)
+}
+
+// ScanWithCache is Scan sharing a caller-owned cache across invocations.
+func ScanWithCache(ctx context.Context, root string, cfg *config.Config, cache *scan.ContentCache) ([]format.FileEntry, []walker.SkippedItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	return scanWithRoot(ctx, collectBlocking, root, cfg)
+	return scanWithRoot(ctx, collectBlocking, root, cfg, cache)
 }
 
 // ScanPicker walks, processes, and ranks the project at root in picker mode
 // (full + signature content and token counts per file). It backs the TUI,
 // the MCP pack_context tool, and the serve tree endpoint.
 func ScanPicker(ctx context.Context, root string, cfg *config.Config) ([]format.FileEntry, []walker.SkippedItem, error) {
+	return ScanPickerWithCache(ctx, root, cfg, nil)
+}
+
+// ScanPickerWithCache is ScanPicker sharing a caller-owned cache.
+func ScanPickerWithCache(ctx context.Context, root string, cfg *config.Config, cache *scan.ContentCache) ([]format.FileEntry, []walker.SkippedItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	return scanWithRoot(ctx, collectPicker, root, cfg)
+	return scanWithRoot(ctx, collectPicker, root, cfg, cache)
 }
 
 // Skeleton returns file metadata (no content) for root with the caller's
 // context, matching the files a full ScanPicker would enrich.
 func Skeleton(ctx context.Context, root string, cfg *config.Config) ([]walker.FileMeta, []walker.SkippedItem, error) {
+	return SkeletonWithCache(ctx, root, cfg, nil)
+}
+
+// SkeletonWithCache is Skeleton sharing a caller-owned cache.
+func SkeletonWithCache(ctx context.Context, root string, cfg *config.Config, cache *scan.ContentCache) ([]walker.FileMeta, []walker.SkippedItem, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	a, err := NewBuffered(bufferedConfig(root, cfg))
+	a, err := NewBufferedWithCache(bufferedConfig(root, cfg), cache)
 	if err != nil {
 		return nil, nil, err
 	}

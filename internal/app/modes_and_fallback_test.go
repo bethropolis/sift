@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,8 +12,26 @@ import (
 	"github.com/bethropolis/sift/internal/config"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/logger"
+	"github.com/bethropolis/sift/internal/tokenize"
 	"github.com/bethropolis/sift/internal/walker"
 )
+
+// testBudgetWithOverhead converts a desired file-body budget into the total
+// --budget value, adding the prompt/tree/wrapper and per-file framing the
+// renderer will charge.
+func testBudgetWithOverhead(t *testing.T, a *App, want int, files []format.FileEntry) int {
+	t.Helper()
+	tz, err := tokenize.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	style := format.ParseStyle(a.cfg.EffectiveStyle())
+	total := want + a.overheadTokens(tz, style, a.cfg.Prompt, files)
+	for _, f := range files {
+		total += fileFramingTokens(style, f.Path, f.Tokens)
+	}
+	return total
+}
 
 func TestModesCollection(t *testing.T) {
 	requireCompression(t)
@@ -105,7 +124,7 @@ func TestModesCollection(t *testing.T) {
 func TestRenderFallbackCompression(t *testing.T) {
 	cfg := config.New()
 	cfg.FallbackMode = "signatures"
-	cfg.FallbackThreshold = 1.0
+	cfg.FallbackThreshold = 0.75
 	cfg.Budget = 100
 
 	var out bytes.Buffer
@@ -147,6 +166,11 @@ func TestRenderFallbackCompression(t *testing.T) {
 		},
 	}
 
+	app.cfg.Budget = testBudgetWithOverhead(t, app, 100, files)
+	keptDebug := app.fitToBudget(files, app.cfg.Prompt)
+	for _, k := range keptDebug {
+		t.Logf("DEBUG kept %s tokens=%d compressed=%v budget=%d", k.Path, k.Tokens, k.IsCompressed, app.cfg.Budget)
+	}
 	_, err := app.renderWithPrompt(files, nil, time.Second, nil, true, app.cfg.Prompt)
 	if err != nil {
 		t.Fatal(err)
@@ -197,23 +221,22 @@ func Alpha() {
 	}
 
 	file2 := filepath.Join(dir, "beta.go")
-	file2Content := `package main
-
-import "fmt"
-
-func Beta() {
-	for i := 0; i < 100; i++ {
-		fmt.Println("Beta full implementation details")
+	// Beta is deliberately bulky so its full body cannot fit the same budget
+	// as alpha, while its signature can.
+	var beta strings.Builder
+	beta.WriteString("package main\n\nimport \"fmt\"\n\nfunc Beta() {\n")
+	for i := 0; i < 40; i++ {
+		fmt.Fprintf(&beta, "\tfmt.Println(\"Beta full implementation details %d\")\n", i)
 	}
-}
-`
-	if err := os.WriteFile(file2, []byte(file2Content), 0644); err != nil {
+	beta.WriteString("}\n")
+	if err := os.WriteFile(file2, []byte(beta.String()), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	// First let's check token count of one file so we can set an exact budget
 	cfgInit := config.New()
 	cfgInit.RootDir = dir
+	cfgInit.Concurrent = false
 	appInit, err := New(cfgInit)
 	if err != nil {
 		t.Fatal(err)
@@ -233,9 +256,11 @@ func Beta() {
 	// Total tokens: ~60 tokens <= 60 budget!
 	cfg := config.New()
 	cfg.RootDir = dir
+	cfg.Concurrent = false
 	cfg.OutputFile = "-" // capture via app.output instead of a real file
 	cfg.FallbackMode = "signatures"
-	cfg.Budget = filesInit[0].Tokens + 20
+	want := filesInit[0].Tokens + 20
+	cfg.Budget = testBudgetWithOverhead(t, appInit, want, filesInit)
 
 	var out bytes.Buffer
 	app, err := New(cfg)

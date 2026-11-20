@@ -88,9 +88,12 @@ type DependencyRequest struct {
 	Graph      map[string][]string
 	Preferred  map[string]rank.FileScoreResult
 	Budget     int
-	Prompt     string
-	Tuning     selection.Tuning
-	MaxDepth   int
+	// Overhead reserves tokens for the prompt, tree, and framing so the
+	// rendered document fits the budget.
+	Overhead int
+	Prompt   string
+	Tuning   selection.Tuning
+	MaxDepth int
 }
 
 // SelectWithDependencies runs the normal selection pass, expands the
@@ -101,9 +104,10 @@ type DependencyRequest struct {
 // fairly with upgrades instead of starving on post-upgrade crumbs.
 func SelectWithDependencies(req DependencyRequest) selection.Result {
 	first := selection.Select(req.Candidates, selection.Request{
-		Budget: req.Budget,
-		Prompt: req.Prompt,
-		Tuning: req.Tuning,
+		Budget:   req.Budget,
+		Overhead: req.Overhead,
+		Prompt:   req.Prompt,
+		Tuning:   req.Tuning,
 	})
 	deps := ExpandDependencies(first.Selected, req.Files, req.Graph, req.MaxDepth)
 	if len(deps) == 0 {
@@ -142,9 +146,10 @@ func SelectWithDependencies(req DependencyRequest) selection.Result {
 		})
 	}
 	result := selection.Select(second, selection.Request{
-		Budget: req.Budget,
-		Prompt: req.Prompt,
-		Tuning: req.Tuning,
+		Budget:   req.Budget,
+		Overhead: req.Overhead,
+		Prompt:   req.Prompt,
+		Tuning:   req.Tuning,
 	})
 	// Re-attach first-pass verdicts for files the second pass never
 	// considered, so selection reports still render the whole tree. The

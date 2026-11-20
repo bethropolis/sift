@@ -81,6 +81,59 @@ func TestFitToBudget(t *testing.T) {
 	}
 }
 
+// TestFitToBudgetWithFallbackLazy proves signature work runs only for files
+// that actually fall back, and never when everything fits in full.
+func TestFitToBudgetWithFallbackLazy(t *testing.T) {
+	files := []format.FileEntry{
+		{Path: "a.go", Content: []byte("full a"), Tokens: 20, TokensFull: 20},
+		{Path: "b.go", Content: []byte("full b"), Tokens: 20, TokensFull: 20},
+		{Path: "c.go", Content: []byte("full c"), Tokens: 20, TokensFull: 20},
+	}
+	calls := 0
+	provide := func(f format.FileEntry) ([]byte, int, bool) {
+		calls++
+		return []byte("sig " + f.Path), 5, true
+	}
+
+	// Everything fits full: no compression work at all.
+	kept, used := FitToBudgetWithFallbackLazy(files, 100, 1.0, provide)
+	if calls != 0 {
+		t.Fatalf("provider called %d times when all files fit full", calls)
+	}
+	if len(kept) != 3 || used != 60 {
+		t.Fatalf("full fit: kept=%d used=%d", len(kept), used)
+	}
+
+	// Fallback after the threshold compresses only the overflowing tail.
+	calls = 0
+	kept, used = FitToBudgetWithFallbackLazy(files, 100, 0.2, provide)
+	if calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (b and c)", calls)
+	}
+	if len(kept) != 3 || used != 30 {
+		t.Fatalf("fallback fit: kept=%d used=%d", len(kept), used)
+	}
+	if kept[0].IsCompressed {
+		t.Error("first file should stay full")
+	}
+	if !kept[1].IsCompressed || !kept[2].IsCompressed {
+		t.Error("tail files should be compressed")
+	}
+
+	// A provider that cannot compress leaves files full rather than failing.
+	calls = 0
+	kept, _ = FitToBudgetWithFallbackLazy(files, 100, 0.2, func(format.FileEntry) ([]byte, int, bool) {
+		calls++
+		return nil, 0, false
+	})
+	if calls == 0 {
+		t.Fatal("provider should be consulted for fallback candidates")
+	}
+	if len(kept) != 3 {
+		t.Fatalf("uncompressible fallback kept %d files", len(kept))
+	}
+}
+
 func TestFitToBudgetWithFallback(t *testing.T) {
 	files := []format.FileEntry{
 		{

@@ -185,13 +185,7 @@ func (a *App) recountRedactedTokens(files []format.FileEntry) {
 func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool, prompt string) (RenderMetrics, error) {
 	if applyBudget && a.cfg.Budget > 0 {
 		a.infoLog("Applying token budget: %d", a.cfg.Budget)
-		var kept []format.FileEntry
-		if a.cfg.FallbackMode == "signatures" {
-			kept, _ = tokenize.FitToBudgetWithFallback(files, a.cfg.Budget, a.cfg.FallbackThreshold)
-		} else {
-			kept, _ = tokenize.FitToBudget(files, a.cfg.Budget)
-		}
-		files = kept
+		files = a.fitToBudget(files, prompt)
 		if len(files) == 0 {
 			a.log.Warn("Token budget %d is too small for any file.", a.cfg.Budget)
 		}

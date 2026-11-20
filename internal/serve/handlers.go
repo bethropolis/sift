@@ -326,7 +326,7 @@ func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "scan failed")
 		return
 	}
-	files, _, err := app.ScanPicker(r.Context(), root, cfg)
+	files, _, err := app.ScanPickerWithCache(r.Context(), root, cfg, s.contentCache)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "scan failed")
 		return
@@ -463,7 +463,7 @@ func (s *Server) handleSmartSelect(w http.ResponseWriter, r *http.Request) {
 	if body.Budget > 0 {
 		cfg.Budget = body.Budget
 	}
-	files, _, err := app.ScanPicker(r.Context(), root, cfg)
+	files, _, err := app.ScanPickerWithCache(r.Context(), root, cfg, s.contentCache)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "scan failed")
 		return
@@ -552,7 +552,7 @@ func (s *Server) handleFollow(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "scan failed")
 		return
 	}
-	files, skipped, err := app.ScanPicker(r.Context(), root, cfg)
+	files, skipped, err := app.ScanPickerWithCache(r.Context(), root, cfg, s.contentCache)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "scan failed")
 		return
@@ -661,7 +661,7 @@ func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
 	if !redact {
 		cfg.SecretScan = false
 	}
-	files, _, err := app.ScanPicker(r.Context(), root, cfg)
+	files, _, err := app.ScanPickerWithCache(r.Context(), root, cfg, s.contentCache)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "scan failed")
 		return

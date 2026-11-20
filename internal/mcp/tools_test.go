@@ -140,7 +140,7 @@ func TestPackContextRespectsBudget(t *testing.T) {
 	requireCompression(t)
 	root, _ := writeMCPRepo(t)
 	text, err := handlePackContext(context.Background(), map[string]any{
-		"budget": float64(20), "mode": "signatures",
+		"budget": float64(80), "mode": "signatures",
 	}, mcpTestConfig(root))
 	if err != nil {
 		t.Fatal(err)

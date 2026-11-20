@@ -54,6 +54,9 @@ type Config struct {
 	ShowProgress  bool
 	Timeout       time.Duration
 
+	// NoCache disables the persistent on-disk signature cache.
+	NoCache bool
+
 	// Filtering settings
 	IgnoreHidden  bool
 	IgnoreGit     bool
@@ -130,6 +133,7 @@ func New() *Config {
 		WindowTitle:       "",
 		MaxDepth:          2,
 		FallbackThreshold: 1.0,
+		NoCache:           os.Getenv("SIFT_NO_CACHE") == "1",
 	}
 }
 
@@ -195,6 +199,7 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.StringVar(&c.Extensions, "ext", c.Extensions, "Only include files with these extensions (comma-separated, e.g., 'go,md,txt')")
 	fs.BoolVar(&c.IncludeBinary, "binary", c.IncludeBinary, "Include binary files in output (default: skipped)")
 	fs.BoolVar(&c.SmartFilter, "smart", c.SmartFilter, "Skip generated, lockfile, minified, and oversized files")
+	fs.BoolVar(&c.NoCache, "no-cache", c.NoCache, "Disable the persistent on-disk signature cache")
 	fs.IntVar(&c.SmartMaxTokens, "smart-max-tokens", c.SmartMaxTokens, "Per-file token ceiling for the smart filter (default: 15000)")
 	fs.BoolVar(&c.NoColor, "no-color", c.NoColor, "Disable color output")
 	fs.BoolVar(&c.Highlight, "highlight", c.Highlight, "Enable syntax highlighting for terminal output")

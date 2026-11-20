@@ -57,6 +57,8 @@ type ContentCache struct {
 	maxEntries int
 	maxBytes   int64
 	bytes      int64
+	// disk, when set, persists entries across processes.
+	disk *DiskCache
 }
 
 func NewContentCache() *ContentCache {
@@ -103,6 +105,27 @@ func (c *ContentCache) Get(content []byte, mode Mode, model string) (CachedResul
 	return c.GetHashed(sha256.Sum256(content), mode, model, "")
 }
 
+// EnableDisk attaches a persistent layer. Subsequent misses consult it, and
+// new results are written through. Passing nil disables persistence.
+func (c *ContentCache) EnableDisk(d *DiskCache) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.disk = d
+	c.mu.Unlock()
+}
+
+// HasDisk reports whether a persistent layer is attached.
+func (c *ContentCache) HasDisk() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.disk.Enabled()
+}
+
 // GetHashed looks up a precomputed content hash, letting callers hash once
 // and reuse the key for Get+Put instead of paying sha256 twice per file.
 func (c *ContentCache) GetHashed(hash [32]byte, mode Mode, model, language string) (CachedResult, bool) {
@@ -112,13 +135,29 @@ func (c *ContentCache) GetHashed(hash [32]byte, mode Mode, model, language strin
 	key := cacheKey{hash: hash, mode: mode, model: model, language: language}
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	element, ok := c.entries[key]
-	if !ok {
-		return CachedResult{}, false
+	if element, ok := c.entries[key]; ok {
+		c.lru.MoveToFront(element)
+		result := element.Value.(*cacheEntry).result
+		c.mu.Unlock()
+		return result, true
 	}
-	c.lru.MoveToFront(element)
-	return element.Value.(*cacheEntry).result, true
+	disk := c.disk
+	c.mu.Unlock()
+
+	if disk != nil {
+		if result, ok := disk.Get(hash, mode, model, language); ok {
+			c.mu.Lock()
+			if _, exists := c.entries[key]; !exists {
+				element := c.lru.PushFront(&cacheEntry{key: key, result: result})
+				c.entries[key] = element
+				c.bytes += entrySize(result)
+				c.evictLocked()
+			}
+			c.mu.Unlock()
+			return result, true
+		}
+	}
+	return CachedResult{}, false
 }
 
 func (c *ContentCache) Put(content []byte, mode Mode, model string, result CachedResult) {
@@ -136,7 +175,6 @@ func (c *ContentCache) PutHashed(hash [32]byte, mode Mode, model, language strin
 	key := cacheKey{hash: hash, mode: mode, model: model, language: language}
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if element, ok := c.entries[key]; ok {
 		old := element.Value.(*cacheEntry)
 		c.bytes -= entrySize(old.result)
@@ -149,6 +187,12 @@ func (c *ContentCache) PutHashed(hash [32]byte, mode Mode, model, language strin
 		c.bytes += entrySize(result)
 	}
 	c.evictLocked()
+	disk := c.disk
+	c.mu.Unlock()
+
+	if disk != nil {
+		disk.Put(hash, mode, model, language, result)
+	}
 }
 
 // evictLocked drops least-recently-used entries until both bounds hold.
