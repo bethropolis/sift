@@ -160,6 +160,7 @@ func TestScanCancelled(t *testing.T) {
 // TestReadPreviewRedacts ensures previews redact secrets, count post-
 // redaction tokens, and report the language.
 func TestReadPreviewRedacts(t *testing.T) {
+	requireCompression(t)
 	root := testProject(t)
 	cfg := testConfig()
 

@@ -49,6 +49,7 @@ func NewBuffered(cfg *config.Config) (*App, error) {
 		log:          log,
 		output:       io.Discard,
 		contentCache: scan.NewContentCache(),
+		modesMatcher: config.NewModesMatcher(cfg.RootDir, cfg.Modes),
 	}, nil
 }
 
@@ -175,7 +176,7 @@ func RenderBufferSections(ctx context.Context, files []format.FileEntry, prompt 
 	}
 	var buf bytes.Buffer
 	sections := []format.Section{}
-	if err := a.renderDocumentTo(files, prompt, ctxErrWriter{ctx: ctx, w: &buf}, &sections); err != nil {
+	if _, err := a.renderDocumentTo(files, prompt, ctxErrWriter{ctx: ctx, w: &buf}, &sections); err != nil {
 		return nil, nil, err
 	}
 	return buf.Bytes(), sections, nil

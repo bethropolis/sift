@@ -1,7 +1,8 @@
 package main
 
 import (
-	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/state"
 	"github.com/bethropolis/sift/internal/tokenize"
@@ -115,14 +117,15 @@ func runDeltaFull(absRootDir, from, to string, changed []string) error {
 
 	start := time.Now()
 	files, skipped, err := application.Collect()
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
 	if err != nil {
 		return err
 	}
-	if err := application.Render(files, skipped, time.Since(start), err); err != nil {
-		return err
-	}
 
-	if err := recordDumpState(absRootDir, files, to); err != nil {
+	if err := recordRenderMetrics(absRootDir, metrics, to); err != nil {
 		application.LogError("Failed to record dump state: %v", err)
 	}
 	return nil
@@ -136,12 +139,7 @@ func runDeltaPatch(g *rank.Git, absRootDir, from, to string, changed []string) e
 		return fmt.Errorf("sift delta: no changes between %s and %s", from, to)
 	}
 
-	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "<context_update type=\"delta_patch\" from_commit=\"%s\" to_commit=\"%s\">\n", from, to)
-	buf.WriteString("<![CDATA[\n")
-	buf.WriteString(patch)
-	buf.WriteString("\n]]>\n</context_update>\n")
-	body := buf.Bytes()
+	body := []byte(format.RenderContextUpdate(from, to, patch))
 
 	if cfg.Clipboard {
 		if err := clipboard.Copy(body); err != nil {
@@ -153,7 +151,7 @@ func runDeltaPatch(g *rank.Git, absRootDir, from, to string, changed []string) e
 			return err
 		}
 		defer application.Close()
-		if _, err := application.Output().Write(body); err != nil {
+		if err := application.WriteOutput(body); err != nil {
 			return fmt.Errorf("sift delta: %w", err)
 		}
 	}

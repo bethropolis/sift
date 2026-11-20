@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
 	"github.com/bethropolis/sift/internal/state"
@@ -17,6 +18,13 @@ func recordDumpState(rootDir string, files []format.FileEntry, ref string) error
 		tokens += f.Tokens
 	}
 	return recordState(rootDir, ref, len(files), tokens)
+}
+
+// recordRenderMetrics records the counts a render actually emitted (after
+// budget trimming and secret redaction), so the delta baseline matches the
+// document instead of the pre-budget collection.
+func recordRenderMetrics(rootDir string, metrics app.RenderMetrics, ref string) error {
+	return recordState(rootDir, ref, metrics.Files, metrics.Tokens)
 }
 
 // recordDeltaState is recordDumpState for delta dumps, which may not carry

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -36,16 +38,17 @@ var dumpCmd = &cobra.Command{
 
 		start := time.Now()
 		files, skipped, err := application.Collect()
-		if err != nil {
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
-		if err := application.Render(files, skipped, time.Since(start), err); err != nil {
+		metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
+		if err != nil {
 			return err
 		}
 
 		// Record the dump baseline so future delta dumps know what changed
 		// since this scan. Failure to record is non-fatal.
-		if err := recordDumpState(cfg.RootDir, files, "HEAD"); err != nil {
+		if err := recordRenderMetrics(cfg.RootDir, metrics, "HEAD"); err != nil {
 			application.LogError("Failed to record dump state: %v", err)
 		}
 		return nil

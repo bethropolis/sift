@@ -12,6 +12,7 @@ import (
 // signatures, so rendered dumps carry the compressed text rather than the raw
 // source with compressed token counts.
 func TestCollectSignaturesModeCompresses(t *testing.T) {
+	requireCompression(t)
 	root := t.TempDir()
 	writeFile(t, root, "main.go", `package main
 

@@ -15,6 +15,7 @@ import (
 )
 
 func TestModesCollection(t *testing.T) {
+	requireCompression(t)
 	dir := t.TempDir()
 
 	// Create test files
@@ -146,7 +147,7 @@ func TestRenderFallbackCompression(t *testing.T) {
 		},
 	}
 
-	err := app.render(files, nil, time.Second, nil, true)
+	_, err := app.renderWithPrompt(files, nil, time.Second, nil, true, app.cfg.Prompt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +178,7 @@ func TestRenderFallbackCompression(t *testing.T) {
 }
 
 func TestCollectAndRenderFallbackEndToEnd(t *testing.T) {
+	requireCompression(t)
 	dir := t.TempDir()
 
 	file1 := filepath.Join(dir, "alpha.go")
@@ -231,6 +233,7 @@ func Beta() {
 	// Total tokens: ~60 tokens <= 60 budget!
 	cfg := config.New()
 	cfg.RootDir = dir
+	cfg.OutputFile = "-" // capture via app.output instead of a real file
 	cfg.FallbackMode = "signatures"
 	cfg.Budget = filesInit[0].Tokens + 20
 

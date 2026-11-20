@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -70,16 +72,17 @@ restricted to them, so the output contains exactly the edited surface.`,
 
 		start := time.Now()
 		files, skipped, err := application.Collect()
-		if err != nil {
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
-		if err := application.Render(files, skipped, time.Since(start), err); err != nil {
+		metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
+		if err != nil {
 			return err
 		}
 
 		// Record the diffed ref as the dump baseline so a later delta resumes
 		// from exactly what this diff covered. Non-fatal on failure.
-		if err := recordDumpState(absRootDir, files, ref); err != nil {
+		if err := recordRenderMetrics(absRootDir, metrics, ref); err != nil {
 			application.LogError("Failed to record dump state: %v", err)
 		}
 		return nil

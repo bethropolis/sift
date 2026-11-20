@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -105,14 +107,19 @@ func runClone(cmd *cobra.Command, args []string) error {
 
 	start := time.Now()
 	files, skipped, err := application.Collect()
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
 	if err != nil {
 		return err
 	}
-	if err := application.Render(files, skipped, time.Since(start), nil); err != nil {
-		return err
-	}
-	if err := recordDumpState(repoDir, files, "HEAD"); err != nil {
-		application.LogError("Failed to record dump state: %v", err)
+	// A temporary clone is deleted when this command returns, so recording it
+	// would leave a permanently dangling project in state.json.
+	if cloneHere {
+		if err := recordRenderMetrics(repoDir, metrics, "HEAD"); err != nil {
+			application.LogError("Failed to record dump state: %v", err)
+		}
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Dump written to %s\n", cfg.OutputFile)
 	return nil

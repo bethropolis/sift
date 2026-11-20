@@ -2,7 +2,6 @@ package picker
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/bethropolis/sift/internal/app"
@@ -138,19 +137,9 @@ func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped 
 		return rendered, nil
 	}
 
-	out := s.env.App.Output()
-	if f, ok := out.(*os.File); ok && f != os.Stdout && f != os.Stderr {
-		// Truncate after a successful render so repeated generates replace the
-		// previous dump instead of appending to it, without risking data loss
-		// on failure.
-		if err := f.Truncate(0); err != nil {
-			return nil, err
-		}
-		if _, err := f.Seek(0, 0); err != nil {
-			return nil, err
-		}
-	}
-	if _, err := out.Write(rendered); err != nil {
+	// Replace the output document atomically: a failed or partial write must
+	// never leave the previous dump truncated.
+	if err := s.env.App.WriteOutput(rendered); err != nil {
 		return nil, err
 	}
 	if s.cfg.CopyOnGenerate {

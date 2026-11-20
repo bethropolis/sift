@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -52,13 +53,14 @@ var watchCmd = &cobra.Command{
 		// First render.
 		start := time.Now()
 		files, skipped, err := application.Collect()
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
 		if err != nil {
 			return err
 		}
-		if err := application.Render(files, skipped, time.Since(start), err); err != nil {
-			return err
-		}
-		if err := recordDumpState(absRootDir, files, "HEAD"); err != nil {
+		if err := recordRenderMetrics(absRootDir, metrics, "HEAD"); err != nil {
 			application.LogError("Failed to record dump state: %v", err)
 		}
 
@@ -83,10 +85,11 @@ var watchCmd = &cobra.Command{
 					application.LogError("re-render: %v", err)
 					return nil
 				}
-				if err := application.Render(files, skipped, time.Since(start), err); err != nil {
+				metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
+				if err != nil {
 					return err
 				}
-				if err := recordDumpState(absRootDir, files, "HEAD"); err != nil {
+				if err := recordRenderMetrics(absRootDir, metrics, "HEAD"); err != nil {
 					application.LogError("Failed to record dump state: %v", err)
 				}
 				return nil

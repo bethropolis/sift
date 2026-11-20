@@ -1,7 +1,6 @@
 package picker
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -107,27 +106,23 @@ func (s *service) performDelta(files []format.FileEntry, sel tui.DeltaSelection)
 		if strings.TrimSpace(patch) == "" {
 			return fmt.Errorf("no changes between %s and %s", sel.From, sel.To)
 		}
-		var buf bytes.Buffer
-		fmt.Fprintf(&buf, "<context_update type=\"delta_patch\" from_commit=\"%s\" to_commit=\"%s\">\n", sel.From, sel.To)
-		buf.WriteString("<![CDATA[\n")
-		buf.WriteString(patch)
-		buf.WriteString("\n]]>\n</context_update>\n")
+		body := []byte(format.RenderContextUpdate(sel.From, sel.To, patch))
 
 		if sel.Clipboard {
-			if err := clipboard.Copy(buf.Bytes()); err != nil {
+			if err := clipboard.Copy(body); err != nil {
 				return err
 			}
 		} else {
-			if _, err := s.env.App.Output().Write(buf.Bytes()); err != nil {
+			if err := s.env.App.WriteOutput(body); err != nil {
 				return err
 			}
 			if s.cfg.CopyOnGenerate {
-				if err := clipboard.Copy(buf.Bytes()); err != nil {
+				if err := clipboard.Copy(body); err != nil {
 					return fmt.Errorf("copy generated output to clipboard: %w", err)
 				}
 			}
 		}
-		return s.env.RecordDelta(absRootDir, sel.To, len(g.ChangedBetween(sel.From, sel.To)), s.env.CountTokens(buf.Bytes()))
+		return s.env.RecordDelta(absRootDir, sel.To, len(g.ChangedBetween(sel.From, sel.To)), s.env.CountTokens(body))
 	}
 
 	// Full strategy: keep only files changed in the range.

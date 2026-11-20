@@ -20,11 +20,30 @@ import (
 	"github.com/muesli/termenv"
 )
 
+// RenderMetrics reports what a render actually emitted after budget trimming
+// and secret redaction. Callers use it for summaries and for the dump-state
+// baseline, so recorded counts match the document instead of the pre-budget,
+// pre-redaction collection.
+type RenderMetrics struct {
+	Files     int
+	FullCount int
+	SigCount  int
+	Tokens    int
+	Secrets   int
+}
+
 // Render applies the token budget to files and writes the rendered document.
 // A non-nil runErr from Collect is reported but rendering still happens so the
 // output stays well-formed (e.g. valid JSON on timeout).
 func (a *App) Render(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) error {
-	return a.render(files, skippedItems, duration, runErr, true)
+	_, err := a.RenderWithMetrics(files, skippedItems, duration, runErr)
+	return err
+}
+
+// RenderWithMetrics renders like Render and returns the post-budget,
+// post-redaction counts that were actually written.
+func (a *App) RenderWithMetrics(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) (RenderMetrics, error) {
+	return a.renderWithPrompt(files, skippedItems, duration, runErr, true, a.cfg.Prompt)
 }
 
 // RenderFinal renders exactly the given files without re-applying the token
@@ -36,7 +55,8 @@ func (a *App) RenderFinal(files []format.FileEntry, skippedItems []walker.Skippe
 
 // directive without mutating application configuration.
 func (a *App) RenderFinalWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, prompt string) error {
-	return a.renderWithPrompt(files, skippedItems, duration, runErr, false, prompt)
+	_, err := a.renderWithPrompt(files, skippedItems, duration, runErr, false, prompt)
+	return err
 }
 
 // RenderToClipboard renders the given files and copies the result to the
@@ -49,7 +69,7 @@ func (a *App) RenderToClipboard(files []format.FileEntry) error {
 // directive without mutating application configuration.
 func (a *App) RenderToClipboardWithPrompt(files []format.FileEntry, prompt string) error {
 	var buf bytes.Buffer
-	if err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
+	if _, err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
 		return fmt.Errorf("render output: %w", err)
 	}
 	return clipboard.Copy(buf.Bytes())
@@ -62,7 +82,7 @@ func (a *App) RenderToClipboardWithPrompt(files []format.FileEntry, prompt strin
 // truncated, so a failed render never destroys the last good document.
 func (a *App) RenderFinalToBuffer(files []format.FileEntry, prompt string) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
+	if _, err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
@@ -72,7 +92,8 @@ func (a *App) RenderFinalToBuffer(files []format.FileEntry, prompt string) ([]by
 // secret redaction, promotion, and no token budget) and renders it to w. It is
 // the shared render core for file, clipboard, and buffer output. When
 // sections is non-nil it collects one byte range per rendered file.
-func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Writer, sections *[]format.Section) error {
+func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Writer, sections *[]format.Section) (RenderMetrics, error) {
+	var metrics RenderMetrics
 	renderer, err := format.NewRendererWithOptions(format.ParseStyle(a.cfg.EffectiveStyle()), format.RenderOptions{
 		UseColors: a.cfg.UseColors,
 		Highlight: highlight.Options{
@@ -83,7 +104,7 @@ func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Wri
 		Sections: sections,
 	})
 	if err != nil {
-		return err
+		return metrics, err
 	}
 
 	// Scan secrets ONLY on the selected files, right before rendering.
@@ -92,14 +113,23 @@ func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Wri
 	if a.cfg.SecretScan && !a.cfg.ForceSecrets {
 		files = secrets.New().RedactSelectedFiles(files)
 		// Redaction shortens content, so the pre-redaction token count is stale.
-		// Recount redacted files so Doc.TotalTokens matches what is emitted.
+		// Recount redacted files so the totals match what is emitted.
 		a.recountRedactedTokens(files)
 	}
 
-	usedTokens := 0
+	// Metrics are computed from the final (post-redaction) slice so summaries
+	// and recorded dump state agree with the document bytes.
 	for _, f := range files {
-		usedTokens += f.Tokens
+		metrics.Files++
+		metrics.Tokens += f.Tokens
+		metrics.Secrets += f.SecretCount
+		if f.IsCompressed {
+			metrics.SigCount++
+		} else {
+			metrics.FullCount++
+		}
 	}
+
 	paths := make([]string, 0, len(files))
 	for _, f := range files {
 		paths = append(paths, f.Path)
@@ -107,10 +137,10 @@ func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Wri
 	doc := &format.Document{
 		DirectoryTree: format.BuildTree(paths),
 		Files:         files,
-		TotalTokens:   int(usedTokens),
+		TotalTokens:   metrics.Tokens,
 		Instructions:  prompt,
 	}
-	return renderer.Render(doc, w)
+	return metrics, renderer.Render(doc, w)
 }
 
 func terminalHighlightProfile(enabled bool) highlight.ColorProfile {
@@ -152,70 +182,22 @@ func (a *App) recountRedactedTokens(files []format.FileEntry) {
 	}
 }
 
-func (a *App) render(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool) error {
-	return a.renderWithPrompt(files, skippedItems, duration, runErr, applyBudget, a.cfg.Prompt)
-}
-
-func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool, prompt string) error {
-	var usedTokens int
+func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool, prompt string) (RenderMetrics, error) {
 	if applyBudget && a.cfg.Budget > 0 {
 		a.infoLog("Applying token budget: %d", a.cfg.Budget)
 		var kept []format.FileEntry
 		if a.cfg.FallbackMode == "signatures" {
-			kept, usedTokens = tokenize.FitToBudgetWithFallback(files, a.cfg.Budget, a.cfg.FallbackThreshold)
+			kept, _ = tokenize.FitToBudgetWithFallback(files, a.cfg.Budget, a.cfg.FallbackThreshold)
 		} else {
-			kept, usedTokens = tokenize.FitToBudget(files, a.cfg.Budget)
+			kept, _ = tokenize.FitToBudget(files, a.cfg.Budget)
 		}
 		files = kept
 		if len(files) == 0 {
 			a.log.Warn("Token budget %d is too small for any file.", a.cfg.Budget)
 		}
-	} else {
-		for _, f := range files {
-			usedTokens += f.Tokens
-		}
 	}
-	tokenTotal := int64(usedTokens)
 
-	var writeErr error
-	if a.cfg.Clipboard {
-		var buf bytes.Buffer
-		if renderErr := a.renderDocumentTo(files, prompt, &buf, nil); renderErr != nil {
-			writeErr = fmt.Errorf("render output: %w", renderErr)
-		} else if err := clipboard.Copy(buf.Bytes()); err != nil {
-			writeErr = fmt.Errorf("copy output to clipboard: %w", err)
-		} else {
-			a.infoLog("Copied %d files (%d tokens) to clipboard.", len(files), tokenTotal)
-		}
-	} else if a.cfg.CopyOnGenerate {
-		var buf bytes.Buffer
-		if renderErr := a.renderDocumentTo(files, prompt, &buf, nil); renderErr != nil {
-			writeErr = fmt.Errorf("render output: %w", renderErr)
-		} else {
-			out, err := a.ensureOutput()
-			if err != nil {
-				writeErr = err
-			} else if _, err := out.Write(buf.Bytes()); err != nil {
-				writeErr = fmt.Errorf("write output: %w", err)
-			} else if err := clipboard.Copy(buf.Bytes()); err != nil {
-				writeErr = fmt.Errorf("copy generated output to clipboard: %w", err)
-			}
-		}
-	} else {
-		out, err := a.ensureOutput()
-		if err != nil {
-			writeErr = err
-		} else {
-			// Buffer the render: renderers emit one fmt.Fprintf per line/fence,
-			// which would otherwise be a write syscall per call on large dumps.
-			bufw := bufio.NewWriterSize(out, 256<<10)
-			if renderErr := a.renderDocumentTo(files, prompt, bufw, nil); renderErr != nil {
-				writeErr = fmt.Errorf("render output: %w", renderErr)
-			} else if flushErr := bufw.Flush(); flushErr != nil {
-				writeErr = fmt.Errorf("write output: %w", flushErr)
-			}
-		}
-	}
+	metrics, writeErr := a.renderToDestination(files, prompt)
 
 	if runErr != nil {
 		if errors.Is(runErr, context.DeadlineExceeded) {
@@ -224,39 +206,29 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 			a.log.Error("Critical error during directory walk: %v", runErr)
 		}
 		if writeErr != nil {
-			return errors.Join(runErr, writeErr)
+			return metrics, errors.Join(runErr, writeErr)
 		}
-		return runErr
+		return metrics, runErr
 	}
 	if writeErr != nil {
-		return writeErr
-	}
-
-	var fullCount, sigCount, totalSecrets int
-	for _, f := range files {
-		if f.IsCompressed {
-			sigCount++
-		} else {
-			fullCount++
-		}
-		totalSecrets += f.SecretCount
+		return metrics, writeErr
 	}
 
 	stats := summary.DumpStats{
-		FileCount:         len(files),
-		FullCount:         fullCount,
-		SigCount:          sigCount,
+		FileCount:         metrics.Files,
+		FullCount:         metrics.FullCount,
+		SigCount:          metrics.SigCount,
 		SkippedCount:      len(skippedItems),
-		TotalTokens:       tokenTotal,
+		TotalTokens:       int64(metrics.Tokens),
 		Budget:            a.cfg.Budget,
 		Duration:          duration,
 		OutputFile:        a.cfg.OutputFile,
 		OutputStyle:       a.cfg.EffectiveStyle(),
 		IsClipboard:       a.cfg.Clipboard,
-		SecretCount:       totalSecrets,
+		SecretCount:       metrics.Secrets,
 		FallbackMode:      a.cfg.FallbackMode,
 		FallbackThreshold: a.cfg.FallbackThreshold,
-		FallbackApplied:   sigCount > 0 && a.cfg.FallbackMode == "signatures",
+		FallbackApplied:   metrics.SigCount > 0 && a.cfg.FallbackMode == "signatures",
 	}
 
 	// When dumping to stdout (-o - or empty output), send the human summary to stderr
@@ -268,11 +240,74 @@ func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.S
 	}
 
 	summary.PrintDumpSummary(summaryOut, stats, a.cfg.UseColors, a.cfg.Quiet)
-	summary.DisplayResults(a.log, int64(len(files)), tokenTotal, duration, a.cfg.Quiet)
+	summary.DisplayResults(a.log, int64(metrics.Files), int64(metrics.Tokens), duration, a.cfg.Quiet)
 
 	if a.cfg.ShowSkipped {
 		summary.DisplaySkippedItems(a.log, skippedItems, summaryOut, a.cfg.Quiet)
 	}
 
-	return nil
+	return metrics, nil
+}
+
+// renderToDestination writes the document to the configured sink and returns
+// the counts that were emitted. File output is replaced atomically: watch
+// re-renders and repeated generates never append to a previous document.
+func (a *App) renderToDestination(files []format.FileEntry, prompt string) (RenderMetrics, error) {
+	switch {
+	case a.cfg.Clipboard:
+		var buf bytes.Buffer
+		metrics, err := a.renderDocumentTo(files, prompt, &buf, nil)
+		if err != nil {
+			return metrics, fmt.Errorf("render output: %w", err)
+		}
+		if err := clipboard.Copy(buf.Bytes()); err != nil {
+			return metrics, fmt.Errorf("copy output to clipboard: %w", err)
+		}
+		a.infoLog("Copied %d files (%d tokens) to clipboard.", metrics.Files, metrics.Tokens)
+		return metrics, nil
+
+	case a.cfg.CopyOnGenerate:
+		var buf bytes.Buffer
+		metrics, err := a.renderDocumentTo(files, prompt, &buf, nil)
+		if err != nil {
+			return metrics, fmt.Errorf("render output: %w", err)
+		}
+		if err := a.WriteOutput(buf.Bytes()); err != nil {
+			return metrics, err
+		}
+		if err := clipboard.Copy(buf.Bytes()); err != nil {
+			return metrics, fmt.Errorf("copy generated output to clipboard: %w", err)
+		}
+		return metrics, nil
+
+	default:
+		if a.outputPath == "" || a.cfg.OutputFile == "-" {
+			out, err := a.ensureOutput()
+			if err != nil {
+				return RenderMetrics{}, err
+			}
+			// Buffer the render: renderers emit one fmt.Fprintf per line/fence,
+			// which would otherwise be a write syscall per call on large dumps.
+			bufw := bufio.NewWriterSize(out, 256<<10)
+			metrics, renderErr := a.renderDocumentTo(files, prompt, bufw, nil)
+			if renderErr != nil {
+				return metrics, fmt.Errorf("render output: %w", renderErr)
+			}
+			if flushErr := bufw.Flush(); flushErr != nil {
+				return metrics, fmt.Errorf("write output: %w", flushErr)
+			}
+			return metrics, nil
+		}
+
+		var metrics RenderMetrics
+		err := writeFileAtomic(a.outputPath, func(w io.Writer) error {
+			var renderErr error
+			metrics, renderErr = a.renderDocumentTo(files, prompt, w, nil)
+			if renderErr != nil {
+				return fmt.Errorf("render output: %w", renderErr)
+			}
+			return nil
+		})
+		return metrics, err
+	}
 }
