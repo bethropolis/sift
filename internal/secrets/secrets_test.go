@@ -1,8 +1,10 @@
 package secrets
 
 import (
+	"crypto/sha256"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/bethropolis/sift/internal/format"
@@ -104,6 +106,49 @@ func TestGenericAPIKeyRedactsValue(t *testing.T) {
 			t.Errorf("%q: redacted the whole line: %q", sample, out)
 		}
 	}
+}
+
+func TestRedactContentCleanMemo(t *testing.T) {
+	s := New()
+	clean := []byte("package main\n\nfunc main() {}\n")
+	hash := sha256.Sum256(clean)
+	if s.clean.has(hash) {
+		t.Fatal("clean hash cached before scanning")
+	}
+	redacted, detections := s.RedactContent(clean)
+	if len(detections) != 0 || string(redacted) != string(clean) {
+		t.Fatalf("clean scan changed content: %q %+v", redacted, detections)
+	}
+	if !s.clean.has(hash) {
+		t.Fatal("clean hash not memoized")
+	}
+
+	dirty := []byte(`const aws = "AKIAIOSFODNN7EXAMPLE"`)
+	if _, detections := s.RedactContent(dirty); len(detections) == 0 {
+		t.Fatal("expected a detection")
+	}
+	if s.clean.has(sha256.Sum256(dirty)) {
+		t.Fatal("content with detections was cached as clean")
+	}
+}
+
+func TestDefaultScannerConcurrent(t *testing.T) {
+	s := Default()
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				content := []byte("package p\nfunc f() {}\n")
+				if i%2 == 0 {
+					content = []byte(`const aws = "AKIAIOSFODNN7EXAMPLE"`)
+				}
+				s.RedactContent(content)
+			}
+		}(i)
+	}
+	wg.Wait()
 }
 
 func TestRedactContentEmpty(t *testing.T) {

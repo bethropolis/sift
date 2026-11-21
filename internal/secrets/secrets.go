@@ -3,12 +3,25 @@ package secrets
 
 import (
 	"bytes"
+	"container/list"
+	"crypto/sha256"
 	"regexp"
 	"runtime"
 	"strings"
 	"sync"
 
 	"github.com/bethropolis/sift/internal/format"
+)
+
+const (
+	// maxSecretWorkers leaves at least one CPU for the TUI/HTTP loop. A dump
+	// on a 32-core host should never occupy every core redacting signatures.
+	maxSecretWorkers = 4
+
+	// cleanCacheEntries bounds the process-wide memo of content hashes that
+	// scanned clean. Only the boolean is cached; no content or detections are
+	// retained. 4096 entries is enough for repeated dumps of a large repo.
+	cleanCacheEntries = 4096
 )
 
 // Detection describes a single secret found in a file.
@@ -33,11 +46,85 @@ type Scanner struct {
 	// per-file hot path never re-lowercases the same literals for every rule.
 	prepared     sync.Once
 	keywordBytes [][][]byte // per rule index; nil when the rule has no keywords
+
+	// clean memoizes content hashes that produced zero detections. Repeated
+	// dumps and packs then skip the regex pass entirely for unchanged files.
+	// Detected content is deliberately never cached.
+	clean *cleanCache
 }
 
-// New returns a Scanner backed by the generated gitleaks rules.
+var (
+	defaultOnce    sync.Once
+	defaultScanner *Scanner
+)
+
+// New returns a Scanner backed by the generated gitleaks rules. Each scanner
+// owns its clean-content memo; long-lived callers should use Default.
 func New() *Scanner {
-	return &Scanner{rules: CompiledRules}
+	return &Scanner{rules: CompiledRules, clean: newCleanCache(cleanCacheEntries)}
+}
+
+// Default returns the process-wide scanner. Its prepared keyword tables and
+// clean-content memo are shared by every dump, pack, preview, and disk-cache
+// write in the process.
+func Default() *Scanner {
+	defaultOnce.Do(func() { defaultScanner = New() })
+	return defaultScanner
+}
+
+// cleanCache is a small LRU of SHA-256 content hashes known to contain no
+// secrets. It is safe for concurrent use.
+type cleanCache struct {
+	mu      sync.Mutex
+	max     int
+	entries map[[32]byte]*list.Element
+	lru     *list.List
+}
+
+func newCleanCache(max int) *cleanCache {
+	if max <= 0 {
+		max = cleanCacheEntries
+	}
+	return &cleanCache{
+		max:     max,
+		entries: make(map[[32]byte]*list.Element, max),
+		lru:     list.New(),
+	}
+}
+
+func (c *cleanCache) has(hash [32]byte) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	el, ok := c.entries[hash]
+	if !ok {
+		return false
+	}
+	c.lru.MoveToFront(el)
+	return true
+}
+
+func (c *cleanCache) add(hash [32]byte) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if el, ok := c.entries[hash]; ok {
+		c.lru.MoveToFront(el)
+		return
+	}
+	c.entries[hash] = c.lru.PushFront(hash)
+	for c.lru.Len() > c.max {
+		oldest := c.lru.Back()
+		if oldest == nil {
+			break
+		}
+		c.lru.Remove(oldest)
+		delete(c.entries, oldest.Value.([32]byte))
+	}
 }
 
 // prepare computes the lowercase keyword forms on first use.
@@ -67,6 +154,11 @@ func (s *Scanner) RedactContent(content []byte) ([]byte, []Detection) {
 		return content, nil
 	}
 	s.prepare()
+
+	hash := sha256.Sum256(content)
+	if s.clean.has(hash) {
+		return content, nil
+	}
 
 	contentLower := bytes.ToLower(content)
 	var detections []Detection
@@ -126,6 +218,7 @@ func (s *Scanner) RedactContent(content []byte) ([]byte, []Detection) {
 	}
 
 	if redacted == nil {
+		s.clean.add(hash)
 		return content, nil
 	}
 	return redacted, detections
@@ -146,11 +239,24 @@ func matchRanges(rule Rule, src []byte) (spans [][2]int, candidates [][]byte) {
 	}
 
 	group := filter.SecretGroup
-	for _, m := range rule.Regex.FindAllSubmatchIndex(src, -1) {
-		if 2*group+1 >= len(m) {
-			continue
+	// Run the fast DFA FindAllIndex over the whole file, then re-match only
+	// the tiny full-match slice when a capture group is needed. Calling
+	// FindAllSubmatchIndex over full source falls back to RE2's much slower NFA
+	// engine for every keyword-heavy file.
+	for _, m := range rule.Regex.FindAllIndex(src, -1) {
+		start, end := m[0], m[1]
+		if group > 0 {
+			sub := rule.Regex.FindSubmatchIndex(src[start:end])
+			if 2*group+1 >= len(sub) {
+				continue
+			}
+			relStart, relEnd := sub[2*group], sub[2*group+1]
+			if relStart < 0 || relEnd <= relStart {
+				continue
+			}
+			start += relStart
+			end = start + (relEnd - relStart)
 		}
-		start, end := m[2*group], m[2*group+1]
 		if start < 0 || end <= start {
 			continue
 		}
@@ -172,7 +278,13 @@ func (s *Scanner) RedactSelectedFiles(files []format.FileEntry) []format.FileEnt
 		return files
 	}
 
-	workers := runtime.NumCPU()
+	workers := runtime.NumCPU() - 1
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > maxSecretWorkers {
+		workers = maxSecretWorkers
+	}
 	if workers > len(files) {
 		workers = len(files)
 	}

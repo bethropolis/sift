@@ -147,7 +147,7 @@ func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Wri
 	// Scanning is deliberately kept out of the walker so the directory scan
 	// stays fast; only the files that will actually be emitted are inspected.
 	if a.cfg.SecretScan && !a.cfg.ForceSecrets {
-		files = secrets.New().RedactSelectedFiles(files)
+		files = secrets.Default().RedactSelectedFiles(files)
 		// Redaction shortens content, so the pre-redaction token count is stale.
 		// Recount redacted files so the totals match what is emitted.
 		a.recountRedactedTokens(files)

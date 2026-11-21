@@ -255,7 +255,7 @@ func ReadPreview(root string, relativePath string, mode string, maxBytes int64, 
 	}
 	if cfg.SecretScan {
 		var detections []secrets.Detection
-		body, detections = secrets.New().RedactContent(body)
+		body, detections = secrets.Default().RedactContent(body)
 		redactions = len(detections)
 	}
 	tokens = entry.TokensFull

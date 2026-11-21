@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -42,7 +43,6 @@ type DiskCache struct {
 	maxBytes int64
 	version  int
 	puts     atomic.Int64
-	scanner  *secrets.Scanner
 }
 
 // NewDiskCache creates a cache rooted at dir. A non-positive maxBytes uses the
@@ -96,6 +96,7 @@ func (d *DiskCache) Get(hash [32]byte, mode Mode, model, language string) (Cache
 	if err != nil {
 		return CachedResult{}, false
 	}
+	defer zr.Close()
 	var entry diskEntry
 	if err := json.NewDecoder(zr).Decode(&entry); err != nil {
 		return CachedResult{}, false
@@ -120,10 +121,7 @@ func (d *DiskCache) Put(hash [32]byte, mode Mode, model, language string, result
 		return
 	}
 	if len(result.SigContent) > 0 {
-		if d.scanner == nil {
-			d.scanner = secrets.New()
-		}
-		if _, detections := d.scanner.RedactContent(result.SigContent); len(detections) > 0 {
+		if _, detections := secrets.Default().RedactContent(result.SigContent); len(detections) > 0 {
 			return
 		}
 	}
@@ -178,6 +176,12 @@ func (d *DiskCache) prune() {
 	items := make([]item, 0, len(entries))
 	var total int64
 	for _, e := range entries {
+		// Only finished entries count. Ignore dot-prefixed temp files: another
+		// worker may be writing one right now, and deleting it would turn a
+		// successful Put into a rename failure.
+		if !strings.HasSuffix(e.Name(), ".json.gz") {
+			continue
+		}
 		info, err := e.Info()
 		if err != nil || info.IsDir() {
 			continue

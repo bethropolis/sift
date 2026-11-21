@@ -32,6 +32,19 @@ func BenchmarkRedactContentClean(b *testing.B) {
 	}
 }
 
+// BenchmarkRedactContentCachedClean measures the repeated-dump path: the
+// content hash is already known clean, so only the hash lookup runs.
+func BenchmarkRedactContentCachedClean(b *testing.B) {
+	s := New()
+	s.RedactContent(benchCleanContent)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(benchCleanContent)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.RedactContent(benchCleanContent)
+	}
+}
+
 // BenchmarkRedactContentSecret measures the detection path: at least one rule
 // matches and the content is redacted in place.
 func BenchmarkRedactContentSecret(b *testing.B) {

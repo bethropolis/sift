@@ -100,6 +100,37 @@ func TestDiskCacheConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
+func TestDiskCacheConcurrentSecretPut(t *testing.T) {
+	d := NewDiskCache(t.TempDir(), 0)
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			hash := sha256.Sum256([]byte{byte(i)})
+			d.Put(hash, ModePicker, "m", "go", CachedResult{
+				TokensSig:  10,
+				SigContent: []byte("package p\n\nfunc F() {}\n"),
+			})
+			d.Get(hash, ModePicker, "m", "go")
+		}(i)
+	}
+	wg.Wait()
+}
+
+func TestDiskCachePruneIgnoresInFlightTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	d := NewDiskCache(dir, 1)
+	tmp := filepath.Join(dir, ".entry-inflight.tmp")
+	if err := os.WriteFile(tmp, make([]byte, 128), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d.prune()
+	if _, err := os.Stat(tmp); err != nil {
+		t.Fatalf("prune removed an in-flight temp file: %v", err)
+	}
+}
+
 func TestDiskCachePrune(t *testing.T) {
 	dir := t.TempDir()
 	d := NewDiskCache(dir, 300)
