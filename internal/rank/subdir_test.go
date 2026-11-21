@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -96,6 +97,45 @@ func TestChangedBetweenSubdirAndQuotedNames(t *testing.T) {
 	got := g.ChangedBetween("HEAD~1", "HEAD")
 	if len(got) != 1 || got[0] != "na me ü.go" {
 		t.Fatalf("ChangedBetween = %q, want [na me ü.go]", got)
+	}
+}
+
+func TestRawPatchScopedToScanRoot(t *testing.T) {
+	repo := subdirRepo(t, map[string]string{
+		"root.go":  "package root\n",
+		"sub/a.go": "package sub\n",
+		"sub/b.go": "package sub\n",
+	})
+	if err := os.WriteFile(filepath.Join(repo, "root.go"), []byte("package root\n// root change\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "sub", "a.go"), []byte("package sub\n// sub change\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, repo, "add", ".")
+	gitCmd(t, repo, "commit", "-q", "-m", "changes")
+
+	g := New(filepath.Join(repo, "sub"))
+	patch := g.RawPatch("HEAD~1", "HEAD")
+	if !strings.Contains(patch, "a.go") {
+		t.Fatalf("RawPatch missing sub file:\n%s", patch)
+	}
+	if strings.Contains(patch, "root.go") {
+		t.Fatalf("RawPatch leaked a file outside the scan root:\n%s", patch)
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, "root.go"), []byte("package root\n// dirty root\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "sub", "b.go"), []byte("package sub\n// dirty sub\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	worktree := g.RawWorktreePatch("HEAD")
+	if !strings.Contains(worktree, "b.go") {
+		t.Fatalf("RawWorktreePatch missing sub file:\n%s", worktree)
+	}
+	if strings.Contains(worktree, "root.go") {
+		t.Fatalf("RawWorktreePatch leaked a file outside the scan root:\n%s", worktree)
 	}
 }
 

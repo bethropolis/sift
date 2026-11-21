@@ -98,7 +98,8 @@ func (r *markdownRenderer) Render(doc *Document, w io.Writer) error {
 	}
 
 	if doc.Patch != "" {
-		if err := fprint(out, "## Diff\n\n```diff\n%s\n```\n\n", doc.Patch); err != nil {
+		fence := negotiateFence([]byte(doc.Patch))
+		if err := fprint(out, "## Diff\n\n%sdiff\n%s\n%s\n\n", fence, doc.Patch, fence); err != nil {
 			return err
 		}
 	}

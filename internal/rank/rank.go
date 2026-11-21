@@ -470,16 +470,17 @@ func splitCommit(line string) (short, hash, subject string) {
 	return fields[0], fields[1], fields[2]
 }
 
-// RawPatch returns the unified diff between from and to.
+// RawPatch returns the unified diff between from and to, scoped to the
+// ranker's project root (which may be a subdirectory of the git repository).
 func (g *Git) RawPatch(from, to string) string {
 	if cleanRef(from) == "" || cleanRef(to) == "" {
 		return ""
 	}
-	return g.runDiff(from+".."+to, "--")
+	return g.runDiff(from+".."+to, "--", ".")
 }
 
 // RawWorktreePatch returns the unified diff of uncommitted working-tree
-// changes against ref (usually HEAD).
+// changes against ref (usually HEAD), scoped to the ranker's project root.
 func (g *Git) RawWorktreePatch(ref string) string {
 	if ref == "" {
 		ref = "HEAD"
@@ -487,7 +488,7 @@ func (g *Git) RawWorktreePatch(ref string) string {
 	if cleanRef(ref) == "" {
 		return ""
 	}
-	return g.runDiff(ref, "--")
+	return g.runDiff(ref, "--", ".")
 }
 
 // ChangedBetween returns the paths changed between two refs.

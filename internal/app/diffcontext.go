@@ -112,6 +112,10 @@ func DiffNeighborFiles(cfg *config.Config, files []format.FileEntry, changed []s
 			entry.Tokens = entry.TokensSig
 			entry.IsCompressed = true
 			entry.SigContent = nil
+		} else {
+			// CollectPicker leaves Tokens at -1; the renderer must never emit
+			// a negative token attribute for an unsupported/no-CGO neighbor.
+			entry.Tokens = entry.TokensFull
 		}
 		out = append(out, entry)
 	}

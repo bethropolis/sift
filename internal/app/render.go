@@ -153,15 +153,22 @@ func (a *App) renderDocument(files []format.FileEntry, prompt string, w io.Write
 		return metrics, err
 	}
 
-	// Scan secrets ONLY on the selected files, right before rendering.
-	// Scanning is deliberately kept out of the walker so the directory scan
-	// stays fast; only the files that will actually be emitted are inspected.
+	// Scan secrets ONLY on the selected files and patch, right before
+	// rendering. Scanning is deliberately kept out of the walker so the
+	// directory scan stays fast; only the bytes actually emitted are inspected.
+	patch := a.patch
+	patchSecrets := 0
 	if scanSecrets && a.cfg.SecretScan && !a.cfg.ForceSecrets {
 		start := time.Now()
 		files = secrets.Default().RedactSelectedFiles(files)
 		// Redaction shortens content, so the pre-redaction token count is stale.
 		// Recount redacted files so the totals match what is emitted.
 		a.recountRedactedTokens(files)
+		if patch != "" {
+			redacted, detections := secrets.Default().RedactContent([]byte(patch))
+			patch = string(redacted)
+			patchSecrets = len(detections)
+		}
 		a.LogDebug("secrets timing: %s files=%d", time.Since(start).Round(time.Millisecond), len(files))
 	}
 
@@ -177,6 +184,7 @@ func (a *App) renderDocument(files []format.FileEntry, prompt string, w io.Write
 			metrics.FullCount++
 		}
 	}
+	metrics.Secrets += patchSecrets
 
 	paths := make([]string, 0, len(files))
 	for _, f := range files {
@@ -188,7 +196,7 @@ func (a *App) renderDocument(files []format.FileEntry, prompt string, w io.Write
 		TotalTokens:       metrics.Tokens,
 		Instructions:      prompt,
 		ArchitectureGraph: a.archGraph,
-		Patch:             a.patch,
+		Patch:             patch,
 	}
 	start := time.Now()
 	err = renderer.Render(doc, w)

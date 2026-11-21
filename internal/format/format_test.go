@@ -47,6 +47,14 @@ func TestBuildTree(t *testing.T) {
 	}
 }
 
+func TestMarkdownDiffFenceNegotiatesBackticks(t *testing.T) {
+	doc := &Document{Patch: "diff --git a/x b/x\n+```go\n+code\n+```\n"}
+	got := render(t, StyleMarkdown, doc, false)
+	if !strings.Contains(got, "````diff\n") {
+		t.Fatalf("diff fence did not grow past the patch's triple backticks:\n%s", got)
+	}
+}
+
 func TestRenderPlain(t *testing.T) {
 	doc := &Document{
 		Files: []FileEntry{
