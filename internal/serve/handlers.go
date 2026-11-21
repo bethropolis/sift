@@ -407,7 +407,7 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusForbidden, "cannot read that file")
 		return
 	}
-	content, tokens, _, language, truncated, err := app.ReadPreview(root, filepath.ToSlash(rel), mode, previewCap, cfg)
+	content, tokens, _, language, truncated, err := app.ReadPreviewWithCache(root, filepath.ToSlash(rel), mode, previewCap, cfg, s.contentCache)
 	if err != nil {
 		writeAPIError(w, http.StatusForbidden, "cannot read that file")
 		return

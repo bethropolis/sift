@@ -233,10 +233,17 @@ func RenderBufferSections(ctx context.Context, files []format.FileEntry, prompt 
 // the detected language. Redaction defaults on: when cfg.ForceSecrets is set
 // the call is refused, so previews can never silently leak secrets.
 func ReadPreview(root string, relativePath string, mode string, maxBytes int64, cfg *config.Config) (content []byte, tokens int, redactions int, language string, truncated bool, err error) {
+	return ReadPreviewWithCache(root, relativePath, mode, maxBytes, cfg, nil)
+}
+
+// ReadPreviewWithCache is ReadPreview sharing the caller's content cache.
+// Serve uses this so repeated previews of unchanged files skip tokenizer and
+// signature work instead of building a fresh cache per request.
+func ReadPreviewWithCache(root string, relativePath string, mode string, maxBytes int64, cfg *config.Config, cache *scan.ContentCache) (content []byte, tokens int, redactions int, language string, truncated bool, err error) {
 	if cfg.ForceSecrets {
 		return nil, 0, 0, "", false, fmt.Errorf("preview refuses to expose unredacted secrets")
 	}
-	a, err := NewBuffered(bufferedConfig(root, cfg))
+	a, err := NewBufferedWithCache(bufferedConfig(root, cfg), cache)
 	if err != nil {
 		return nil, 0, 0, "", false, err
 	}

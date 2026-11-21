@@ -213,6 +213,24 @@ func TestReadPreviewTruncates(t *testing.T) {
 	}
 }
 
+// TestReadPreviewWithCache exercises the serve path: preview generation must
+// accept a caller-owned cache instead of building a fresh one per request.
+func TestReadPreviewWithCache(t *testing.T) {
+	root := testProject(t)
+	cfg := testConfig()
+	cache := NewContentCache(cfg)
+
+	for i := 0; i < 2; i++ {
+		content, tokens, _, language, truncated, err := ReadPreviewWithCache(root, "main.go", "full", 1<<20, cfg, cache)
+		if err != nil {
+			t.Fatalf("ReadPreviewWithCache: %v", err)
+		}
+		if truncated || len(content) == 0 || tokens <= 0 {
+			t.Fatalf("unexpected preview: len=%d tokens=%d lang=%q truncated=%v", len(content), tokens, language, truncated)
+		}
+	}
+}
+
 // TestReadPreviewRefusesForceSecrets ensures previews never run unredacted.
 func TestReadPreviewRefusesForceSecrets(t *testing.T) {
 	root := testProject(t)
