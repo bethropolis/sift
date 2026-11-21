@@ -32,14 +32,12 @@ comes down to how the client starts the subprocess:
   For these you must pass an **absolute path** explicitly, which in
   practice means one config block per repo you want to serve.
 - **The spec-correct mechanism** for this is the MCP `roots` capability,
-  where the *client* tells the server its workspace root over the
-  protocol (`roots/list`) instead of the server inferring it from process
-  cwd. Some harnesses (Claude Code, OpenCode) already lean on this model.
-  sift's server doesn't implement `roots/list` yet — cwd-at-launch is the
-  current mechanism, and `roots` support is on the roadmap so a single
-  long-lived server instance could serve multiple open folders correctly.
-  Until then, cwd-per-launch is what makes the "global config" pattern
-  work, and it covers every harness below except Claude Desktop.
+  where the *client* tells the server its workspace roots over the
+  protocol (`roots/list`) instead of the server inferring them from process
+  cwd. Sift requests roots when the client advertises the capability and
+  refreshes them on `notifications/roots/list_changed`. The startup `[path]`
+  or cwd remains the fallback for clients that do not implement roots.
+  This lets one long-lived server follow the folders the client has open.
 
 ## Requirements
 
@@ -332,5 +330,5 @@ design.
 | `pack_context` returns the wrong repo's content | The client launched the subprocess with a stale/wrong cwd (rare, but happens with some plugin/user-scope combinations) — pass an explicit path as a workaround, or check the client's scope settings. |
 | Works in one client, not another, with identical config | The other client may not set cwd to the open project (see [Setup](#setup-one-global-entry-or-one-per-project) — Claude Desktop is the common case) — pass an explicit path. |
 | `pack_context` returns far more than `budget` | `budget` omitted or zero means *unlimited*, not "a small default" — always pass an explicit token budget. |
-| Client repeatedly retries `resources/list` | Client assumes resources support; harmless, confirms this server is tools-only. |
+| Client repeatedly retries `resources/list` | The server advertises and serves resources; a client that ignores the capability may retry harmlessly. |
 | JSON parse errors in the client log | Something else (a wrapper script, a shell rc file) is writing to stdout before the JSON-RPC handshake. |

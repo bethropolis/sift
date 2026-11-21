@@ -54,7 +54,7 @@ func TestHelpOutputContainsSections(t *testing.T) {
 	}
 
 	// Verify key commands appear
-	for _, cmdName := range []string{"dump", "pick", "select", "diff", "serve"} {
+	for _, cmdName := range []string{"dump", "pick", "select", "diff", "serve", "stats", "init", "hook"} {
 		if !strings.Contains(out, cmdName) {
 			t.Errorf("root help output missing command %q", cmdName)
 		}
@@ -125,6 +125,22 @@ func TestServeHelpShowsAppAndCommandOptions(t *testing.T) {
 
 	if !strings.Contains(out, "sift serve --app") {
 		t.Errorf("serve help missing 'sift serve --app' example:\n%s", out)
+	}
+}
+
+func TestOperationalCommandsShowExamples(t *testing.T) {
+	for _, tc := range []struct {
+		cmd string
+		ex  string
+	}{
+		{"stats", "sift stats --json"},
+		{"init", "sift init --stdout"},
+		{"hook", "sift hook install"},
+	} {
+		out := helpFor(t, tc.cmd, false)
+		if !strings.Contains(out, "EXAMPLES:") || !strings.Contains(out, tc.ex) {
+			t.Errorf("%s help missing example %q:\n%s", tc.cmd, tc.ex, out)
+		}
 	}
 }
 

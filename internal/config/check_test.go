@@ -67,6 +67,45 @@ output = "guidance.md"
 	}
 }
 
+func TestValidateConfigTokenizersAndOutlineSummary(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".sift.toml")
+	content := `
+[modes]
+outline = ["docs/**"]
+
+[profiles.bad]
+tokenize_model = "definitely-not-a-model"
+
+[[targets]]
+name = "bad"
+output = "out.md"
+tokenize_model = "definitely-not-a-model"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := ValidateConfigFile(configPath, tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Valid {
+		t.Fatal("expected invalid tokenizer config")
+	}
+	fields := map[string]bool{}
+	for _, issue := range result.Issues {
+		fields[issue.Field] = true
+	}
+	for _, field := range []string{"profiles.bad.tokenize_model", "target \"bad\".tokenize_model"} {
+		if !fields[field] {
+			t.Errorf("missing validation issue for %q: %+v", field, result.Issues)
+		}
+	}
+	if result.Summary.Modes == nil || result.Summary.Modes.OutlineCount != 1 {
+		t.Fatalf("modes summary = %+v, want one outline pattern", result.Summary.Modes)
+	}
+}
+
 func TestValidateConfigFile_TableOrdering(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, ".sift.toml")

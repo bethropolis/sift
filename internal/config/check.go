@@ -38,9 +38,10 @@ func (i ValidationIssue) String() string {
 
 // ModesSummary contains a brief overview of configured mode globs.
 type ModesSummary struct {
-	FullCount int
-	SigsCount int
-	SkipCount int
+	FullCount    int
+	OutlineCount int
+	SigsCount    int
+	SkipCount    int
 }
 
 // ConfigSummary contains high-level information about a parsed valid configuration.
@@ -352,6 +353,13 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 					Message:  fmt.Sprintf("invalid compress_mode %q", p.Mode),
 				})
 			}
+			if err := tokenize.ValidateModel(p.TokenizeModel); err != nil {
+				result.Issues = append(result.Issues, ValidationIssue{
+					Severity: SeverityError,
+					Field:    prefix + ".tokenize_model",
+					Message:  err.Error(),
+				})
+			}
 			checkRoots(root, p.Roots, prefix+".roots", result)
 			if p.FallbackMode != "" && p.FallbackMode != "signatures" && p.FallbackMode != "sigs" {
 				result.Issues = append(result.Issues, ValidationIssue{
@@ -444,6 +452,13 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 				Severity: SeverityError,
 				Field:    prefix + ".style",
 				Message:  fmt.Sprintf("invalid style %q", t.Style),
+			})
+		}
+		if err := tokenize.ValidateModel(t.TokenizeModel); err != nil {
+			result.Issues = append(result.Issues, ValidationIssue{
+				Severity: SeverityError,
+				Field:    prefix + ".tokenize_model",
+				Message:  err.Error(),
 			})
 		}
 
@@ -582,11 +597,12 @@ func buildSummary(cf *configFile, path string, result *CheckResult) {
 	if modes == nil && cf.Sift != nil {
 		modes = cf.Sift.Modes
 	}
-	if modes != nil && (len(modes.Full) > 0 || len(modes.Signatures) > 0 || len(modes.Skip) > 0) {
+	if modes != nil && (len(modes.Full) > 0 || len(modes.Outline) > 0 || len(modes.Signatures) > 0 || len(modes.Skip) > 0) {
 		s.Modes = &ModesSummary{
-			FullCount: len(modes.Full),
-			SigsCount: len(modes.Signatures),
-			SkipCount: len(modes.Skip),
+			FullCount:    len(modes.Full),
+			OutlineCount: len(modes.Outline),
+			SigsCount:    len(modes.Signatures),
+			SkipCount:    len(modes.Skip),
 		}
 	}
 

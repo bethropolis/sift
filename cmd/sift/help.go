@@ -179,10 +179,13 @@ func getVisibleCommands(parent *cobra.Command) []commandItem {
 		"mcp":        11,
 		"skill":      12,
 		"check":      13,
-		"config":     14,
-		"desktop":    15,
-		"version":    16,
-		"completion": 17,
+		"stats":      14,
+		"init":       15,
+		"hook":       16,
+		"config":     17,
+		"desktop":    18,
+		"version":    19,
+		"completion": 20,
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
@@ -508,6 +511,8 @@ var engineFlags = map[string]bool{
 	"force-secrets":       true,
 	"clipboard":           true,
 	"copy-on-generate":    true,
+	"include-graph":       true,
+	"collapse-tests":      true,
 	"no-cache":            true,
 	"config":              true,
 	"all":                 true,
@@ -555,9 +560,9 @@ func getFlagCategory(name string) string {
 	switch name {
 	case "output", "style", "format", "budget", "mode", "prompt", "clipboard",
 		"copy-on-generate", "secrets", "force-secrets", "json", "markdown",
-		"fallback-mode", "fallback-threshold":
+		"fallback-mode", "fallback-threshold", "include-graph":
 		return "output"
-	case "ext", "ignore", "smart", "smart-max-tokens", "hidden", "git", "binary", "max-size", "max-depth", "no-cache":
+	case "ext", "ignore", "smart", "smart-max-tokens", "hidden", "git", "binary", "max-size", "max-depth", "no-cache", "collapse-tests":
 		return "filter"
 	case "dir", "profile", "target", "timeout", "workers", "concurrent", "tokenize-model", "config":
 		return "config"
@@ -736,6 +741,26 @@ func getCommandExamples(cmd *cobra.Command) []exampleItem {
 			{"sift check ./subproject", "Validate .sift.toml in ./subproject"},
 			{"sift check custom.toml", "Validate specific configuration file"},
 			{"sift check --quiet", "Validate silently; return non-zero exit code on failure"},
+		}
+	case "stats":
+		return []exampleItem{
+			{"sift stats", "Show file, token, language, and role totals"},
+			{"sift stats --json", "Emit the repository statistics as JSON"},
+			{"sift stats --signatures", "Count signatures instead of full file bodies"},
+			{"sift stats --top 20", "Show the 20 heaviest files"},
+		}
+	case "init":
+		return []exampleItem{
+			{"sift init", "Generate a .sift.toml for the current project"},
+			{"sift init --stdout", "Print the generated config without writing it"},
+			{"sift init --force", "Overwrite an existing .sift.toml"},
+		}
+	case "hook":
+		return []exampleItem{
+			{"sift hook status", "Show whether the configured Git hook is installed"},
+			{"sift hook install", "Install the configured Git hook"},
+			{"sift hook uninstall", "Remove a hook installed by sift"},
+			{"sift hook install --config alt.toml", "Use an alternate config for the hook"},
 		}
 	case "config":
 		return []exampleItem{

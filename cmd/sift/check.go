@@ -140,6 +140,9 @@ func runCheck(cfg *config.Config, cmd *cobra.Command, args []string) error {
 			if sum.Modes.FullCount > 0 {
 				modeParts = append(modeParts, fmt.Sprintf("%d full", sum.Modes.FullCount))
 			}
+			if sum.Modes.OutlineCount > 0 {
+				modeParts = append(modeParts, fmt.Sprintf("%d outline", sum.Modes.OutlineCount))
+			}
 			if sum.Modes.SigsCount > 0 {
 				modeParts = append(modeParts, fmt.Sprintf("%d signatures", sum.Modes.SigsCount))
 			}
