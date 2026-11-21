@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -54,7 +55,9 @@ func prepareTargetRuns(base config.Config, flags *pflag.FlagSet) ([]*targetRun, 
 			}
 			out = filepath.Join(baseDir, out)
 		}
-		out, _ = filepath.Abs(out)
+		if out != "-" {
+			out, _ = filepath.Abs(out)
+		}
 		if prev, clash := outputs[out]; clash {
 			return nil, fmt.Errorf("targets %q and %q write the same output %s", prev, name, out)
 		}
@@ -132,16 +135,46 @@ func renderMultiRoot(cfg *config.Config, roots []string) error {
 	}
 	labels := uniqueRootLabels(absRoots)
 
+	// A multi-root document is one file, so resolve its relative output
+	// against the current working directory rather than the first root. The
+	// same absolute path is then excluded from every root's walk.
+	topCfg := *cfg
+	topCfg.ResolveOutputFile()
+	outputFile := topCfg.OutputFile
+	if outputFile != "" && outputFile != "-" {
+		if !filepath.IsAbs(outputFile) {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			outputFile = filepath.Join(cwd, outputFile)
+		}
+		absOut, err := filepath.Abs(outputFile)
+		if err != nil {
+			return err
+		}
+		outputFile = absOut
+		topCfg.OutputFile = outputFile
+		topCfg.OutputFileExplicit = true
+	}
+
 	cache := app.NewContentCacheWithDisk(cfg)
 	allFiles := make([]format.FileEntry, 0)
 	allSkipped := make([]walker.SkippedItem, 0)
+	var archEdges []string
+	start := time.Now()
 	for i, root := range absRoots {
 		runCfg := *cfg
 		runCfg.RootDir = root
 		runCfg.Roots = nil
-		runCfg.OutputFile = "-"
 		runCfg.Clipboard = false
 		runCfg.CopyOnGenerate = false
+		if outputFile == "-" {
+			runCfg.OutputFile = "-"
+		} else {
+			runCfg.OutputFile = outputFile
+			runCfg.OutputFileExplicit = true
+		}
 		application, err := app.NewWithCache(&runCfg, cache)
 		if err != nil {
 			return err
@@ -150,6 +183,11 @@ func renderMultiRoot(cfg *config.Config, roots []string) error {
 		application.Close()
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			return err
+		}
+		if cfg.IncludeGraph && len(files) > 0 {
+			ranker := app.NewRankerWithWeights(root, app.WeightsFromScoring(cfg.Scoring))
+			edges := app.ArchitectureEdges(ranker.DependencyGraph(files))
+			archEdges = append(archEdges, prefixArchitectureEdges(edges, labels[i])...)
 		}
 		for j := range files {
 			files[j].Path = labels[i] + "/" + filepath.ToSlash(files[j].Path)
@@ -164,7 +202,6 @@ func renderMultiRoot(cfg *config.Config, roots []string) error {
 		return allFiles[i].Path < allFiles[j].Path
 	})
 
-	topCfg := *cfg
 	topCfg.RootDir = absRoots[0]
 	topCfg.Roots = nil
 	top, err := app.NewWithCache(&topCfg, cache)
@@ -172,10 +209,54 @@ func renderMultiRoot(cfg *config.Config, roots []string) error {
 		return err
 	}
 	defer top.Close()
-	if _, err := top.RenderEntriesWithMetrics(allFiles, allSkipped, 0, nil); err != nil {
+	if cfg.IncludeGraph {
+		top.SetArchitectureGraph(mergeArchitectureEdges(archEdges))
+	}
+	if _, err := top.RenderEntriesWithMetrics(allFiles, allSkipped, time.Since(start), nil); err != nil {
 		return err
 	}
 	return nil
+}
+
+// prefixArchitectureEdges adds a root label to both ends of each directory
+// edge, keeping "." as the root's own namespace.
+func prefixArchitectureEdges(edges []string, label string) []string {
+	out := make([]string, 0, len(edges))
+	for _, edge := range edges {
+		from, to, ok := strings.Cut(edge, " -> ")
+		if !ok {
+			continue
+		}
+		if from == "." {
+			from = label
+		} else {
+			from = label + "/" + from
+		}
+		if to == "." {
+			to = label
+		} else {
+			to = label + "/" + to
+		}
+		out = append(out, from+" -> "+to)
+	}
+	return out
+}
+
+// mergeArchitectureEdges sorts, de-duplicates, and caps a combined graph so
+// the multi-root header stays the same size as a single-root one.
+func mergeArchitectureEdges(edges []string) []string {
+	sort.Strings(edges)
+	out := edges[:0]
+	for _, edge := range edges {
+		if len(out) == 0 || out[len(out)-1] != edge {
+			out = append(out, edge)
+		}
+	}
+	const maxEdges = 200
+	if len(out) > maxEdges {
+		out = out[:maxEdges]
+	}
+	return out
 }
 
 // uniqueRootLabels derives stable, unique display labels from root basenames,

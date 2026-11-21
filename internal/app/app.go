@@ -54,6 +54,9 @@ type App struct {
 	// archGraph is the optional directory-level dependency header built for
 	// the current render when cfg.IncludeGraph is set.
 	archGraph []string
+	// archGraphManual suppresses prepareArchitecture for callers that combine
+	// per-root graphs themselves (multi-root dumps).
+	archGraphManual bool
 
 	// patch is the unified diff prepended to the current render by
 	// diff --with-context. It also reserves budget before any file body.

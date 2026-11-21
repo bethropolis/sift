@@ -71,6 +71,96 @@ output = "same.md"
 	}
 }
 
+func TestDumpMultipleRootsRelativeOutputAvoidsSelfIngest(t *testing.T) {
+	base := t.TempDir()
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	rootA := filepath.Join(base, "a", "svc")
+	rootB := filepath.Join(base, "b", "svc")
+	for _, root := range []string{rootA, rootB} {
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := filepath.Join(cwd, "out.md")
+	if _, err := runSift(t, "dump", "--quiet", "--style", "plain", "--output", "out.md", rootA, rootB); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range []string{rootA, rootB} {
+		if _, err := os.Stat(filepath.Join(root, "out.md")); !os.IsNotExist(err) {
+			t.Fatalf("multi-root output landed inside a root: %v", err)
+		}
+	}
+	if _, err := runSift(t, "dump", "--quiet", "--style", "plain", "--output", "out.md", rootA, rootB); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Fatalf("second multi-root dump changed output:\n--- first ---\n%s\n--- second ---\n%s", first, second)
+	}
+}
+
+func TestDumpMultipleRootsPrefixedArchitectureGraph(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, name := range []string{"a", "b"} {
+		root := filepath.Join(base, name)
+		if err := os.MkdirAll(filepath.Join(root, "pkg"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		module := "example.com/" + name
+		main := "package main\n\nimport \"" + module + "/pkg\"\n\nfunc main() { pkg.Hi() }\n"
+		if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module "+module+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "main.go"), []byte(main), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "pkg", "lib.go"), []byte("package pkg\n\nfunc Hi() {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := filepath.Join(base, "graph.txt")
+	if _, err := runSift(t, "dump", "--quiet", "--style", "plain", "--include-graph", "--output", out, filepath.Join(base, "a"), filepath.Join(base, "b")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{"a -> a/pkg", "b -> b/pkg"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("multi-root graph missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestDumpAllTargetsStdoutClashNamesDash(t *testing.T) {
+	root := writeTargetRepo(t, `
+[[targets]]
+name = "a"
+output = "-"
+
+[[targets]]
+name = "b"
+output = "-"
+`)
+	if _, err := runSift(t, "dump", "--all-targets", root); err == nil || !strings.Contains(err.Error(), "same output -") {
+		t.Fatalf("stdout clash error = %v, want 'same output -'", err)
+	}
+}
 func TestDumpMultipleRootsNamespacesDuplicateBasenames(t *testing.T) {
 	base := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

@@ -85,9 +85,20 @@ func ArchitectureEdges(graph map[string][]string) []string {
 	return lines
 }
 
+// SetArchitectureGraph installs a caller-computed directory graph and prevents
+// prepareArchitecture from replacing it. Multi-root dumps use this after
+// prefixing each root's edges with its namespace label.
+func (a *App) SetArchitectureGraph(lines []string) {
+	a.archGraph = append([]string(nil), lines...)
+	a.archGraphManual = true
+}
+
 // prepareArchitecture builds the optional directory graph for the files that
 // are about to be rendered. It only parses imports when the feature is on.
 func (a *App) prepareArchitecture(files []format.FileEntry) {
+	if a.archGraphManual {
+		return
+	}
 	a.archGraph = nil
 	if !a.cfg.IncludeGraph || len(files) == 0 {
 		return
