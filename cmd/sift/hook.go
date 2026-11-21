@@ -32,6 +32,12 @@ func gitHooksDir(root string) (string, error) {
 	return filepath.Clean(dir), nil
 }
 
+// shellQuote single-quotes a value for POSIX sh. Single quotes suppress every
+// expansion, so a target name can never inject a command into the hook.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // hookScript builds a self-contained hook that runs the configured targets.
 func hookScript(hook string, targets []string) string {
 	var b strings.Builder
@@ -42,7 +48,7 @@ func hookScript(hook string, targets []string) string {
 		b.WriteString("sift dump --quiet\n")
 	} else {
 		for _, target := range targets {
-			fmt.Fprintf(&b, "sift dump --quiet --target %q\n", target)
+			fmt.Fprintf(&b, "sift dump --quiet --target %s\n", shellQuote(target))
 		}
 	}
 	return b.String()
@@ -53,7 +59,13 @@ func newHookCmd(cfg *config.Config) *cobra.Command {
 		Use:   "hook",
 		Short: "Install Git hooks that regenerate configured targets",
 	}
-	cmd.AddCommand(newHookStatusCmd(cfg), newHookInstallCmd(cfg), newHookUninstallCmd(cfg))
+	status := newHookStatusCmd(cfg)
+	install := newHookInstallCmd(cfg)
+	uninstall := newHookUninstallCmd(cfg)
+	bindHookConfig(status, cfg)
+	bindHookConfig(install, cfg)
+	bindHookConfig(uninstall, cfg)
+	cmd.AddCommand(status, install, uninstall)
 	return cmd
 }
 
@@ -72,10 +84,22 @@ func resolveHookConfig(cfg *config.Config, cmd *cobra.Command, args []string) (s
 	if hook == "" {
 		return root, "", nil, fmt.Errorf("[automation].git_hook is not set in .sift.toml")
 	}
-	if strings.ContainsAny(hook, `/\`) || hook == "." || hook == ".." {
+	if strings.ContainsAny(hook, `/\`) || hook == "." || hook == ".." || strings.ContainsAny(hook, "\x00\r\n") {
 		return root, "", nil, fmt.Errorf("invalid hook name %q", hook)
 	}
+	for _, target := range cfg.Automation.HookTargets {
+		if target == "" || strings.ContainsAny(target, "\x00\r\n") {
+			return root, "", nil, fmt.Errorf("invalid hook target %q", target)
+		}
+	}
 	return root, hook, cfg.Automation.HookTargets, nil
+}
+
+// bindHookConfig adds --config to a hook subcommand. The root command's
+// --config is not persistent, so each subcommand needs its own binding before
+// applyProfile can honor an explicit file.
+func bindHookConfig(cmd *cobra.Command, cfg *config.Config) {
+	cmd.Flags().StringVar(&cfg.ConfigFile, "config", cfg.ConfigFile, "Path to custom configuration file (overrides .sift.toml)")
 }
 
 func newHookStatusCmd(cfg *config.Config) *cobra.Command {
