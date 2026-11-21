@@ -1,6 +1,7 @@
 package selection
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/bethropolis/sift/internal/format"
@@ -289,5 +290,31 @@ func TestPlannedModeLabelIsScoreBand(t *testing.T) {
 	_, reason := plannedMode(candidate("main.go", 0.9, 100, 10, "full", true))
 	if reason == "" {
 		t.Fatal("empty reason")
+	}
+}
+
+// BenchmarkSelectManyStates keeps the DP's per-candidate work in check. It
+// used to recompute variants and task relevance for every token state, which
+// made a 210-file select spend minutes inside matchesWord.
+func BenchmarkSelectManyStates(b *testing.B) {
+	prompt := "fix parser cache token budget selection dependency graph import " +
+		"walker rank signature compression fallback budget render document"
+	candidates := make([]Candidate, 300)
+	for i := range candidates {
+		candidates[i] = candidate(
+			fmt.Sprintf("internal/pkg%02d/file%03d.go", i%30, i),
+			float64(i%100)/100,
+			3+i%17,
+			1+i%5,
+			"",
+			true,
+		)
+		candidates[i].Symbols = []string{"Parse", "Select", "Budget", "Cache"}
+	}
+	req := Request{Budget: 50000, Prompt: prompt, MaxStates: 50000}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		Select(candidates, req)
 	}
 }

@@ -471,10 +471,15 @@ func Select(candidates []Candidate, request Request) Result {
 		if reserved[index].Tokens > 0 {
 			continue
 		}
+		// Variants depend only on the candidate, not on the accumulated token
+		// state. Recomputing them inside the state loop made the DP call
+		// taskRelevance (and re-split the prompt) once per state; with the
+		// default 50k state cap that is millions of redundant relevance scans.
+		candidateVariants := variants(candidate, request.Prompt, tuning)
 		next := make(map[int]dpState, len(states))
 		for tokens, state := range states {
 			keepState(next, tokens, state)
-			for _, variant := range variants(candidate, request.Prompt, tuning) {
+			for _, variant := range candidateVariants {
 				newTokens := tokens + variant.Tokens
 				if newTokens > remaining {
 					continue
