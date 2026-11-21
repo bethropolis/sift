@@ -338,14 +338,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case genJobMsg:
 		// Exactly one job can be in flight (genBusy), so this always
 		// belongs to the running job: release it and show the outcome.
-		m.genBusy = false
-		m.genDone = nil
-		m.notice = msg.text
-		m.noticeID++
-		id := m.noticeID
-		return m, tea.Tick(2500*time.Millisecond, func(time.Time) tea.Msg {
-			return clearNoticeMsg{id: id}
-		})
+		m.finishJob()
+		return m, m.setNotice(msg.text)
+	case smartSelectDoneMsg:
+		m.finishJob()
+		m.root.applySelectionResult(msg.result)
+		m.recomputeRows()
+		count := len(msg.result.Selected)
+		return m, m.setNotice(fmt.Sprintf("Smart selection · %d %s · %s tokens",
+			count, pluralFiles(count), formatTokenCount(m.root.TotalActiveTokens())))
+	case followJobMsg:
+		m.finishJob()
+		if msg.err != "" {
+			return m, m.setNotice("Follow: " + msg.err)
+		}
+		return m, m.setNotice(m.root.applyFollowResult(msg.seed, msg.direction, msg.hits, msg.modes, msg.unanalyzed))
+	case deltaDoneMsg:
+		m.finishJob()
+		if msg.err != nil {
+			return m, m.setNotice("Delta failed: " + msg.err.Error())
+		}
+		m.deltaDone = true
+		if !msg.copyMode {
+			// A delta dump replaces the picker's output, so finish the session.
+			m.quit = true
+			return m, tea.Quit
+		}
+		return m, m.setNotice(fmt.Sprintf("Delta copied to clipboard (%s)", strategyName(msg.strategy)))
 	case busyTickMsg:
 		if !m.genBusy {
 			return m, nil
@@ -426,6 +445,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.setNotice("Scan error: " + msg.Err.Error())
 	}
 	return m, nil
+}
+
+// finishJob releases the single in-flight background job. Call only from
+// Update, when the job's result message arrives.
+func (m *model) finishJob() {
+	m.genBusy = false
+	m.genDone = nil
 }
 
 // setNotice stores a transient status message and schedules it to clear after

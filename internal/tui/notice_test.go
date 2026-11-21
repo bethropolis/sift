@@ -149,7 +149,9 @@ func TestStaleNoticeTimerIgnored(t *testing.T) {
 func TestSmartSelectNotice(t *testing.T) {
 	root := BuildTree([]Item{{Path: "a.go", TokensFull: 10}})
 	m := newModel(root, Options{})
-	m = updateKey(m, tea.KeyRunes, 's')
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = updated.(model)
+	m, _ = runGenJob(t, m, cmd)
 	if !strings.Contains(m.notice, "Smart selection") {
 		t.Errorf("smart select notice = %q", m.notice)
 	}

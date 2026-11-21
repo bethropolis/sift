@@ -16,8 +16,10 @@ import (
 const (
 	// lingerGrace bounds how long we wait for a daemonizing helper to either
 	// exit (a real failure) or settle. Helpers that outlive it are serving the
-	// selection from the background, which is success.
-	lingerGrace = 2 * time.Second
+	// selection from the background, which is success. It is deliberately
+	// short: a broken helper exits immediately; a working one owns the
+	// selection long before this deadline.
+	lingerGrace = 250 * time.Millisecond
 
 	// exitGrace bounds the wait for helpers that are expected to exit once
 	// they have taken the data.

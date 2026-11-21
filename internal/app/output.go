@@ -9,10 +9,11 @@ import (
 )
 
 // writeFileAtomic replaces path with the bytes produced by render. The render
-// runs against a temporary file in the same directory, which is flushed,
-// synced, and renamed into place only after it is complete. A failed render
-// therefore leaves the previous document untouched, and external readers never
-// observe a partially written file.
+// runs against a temporary file in the same directory, which is flushed and
+// renamed into place only after it is complete. A failed render therefore
+// leaves the previous document untouched, and external readers never observe a
+// partially written file. Context documents are regenerable, so they skip the
+// durability fsync: close + rename already prevents torn reads.
 func writeFileAtomic(path string, render func(io.Writer) error) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".sift-*.tmp")
@@ -35,10 +36,6 @@ func writeFileAtomic(path string, render func(io.Writer) error) error {
 		return err
 	}
 	if err := bufw.Flush(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write output: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
 		tmp.Close()
 		return fmt.Errorf("write output: %w", err)
 	}

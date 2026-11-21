@@ -97,7 +97,9 @@ func TestDeltaPerformInvokesHandler(t *testing.T) {
 	}
 	m := newModel(BuildTree([]Item{{Path: "a.go"}}), opts)
 	m = updateKey(m, tea.KeyRunes, 'd')
-	m = updateKey(m, tea.KeyEnter)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	m, _ = runGenJob(t, m, cmd)
 
 	if !handled {
 		t.Fatal("OnDelta was not called")
@@ -112,7 +114,9 @@ func TestDeltaPerformInvokesHandler(t *testing.T) {
 	// 'c' copy keeps the picker open.
 	m = newModel(BuildTree([]Item{{Path: "a.go"}}), opts)
 	m = updateKey(m, tea.KeyRunes, 'd')
-	m = updateKey(m, tea.KeyRunes, 'c')
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	m = updated.(model)
+	m, _ = runGenJob(t, m, cmd)
 	if !handled || m.quit {
 		t.Errorf("copy delta quit=%v", m.quit)
 	}
@@ -128,7 +132,9 @@ func TestDeltaPerformErrorSetsNotice(t *testing.T) {
 	}
 	m := newModel(BuildTree([]Item{{Path: "a.go"}}), opts)
 	m = updateKey(m, tea.KeyRunes, 'd')
-	m = updateKey(m, tea.KeyEnter)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	m, _ = runGenJob(t, m, cmd)
 
 	if !strings.Contains(m.notice, "boom") {
 		t.Errorf("notice = %q, want delta failed message", m.notice)

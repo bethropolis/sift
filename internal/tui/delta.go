@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // DeltaInfo carries the git delta state the picker shows in its delta modal.
@@ -65,16 +67,27 @@ func (m *model) openDelta() {
 	}
 }
 
+// deltaDoneMsg carries the outcome of a background delta dump back to Update.
+type deltaDoneMsg struct {
+	copyMode bool
+	strategy DeltaStrategy
+	err      error
+}
+
 // performDelta invokes the caller's delta handler with the current selection.
 // copyMode routes output to the clipboard instead of the dump destination.
 // The checked commits determine the range: the newest checked commit is the
 // To boundary and the parent of the oldest checked commit the From boundary,
-// so unchecking the top or bottom of the list narrows the delta.
-func (m *model) performDelta(copyMode bool) {
+// so unchecking the top or bottom of the list narrows the delta. The callback
+// runs in a background job; Update applies the result.
+func (m *model) performDelta(copyMode bool) tea.Cmd {
 	if m.delta == nil || m.onDelta == nil {
-		m.notice = "Delta mode is unavailable"
 		m.deltaOpen = false
-		return
+		return m.setNotice("Delta mode is unavailable")
+	}
+	if m.genBusy {
+		m.deltaOpen = false
+		return m.busyNotice()
 	}
 	sel := DeltaSelection{
 		Strategy:  m.deltaStrategy,
@@ -85,19 +98,19 @@ func (m *model) performDelta(copyMode bool) {
 	if from, to, ok := m.deltaRange(); ok {
 		sel.From, sel.To = from, to
 	}
-	if err := m.onDelta(sel); err != nil {
-		m.notice = "Delta failed: " + err.Error()
-		m.deltaOpen = false
-		return
-	}
-	m.deltaDone = true
+	onDelta := m.onDelta
 	m.deltaOpen = false
-	if !copyMode {
-		// A delta dump replaces the picker's output, so finish the session.
-		m.quit = true
-	} else {
-		m.notice = fmt.Sprintf("Delta copied to clipboard (%s)", strategyName(m.deltaStrategy))
+	label := "Applying delta…"
+	if copyMode {
+		label = "Copying delta…"
 	}
+	return m.startAsyncJob(label, func() tea.Msg {
+		return deltaDoneMsg{
+			copyMode: copyMode,
+			strategy: sel.Strategy,
+			err:      onDelta(sel),
+		}
+	})
 }
 
 func strategyName(s DeltaStrategy) string {

@@ -3,7 +3,10 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/bethropolis/sift/internal/app"
 )
 
 func followFixture(t *testing.T, files map[string]string) string {
@@ -102,6 +105,45 @@ func TestFollowDepsDirection(t *testing.T) {
 	}
 }
 
+// TestFollowRunsAsBackgroundJob drives the actual f/F command path: the walk
+// must be launched as a tea.Cmd, report through a message, and apply its modes
+// only after the result returns.
+func TestFollowRunsAsBackgroundJob(t *testing.T) {
+	root := followFixture(t, goFiles())
+	tree := buildFollowTree(t, root, goFiles())
+	tree.ExpandAll()
+	m := newModel(tree, Options{ProjectPath: root})
+	m.recomputeRows()
+	m.cursor = m.findRow("sub/sub.go")
+	if m.cursor < 0 {
+		t.Fatal("seed row not found")
+	}
+	cmd := m.follow(app.FollowDependents)
+	if !m.genBusy {
+		t.Fatal("follow did not mark the job busy")
+	}
+	m, _ = runGenJob(t, m, cmd)
+	if strings.Contains(m.notice, "Follow:") {
+		t.Fatalf("follow notice = %q", m.notice)
+	}
+	if m.genBusy {
+		t.Error("follow left genBusy set")
+	}
+	var seedMode CompressMode
+	var walk func(*TreeNode)
+	walk = func(n *TreeNode) {
+		if n.Kind == KindFile && n.Path == "sub/sub.go" {
+			seedMode = n.Mode
+		}
+		for _, c := range n.Children {
+			walk(c)
+		}
+	}
+	walk(tree)
+	if seedMode != ModeFull {
+		t.Errorf("seed mode = %s, want full", seedMode)
+	}
+}
 func TestFollowRejects(t *testing.T) {
 	root := followFixture(t, goFiles())
 	tree := buildFollowTree(t, root, goFiles())

@@ -11,6 +11,7 @@ import (
 	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/config"
+	"github.com/bethropolis/sift/internal/selection"
 	"github.com/bethropolis/sift/internal/theme"
 )
 
@@ -555,18 +556,29 @@ func (m *model) exportModes() tea.Cmd {
 }
 
 func (m *model) smartSelect() tea.Cmd {
-	count := m.root.SelectByRank(m.budget, m.prompt, m.selectionTuning)
-	return m.setNotice(fmt.Sprintf("Smart selection · %d %s · %s tokens",
-		count, pluralFiles(count), formatTokenCount(m.root.TotalActiveTokens())))
+	if m.genBusy {
+		return m.busyNotice()
+	}
+	candidates := m.root.selectionCandidates()
+	budget, prompt, tuning := m.budget, m.prompt, m.selectionTuning
+	label := fmt.Sprintf("Smart selecting %d %s…", len(candidates), pluralFiles(len(candidates)))
+	return m.startAsyncJob(label, func() tea.Msg {
+		result := selection.Select(candidates, selection.Request{Budget: budget, Prompt: prompt, Tuning: tuning})
+		return smartSelectDoneMsg{result: result}
+	})
 }
 
-// startGenJob runs fn on a Bubble Tea command goroutine so the heavy render,
-// clipboard, and git work never blocks the Update loop (which would freeze
-// the whole TUI). It flips the busy guard, shows an immediate progress
-// notice, and arms a 250ms ticker that appends elapsed time until the job
-// reports back with genJobMsg. fn must not touch the model; it captures its
-// inputs before returning.
-func (m *model) startGenJob(label string, fn func() string) tea.Cmd {
+// smartSelectDoneMsg carries a completed optimizer pass back to Update.
+type smartSelectDoneMsg struct {
+	result selection.Result
+}
+
+// startAsyncJob runs fn on a Bubble Tea command goroutine so heavy scanning,
+// ranking, rendering, and clipboard work never blocks the Update loop. It flips
+// the busy guard, shows an immediate progress notice, and arms a 250ms ticker
+// that appends elapsed time until the job reports back. fn must not touch the
+// model; it captures its inputs before returning.
+func (m *model) startAsyncJob(label string, fn func() tea.Msg) tea.Cmd {
 	m.genBusy = true
 	done := make(chan struct{})
 	m.genDone = done
@@ -577,12 +589,20 @@ func (m *model) startGenJob(label string, fn func() string) tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
 			defer close(done)
-			return genJobMsg{text: fn()}
+			return fn()
 		},
 		tea.Tick(genTickInterval, func(time.Time) tea.Msg {
 			return busyTickMsg{id: id, label: label, started: started}
 		}),
 	)
+}
+
+// startGenJob is startAsyncJob for the generate/copy/modes actions, whose
+// background function reports a one-line result.
+func (m *model) startGenJob(label string, fn func() string) tea.Cmd {
+	return m.startAsyncJob(label, func() tea.Msg {
+		return genJobMsg{text: fn()}
+	})
 }
 
 // busyNotice is the shared "job already running" reply for the generate and
@@ -692,7 +712,7 @@ func (m model) updateDeltaKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyDown, tea.KeyTab:
 		m.deltaMove(1)
 	case tea.KeyEnter:
-		m.performDelta(false)
+		return m, m.performDelta(false)
 	case tea.KeySpace:
 		if m.delta != nil && len(m.delta.Commits) > 0 {
 			i := m.deltaCursor
@@ -707,7 +727,7 @@ func (m model) updateDeltaKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "m":
 			m.deltaStrategy = (m.deltaStrategy + 1) % 2
 		case "c":
-			m.performDelta(true)
+			return m, m.performDelta(true)
 		case "d", "q":
 			m.deltaOpen = false
 		}

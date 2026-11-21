@@ -3,6 +3,7 @@ package picker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -64,6 +65,41 @@ func TestApplySelectionFallbackRead(t *testing.T) {
 			t.Errorf("got %d chosen for skip, want 0", len(chosen))
 		}
 	})
+}
+
+// TestApplySelectionFallbackParallelPreservesOrder covers the late-selection
+// path with several files missing from the stream: reads run concurrently but
+// the chosen slice must keep the user's selection order.
+func TestApplySelectionFallbackParallelPreservesOrder(t *testing.T) {
+	dir := t.TempDir()
+	const n = 6
+	selected := make([]tui.Selection, 0, n)
+	for i := n - 1; i >= 0; i-- {
+		name := fmt.Sprintf("f%d.go", i)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("package p\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		selected = append(selected, tui.Selection{Path: name, Mode: tui.ModeFull})
+	}
+	cfg := config.New()
+	cfg.RootDir = dir
+	cfg.Quiet = true
+	cfg.OutputFile = "-"
+	application, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer application.Close()
+
+	chosen := applySelection(application, nil, selected)
+	if len(chosen) != n {
+		t.Fatalf("chosen %d files, want %d", len(chosen), n)
+	}
+	for i, f := range chosen {
+		if f.Path != selected[i].Path {
+			t.Fatalf("chosen[%d] = %s, want %s", i, f.Path, selected[i].Path)
+		}
+	}
 }
 
 // TestStreamScanCancellation verifies that cancelling the context terminates

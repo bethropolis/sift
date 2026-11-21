@@ -221,10 +221,19 @@ func (n *TreeNode) SelectByRank(budget int, prompt string, tunings ...selection.
 	if len(tunings) > 0 {
 		tuning = tunings[0]
 	}
+	candidates := n.selectionCandidates()
+	result := selection.Select(candidates, selection.Request{Budget: budget, Prompt: prompt, Tuning: tuning})
+	n.applySelectionResult(result)
+	return len(result.Selected)
+}
+
+// selectionCandidates snapshots the visible files for the selection optimizer.
+// It runs on the Update goroutine; the returned candidates are read-only and
+// can be passed to a background tea.Cmd.
+func (n *TreeNode) selectionCandidates() []selection.Candidate {
 	var files []*TreeNode
 	n.collectFiles(&files)
 	candidates := make([]selection.Candidate, 0, len(files))
-	byPath := make(map[string]*TreeNode, len(files))
 	for _, f := range files {
 		candidates = append(candidates, selection.Candidate{
 			File: format.FileEntry{
@@ -238,9 +247,19 @@ func (n *TreeNode) SelectByRank(budget int, prompt string, tunings ...selection.
 			PreferredMode: string(f.PreferredMode),
 			Signals:       selection.Signals{TestAffinity: f.TestAffinity},
 		})
+	}
+	return candidates
+}
+
+// applySelectionResult mutates the tree from an optimizer result. It must run
+// on the Update goroutine, never inside the background job.
+func (n *TreeNode) applySelectionResult(result selection.Result) {
+	var files []*TreeNode
+	n.collectFiles(&files)
+	byPath := make(map[string]*TreeNode, len(files))
+	for _, f := range files {
 		byPath[filepath.ToSlash(f.Path)] = f
 	}
-	result := selection.Select(candidates, selection.Request{Budget: budget, Prompt: prompt, Tuning: tuning})
 	n.ClearSelection()
 	for _, decision := range result.Decisions {
 		f := byPath[decision.Path]
@@ -262,7 +281,6 @@ func (n *TreeNode) SelectByRank(budget int, prompt string, tunings ...selection.
 		}
 	}
 	n.recompute()
-	return len(result.Selected)
 }
 
 // ClearSelection deselects every file.

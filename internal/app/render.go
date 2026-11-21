@@ -157,10 +157,12 @@ func (a *App) renderDocument(files []format.FileEntry, prompt string, w io.Write
 	// Scanning is deliberately kept out of the walker so the directory scan
 	// stays fast; only the files that will actually be emitted are inspected.
 	if scanSecrets && a.cfg.SecretScan && !a.cfg.ForceSecrets {
+		start := time.Now()
 		files = secrets.Default().RedactSelectedFiles(files)
 		// Redaction shortens content, so the pre-redaction token count is stale.
 		// Recount redacted files so the totals match what is emitted.
 		a.recountRedactedTokens(files)
+		a.LogDebug("secrets timing: %s files=%d", time.Since(start).Round(time.Millisecond), len(files))
 	}
 
 	// Metrics are computed from the final (post-redaction) slice so summaries
@@ -188,7 +190,10 @@ func (a *App) renderDocument(files []format.FileEntry, prompt string, w io.Write
 		ArchitectureGraph: a.archGraph,
 		Patch:             a.patch,
 	}
-	return metrics, renderer.Render(doc, w)
+	start := time.Now()
+	err = renderer.Render(doc, w)
+	a.LogDebug("render timing: %s files=%d", time.Since(start).Round(time.Millisecond), len(files))
+	return metrics, err
 }
 
 func terminalHighlightProfile(enabled bool) highlight.ColorProfile {
@@ -233,14 +238,18 @@ func (a *App) recountRedactedTokens(files []format.FileEntry) {
 func (a *App) renderWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, applyBudget bool, prompt string) (RenderMetrics, error) {
 	a.prepareArchitecture(files)
 	if applyBudget && a.cfg.Budget > 0 {
+		start := time.Now()
 		a.infoLog("Applying token budget: %d", a.cfg.Budget)
 		files = a.fitToBudget(files, prompt)
+		a.LogDebug("budget timing: %s files=%d", time.Since(start).Round(time.Millisecond), len(files))
 		if len(files) == 0 {
 			a.log.Warn("Token budget %d is too small for any file.", a.cfg.Budget)
 		}
 	}
 
+	start := time.Now()
 	metrics, writeErr := a.renderToDestination(files, prompt)
+	a.LogDebug("destination timing: %s files=%d", time.Since(start).Round(time.Millisecond), len(files))
 
 	if runErr != nil {
 		if errors.Is(runErr, context.DeadlineExceeded) {
@@ -303,9 +312,11 @@ func (a *App) renderToDestination(files []format.FileEntry, prompt string) (Rend
 		if err != nil {
 			return metrics, fmt.Errorf("render output: %w", err)
 		}
+		start := time.Now()
 		if err := clipboard.Copy(buf.Bytes()); err != nil {
 			return metrics, fmt.Errorf("copy output to clipboard: %w", err)
 		}
+		a.LogDebug("clipboard timing: %s bytes=%d", time.Since(start).Round(time.Millisecond), buf.Len())
 		a.infoLog("Copied %d files (%d tokens) to clipboard.", metrics.Files, metrics.Tokens)
 		return metrics, nil
 
@@ -318,9 +329,11 @@ func (a *App) renderToDestination(files []format.FileEntry, prompt string) (Rend
 		if err := a.WriteOutput(buf.Bytes()); err != nil {
 			return metrics, err
 		}
+		copyStart := time.Now()
 		if err := clipboard.Copy(buf.Bytes()); err != nil {
 			return metrics, fmt.Errorf("copy generated output to clipboard: %w", err)
 		}
+		a.LogDebug("clipboard timing: %s bytes=%d", time.Since(copyStart).Round(time.Millisecond), buf.Len())
 		return metrics, nil
 
 	default:
@@ -332,6 +345,7 @@ func (a *App) renderToDestination(files []format.FileEntry, prompt string) (Rend
 			// Buffer the render: renderers emit one fmt.Fprintf per line/fence,
 			// which would otherwise be a write syscall per call on large dumps.
 			bufw := bufio.NewWriterSize(out, 256<<10)
+			start := time.Now()
 			metrics, renderErr := a.renderDocumentTo(files, prompt, bufw, nil)
 			if renderErr != nil {
 				return metrics, fmt.Errorf("render output: %w", renderErr)
@@ -339,10 +353,12 @@ func (a *App) renderToDestination(files []format.FileEntry, prompt string) (Rend
 			if flushErr := bufw.Flush(); flushErr != nil {
 				return metrics, fmt.Errorf("write output: %w", flushErr)
 			}
+			a.LogDebug("write timing: %s", time.Since(start).Round(time.Millisecond))
 			return metrics, nil
 		}
 
 		var metrics RenderMetrics
+		start := time.Now()
 		err := writeFileAtomic(a.outputPath, func(w io.Writer) error {
 			var renderErr error
 			metrics, renderErr = a.renderDocumentTo(files, prompt, w, nil)
@@ -351,6 +367,7 @@ func (a *App) renderToDestination(files []format.FileEntry, prompt string) (Rend
 			}
 			return nil
 		})
+		a.LogDebug("write timing: %s path=%s", time.Since(start).Round(time.Millisecond), a.outputPath)
 		return metrics, err
 	}
 }

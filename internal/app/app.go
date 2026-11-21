@@ -197,6 +197,13 @@ func (a *App) LogError(format string, args ...interface{}) {
 	}
 }
 
+// LogDebug writes a phase-timing line when verbose/debug logging is enabled.
+func (a *App) LogDebug(format string, args ...interface{}) {
+	if a.log != nil {
+		a.log.Debug(format, args...)
+	}
+}
+
 // OutputPath returns the absolute path of the output file, or "" when writing
 // to stdout.
 func (a *App) OutputPath() string {
