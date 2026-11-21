@@ -95,6 +95,7 @@ func ExportModes(assignments map[string]string) ModesConfig {
 	type entry struct {
 		path string
 		mode string
+		emit bool
 	}
 	entries := make([]entry, 0, len(assignments))
 	for path, raw := range assignments {
@@ -104,13 +105,18 @@ func ExportModes(assignments map[string]string) ModesConfig {
 		}
 		mode := canonicalExportMode(raw)
 		if mode == "" {
+			// Full is the default and omitted from the final TOML, but it must
+			// still participate in directory uniformity: a folder mixing full
+			// and signatures must not collapse to "dir/**" signatures.
+			entries = append(entries, entry{path: path, mode: "full"})
 			continue
 		}
-		entries = append(entries, entry{path: path, mode: mode})
+		entries = append(entries, entry{path: path, mode: mode, emit: true})
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].path < entries[j].path })
 
 	// Collect mode uniformity and membership for every ancestor directory.
+	// Include default/full files here so a mixed directory is never collapsed.
 	type dirInfo struct {
 		count int
 		mode  string
@@ -137,7 +143,7 @@ func ExportModes(assignments map[string]string) ModesConfig {
 
 	dirNames := make([]string, 0, len(dirs))
 	for d, info := range dirs {
-		if d == "." || d == "" || info.mixed || info.count < 2 {
+		if d == "." || d == "" || info.mixed || info.count < 2 || info.mode == "full" {
 			continue
 		}
 		dirNames = append(dirNames, d)
@@ -156,7 +162,7 @@ func ExportModes(assignments map[string]string) ModesConfig {
 		info := dirs[dir]
 		busy := false
 		for _, e := range entries {
-			if strings.HasPrefix(e.path, dir+"/") && collapsed[e.path] {
+			if e.emit && strings.HasPrefix(e.path, dir+"/") && collapsed[e.path] {
 				busy = true
 				break
 			}
@@ -165,7 +171,7 @@ func ExportModes(assignments map[string]string) ModesConfig {
 			continue
 		}
 		for _, e := range entries {
-			if strings.HasPrefix(e.path, dir+"/") {
+			if e.emit && strings.HasPrefix(e.path, dir+"/") {
 				collapsed[e.path] = true
 			}
 		}
@@ -173,7 +179,7 @@ func ExportModes(assignments map[string]string) ModesConfig {
 	}
 
 	for _, e := range entries {
-		if collapsed[e.path] {
+		if !e.emit || collapsed[e.path] {
 			continue
 		}
 		addModePattern(&out, e.mode, e.path)
