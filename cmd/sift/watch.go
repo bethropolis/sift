@@ -18,6 +18,9 @@ import (
 	"github.com/bethropolis/sift/internal/watch"
 )
 
+// runWatch is a seam for tests; production always calls watch.Run.
+var runWatch = watch.Run
+
 // newWatchCmd re-renders the context document whenever files change.
 func newWatchCmd(cfg *config.Config) *cobra.Command {
 	allTargets := false
@@ -29,14 +32,6 @@ func newWatchCmd(cfg *config.Config) *cobra.Command {
 			if len(args) > 0 {
 				cfg.RootDir = args[0]
 			}
-			if err := applyProfile(cfg, cmd); err != nil {
-				return err
-			}
-
-			absRootDir, err := filepath.Abs(cfg.RootDir)
-			if err != nil {
-				return fmt.Errorf("invalid root directory path '%s': %w", cfg.RootDir, err)
-			}
 
 			// A watch is persistent; a per-collect timeout would abort renders.
 			cfg.Timeout = 0
@@ -45,6 +40,9 @@ func newWatchCmd(cfg *config.Config) *cobra.Command {
 				if cfg.Target != "" {
 					return fmt.Errorf("--all-targets cannot be combined with --target")
 				}
+				// Resolve targets before applyProfile: otherwise default_profile
+				// would mutate the base config and leak into targets that select
+				// their own profile. dump.go branches the same way.
 				initial := *cfg
 				runs, err := prepareTargetRuns(initial, cmd.Flags())
 				if err != nil {
@@ -53,6 +51,10 @@ func newWatchCmd(cfg *config.Config) *cobra.Command {
 				defer closeTargetRuns(runs)
 				for _, run := range runs {
 					run.cfg.Timeout = 0
+				}
+				absRootDir, err := filepath.Abs(cfg.RootDir)
+				if err != nil {
+					return fmt.Errorf("invalid root directory path '%s': %w", cfg.RootDir, err)
 				}
 				if err := renderTargetRuns(runs); err != nil {
 					return err
@@ -65,7 +67,7 @@ func newWatchCmd(cfg *config.Config) *cobra.Command {
 				}
 				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 				defer stop()
-				return watch.Run(ctx, watch.Options{
+				return runWatch(ctx, watch.Options{
 					Root: absRootDir,
 					Ignore: func(path string) bool {
 						if strings.Contains(path, string(filepath.Separator)+".git") {
@@ -77,6 +79,17 @@ func newWatchCmd(cfg *config.Config) *cobra.Command {
 						return renderTargetRuns(runs)
 					},
 				})
+			}
+
+			if err := applyProfile(cfg, cmd); err != nil {
+				return err
+			}
+			// applyProfile can restore a configured collect timeout; a watch is
+			// persistent, so clear it again after resolution.
+			cfg.Timeout = 0
+			absRootDir, err := filepath.Abs(cfg.RootDir)
+			if err != nil {
+				return fmt.Errorf("invalid root directory path '%s': %w", cfg.RootDir, err)
 			}
 
 			application, err := app.New(cfg)
@@ -110,7 +123,7 @@ func newWatchCmd(cfg *config.Config) *cobra.Command {
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			return watch.Run(ctx, watch.Options{
+			return runWatch(ctx, watch.Options{
 				Root:   absRootDir,
 				Ignore: ignore,
 				OnChange: func() error {

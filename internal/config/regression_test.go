@@ -163,6 +163,23 @@ func TestLocalTopLevelModesBeatGlobalSiftModes(t *testing.T) {
 	}
 }
 
+func TestLocalSiftModesBeatGlobalTopLevelModes(t *testing.T) {
+	global := t.TempDir()
+	project := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", global)
+	writeConfigFileAt(t, filepath.Join(global, "sift"), "config.toml", "[modes]\nfull = [\"global/**\"]\n")
+	local := writeConfigFileAt(t, project, ".sift.toml", "[sift.modes]\nfull = [\"local/**\"]\n")
+
+	cfg := New()
+	cfg.RootDir = project
+	if err := ResolveConfig(cfg, nil, WithLocalConfig(local)); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual([]string(cfg.Modes.Full), []string{"local/**"}) {
+		t.Errorf("Modes.Full = %v, want [local/**]", cfg.Modes.Full)
+	}
+}
+
 func TestProfilePromptConflictErrors(t *testing.T) {
 	p := Profile{Prompt: "inline", PromptFile: "file.md"}
 	if err := p.Apply(New(), nil); err == nil {

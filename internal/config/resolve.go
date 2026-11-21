@@ -714,7 +714,10 @@ func mergeConfigFiles(global, local configFile) configFile {
 			s.Modes = nil
 			out.Sift = &s
 		}
-	} else if global.Modes != nil {
+	} else if global.Modes != nil && (local.Sift == nil || local.Sift.Modes == nil) {
+		// A local [sift.modes] is more specific than the global top-level
+		// [modes]. Inherit the global table only when the local file has no
+		// modes in either form.
 		out.Modes = global.Modes
 	}
 	for k, v := range local.Profiles {
