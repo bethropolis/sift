@@ -13,7 +13,8 @@ import (
 // fitToBudget selects the largest ranked prefix whose rendered document fits
 // the configured budget. It accounts for the prompt, the directory tree, the
 // document wrapper, and per-file framing, then verifies the exact rendered
-// token count and shrinks if the estimate was optimistic.
+// token count for JSON (where base64 expansion is hard to estimate) and
+// shrinks if necessary. File bodies are never rendered or scanned here.
 func (a *App) fitToBudget(files []format.FileEntry, prompt string) []format.FileEntry {
 	if a.cfg.Budget <= 0 || len(files) == 0 {
 		return files
@@ -33,10 +34,24 @@ func (a *App) fitToBudget(files []format.FileEntry, prompt string) []format.File
 		return nil
 	}
 
+	// Keep the uncosted entries so every token count can be restored exactly
+	// after fitting. The fitter works on inflated copies that include per-file
+	// framing; recomputing framing from an inflated count is wrong (and JSON
+	// is asymmetric because framing depends on the token count).
+	original := make(map[string]format.FileEntry, len(files))
+	for _, f := range files {
+		original[f.Path] = f
+	}
+
 	fit := func(budget int) []format.FileEntry {
 		costed := make([]format.FileEntry, len(files))
 		copy(costed, files)
 		for i := range costed {
+			if costed[i].PinnedFull {
+				// A [modes].full pin must stay full: no signature fallback.
+				costed[i].SigContent = nil
+				costed[i].TokensSig = 0
+			}
 			extra := fileFramingTokens(style, costed[i].Path, costed[i].Tokens)
 			costed[i].Tokens += extra
 			costed[i].TokensFull += extra
@@ -44,46 +59,72 @@ func (a *App) fitToBudget(files []format.FileEntry, prompt string) []format.File
 				costed[i].TokensSig += extra
 			}
 		}
+
+		// The provider returns framed signature tokens; record its uncosted
+		// count so the result can be restored precisely.
+		sigTokens := make(map[string]int)
 		var kept []format.FileEntry
 		if a.cfg.FallbackMode == "signatures" {
-			kept, _ = tokenize.FitToBudgetWithFallbackLazy(costed, budget, a.cfg.FallbackThreshold, a.signatureProvider())
+			kept, _ = tokenize.FitToBudgetWithFallbackLazy(costed, budget, a.cfg.FallbackThreshold, a.signatureProvider(style, sigTokens))
 		} else {
 			kept, _ = tokenize.FitToBudget(costed, budget)
 		}
+
 		for i := range kept {
-			extra := fileFramingTokens(style, kept[i].Path, kept[i].Tokens)
-			kept[i].Tokens -= extra
-			kept[i].TokensFull -= extra
-			if kept[i].TokensSig > 0 {
-				kept[i].TokensSig -= extra
+			orig, ok := original[kept[i].Path]
+			if !ok {
+				continue
+			}
+			kept[i].TokensFull = orig.TokensFull
+			switch {
+			case kept[i].IsCompressed && !orig.IsCompressed:
+				if n, ok := sigTokens[kept[i].Path]; ok {
+					kept[i].Tokens = n
+					kept[i].TokensSig = n
+				} else if orig.TokensSig > 0 {
+					kept[i].Tokens = orig.TokensSig
+					kept[i].TokensSig = orig.TokensSig
+				} else {
+					kept[i].Tokens = orig.Tokens
+					kept[i].TokensSig = orig.TokensSig
+				}
+			default:
+				kept[i].Tokens = orig.Tokens
+				kept[i].TokensSig = orig.TokensSig
 			}
 		}
 		return kept
 	}
 
 	kept := fit(remaining)
-	// Verify against the actual document and shrink on overshoot. Framing
-	// estimates cannot know every renderer detail (JSON base64, escaping).
-	for attempt := 0; attempt < 3 && len(kept) > 0; attempt++ {
-		var buf bytes.Buffer
-		if _, err := a.renderDocumentTo(kept, prompt, &buf, nil); err != nil {
-			break
+	// JSON base64 expansion makes arithmetic framing approximate. Verify once
+	// against a render without secret scanning, then shrink only if needed.
+	if style == format.StyleJSON {
+		for attempt := 0; attempt < 3 && len(kept) > 0; attempt++ {
+			n, err := a.countRenderedTokens(tz, kept, prompt)
+			if err != nil || n <= a.cfg.Budget {
+				break
+			}
+			over := n - a.cfg.Budget
+			remaining -= over + over/4 + 1
+			if remaining <= 0 {
+				return nil
+			}
+			kept = fit(remaining)
 		}
-		n, err := tz.Count(buf.Bytes())
-		if err != nil {
-			break
-		}
-		if n <= a.cfg.Budget {
-			return kept
-		}
-		over := n - a.cfg.Budget
-		remaining -= over + over/4 + 1
-		if remaining <= 0 {
-			return nil
-		}
-		kept = fit(remaining)
 	}
 	return kept
+}
+
+// countRenderedTokens renders without secret scanning and counts the exact
+// document bytes. It is used only for JSON, where base64 expansion is difficult
+// to estimate; file bodies are not scanned or re-tokenized in any other style.
+func (a *App) countRenderedTokens(tz *tokenize.Tokenizer, files []format.FileEntry, prompt string) (int, error) {
+	var buf bytes.Buffer
+	if _, err := a.renderDocumentNoScan(files, prompt, &buf, nil); err != nil {
+		return 0, err
+	}
+	return tz.Count(buf.Bytes())
 }
 
 // overheadTokens counts the parts of the document that are not file bodies:
@@ -156,12 +197,15 @@ func EstimatedDocumentOverhead(cfg *config.Config, prompt string, files []format
 	return a.EstimatedOverhead(prompt, files)
 }
 
-// signatureProvider lazily compresses a file and counts its signature tokens.
-// The shared picker processor (and its content cache) is built on first use,
-// so a dump that never falls back never loads tree-sitter.
-func (a *App) signatureProvider() tokenize.SignatureProvider {
+// signatureProvider lazily compresses a file and returns its framed token
+// count. The shared picker processor (and its content cache) is built on first
+// use, so a dump that never falls back never loads tree-sitter.
+func (a *App) signatureProvider(style format.Style, rawTokens map[string]int) tokenize.SignatureProvider {
 	var processor *scan.Processor
 	return func(f format.FileEntry) ([]byte, int, bool) {
+		if f.PinnedFull {
+			return nil, 0, false
+		}
 		if processor == nil {
 			p, err := a.sharedProcessor(collectPicker)
 			if err != nil {
@@ -170,9 +214,10 @@ func (a *App) signatureProvider() tokenize.SignatureProvider {
 			processor = p
 		}
 		entry, err := processor.Process(f.Path, f.Content, scan.ModeSignatures)
-		if err != nil || !entry.IsCompressed || len(entry.Content) == 0 {
+		if err != nil || !entry.IsCompressed || len(entry.Content) == 0 || entry.Tokens <= 0 {
 			return nil, 0, false
 		}
-		return entry.Content, entry.Tokens, true
+		rawTokens[f.Path] = entry.Tokens
+		return entry.Content, entry.Tokens + fileFramingTokens(style, f.Path, entry.Tokens), true
 	}
 }

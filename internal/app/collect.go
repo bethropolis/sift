@@ -318,6 +318,7 @@ func (a *App) processWalkEntry(mode collectMode, processor *scan.Processor, smar
 			a.log.Warn("Processing %s failed: %v", relativePath, err)
 			return nil
 		}
+		entry.PinnedFull = pinnedFull
 		if mode == collectBlocking && procMode == scan.ModePicker {
 			entry.Tokens = entry.TokensFull
 		}

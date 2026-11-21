@@ -126,6 +126,16 @@ func (a *App) RenderFinalToBuffer(files []format.FileEntry, prompt string) ([]by
 // the shared render core for file, clipboard, and buffer output. When
 // sections is non-nil it collects one byte range per rendered file.
 func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Writer, sections *[]format.Section) (RenderMetrics, error) {
+	return a.renderDocument(files, prompt, w, sections, true)
+}
+
+// renderDocumentNoScan is renderDocument with secret scanning disabled. Budget
+// verification uses it to avoid repeating the expensive redaction pass.
+func (a *App) renderDocumentNoScan(files []format.FileEntry, prompt string, w io.Writer, sections *[]format.Section) (RenderMetrics, error) {
+	return a.renderDocument(files, prompt, w, sections, false)
+}
+
+func (a *App) renderDocument(files []format.FileEntry, prompt string, w io.Writer, sections *[]format.Section, scanSecrets bool) (RenderMetrics, error) {
 	if a.archGraph == nil && a.cfg.IncludeGraph {
 		a.prepareArchitecture(files)
 	}
@@ -146,7 +156,7 @@ func (a *App) renderDocumentTo(files []format.FileEntry, prompt string, w io.Wri
 	// Scan secrets ONLY on the selected files, right before rendering.
 	// Scanning is deliberately kept out of the walker so the directory scan
 	// stays fast; only the files that will actually be emitted are inspected.
-	if a.cfg.SecretScan && !a.cfg.ForceSecrets {
+	if scanSecrets && a.cfg.SecretScan && !a.cfg.ForceSecrets {
 		files = secrets.Default().RedactSelectedFiles(files)
 		// Redaction shortens content, so the pre-redaction token count is stale.
 		// Recount redacted files so the totals match what is emitted.

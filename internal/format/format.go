@@ -41,6 +41,9 @@ type FileEntry struct {
 	GitStatus  string
 	Hidden     bool
 	GitIgnored bool
+	// PinnedFull marks an explicit [modes].full entry. Budget fallback must
+	// never downgrade it to signatures; it stays full or gets dropped.
+	PinnedFull bool
 }
 
 // Document is the complete set of data handed to a Renderer.

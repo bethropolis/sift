@@ -105,6 +105,9 @@ func TestModesCollection(t *testing.T) {
 			if f.IsCompressed {
 				t.Errorf("repo.go should be full mode, but IsCompressed = true")
 			}
+			if !f.PinnedFull {
+				t.Errorf("repo.go should carry the [modes].full pin")
+			}
 		}
 		if strings.HasSuffix(f.Path, "view.go") {
 			foundView = true
