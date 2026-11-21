@@ -94,8 +94,8 @@ func (s *service) copySelectionWithPrompt(files []format.FileEntry, selected []t
 // generateSelection renders the current selection to the output document
 // without leaving the picker (pressing g). The output file is truncated first
 // so repeated generates replace the previous dump instead of appending to it.
-func (s *service) generateSelection(files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection) error {
-	_, err := s.generateSelectionWithPrompt(files, skipped, start, selected, s.cfg.Prompt)
+func (s *service) generateSelection(files []format.FileEntry, graph map[string][]string, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection) error {
+	_, err := s.generateSelectionWithPrompt(files, graph, skipped, start, selected, s.cfg.Prompt)
 	return err
 }
 
@@ -108,9 +108,9 @@ func (s *service) generateSelection(files []format.FileEntry, skipped []walker.S
 // picker owns the terminal through Bubble Tea's alternate screen, so flushing
 // a whole document there would corrupt the interface. The bytes are still
 // returned so Y can copy them, and `g` reports the destination in its notice.
-func (s *service) generateSelectionWithPrompt(files []format.FileEntry, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection, prompt string) ([]byte, error) {
+func (s *service) generateSelectionWithPrompt(files []format.FileEntry, graph map[string][]string, skipped []walker.SkippedItem, start time.Time, selected []tui.Selection, prompt string) ([]byte, error) {
 	chosen := applySelection(s.env.App, files, selected)
-	chosen = app.ExpandChosen(files, chosen, s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
+	chosen = app.ExpandChosenWithGraph(files, chosen, graph, s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
 	if len(chosen) == 0 {
 		return nil, fmt.Errorf("nothing selected")
 	}

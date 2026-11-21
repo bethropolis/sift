@@ -123,12 +123,18 @@ func (s *service) run(ctx context.Context) (Result, error) {
 	// the picker and quitting early still sees every streamed file.
 	var stateMu sync.Mutex
 	var collected []format.FileEntry
+	var graph map[string][]string
 	var skippedMu sync.Mutex
 
 	snapshotFiles := func() []format.FileEntry {
 		stateMu.Lock()
 		defer stateMu.Unlock()
 		return append([]format.FileEntry(nil), collected...)
+	}
+	snapshotGraph := func() map[string][]string {
+		stateMu.Lock()
+		defer stateMu.Unlock()
+		return graph
 	}
 	snapshotSkipped := func() []walker.SkippedItem {
 		skippedMu.Lock()
@@ -155,7 +161,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 	scanCtx, cancelScan := context.WithCancel(ctx)
 	defer func() { cancelScan() }()
 	go streamScan(scanCtx, application, preferredModes, absRoot, skeletonFilePaths,
-		&stateMu, &collected, &skippedMu, &skipped,
+		&stateMu, &collected, &graph, &skippedMu, &skipped,
 		totalFiles, totalDirs, stream)
 
 	result, err := tui.RunStreaming(skeletonItems, tui.Options{
@@ -184,7 +190,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		},
 		OnGenerateCopy: func(sel []tui.Selection, prompt string) error {
 			files := snapshotFiles()
-			rendered, err := s.generateSelectionWithPrompt(files, snapshotSkipped(), start, sel, prompt)
+			rendered, err := s.generateSelectionWithPrompt(files, snapshotGraph(), snapshotSkipped(), start, sel, prompt)
 			if err != nil {
 				return err
 			}
@@ -203,7 +209,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 			if application.OutputPath() == "" {
 				return fmt.Errorf("output is stdout; press Y to copy to the clipboard instead")
 			}
-			return s.generateSelection(snapshotFiles(), snapshotSkipped(), start, sel)
+			return s.generateSelection(snapshotFiles(), snapshotGraph(), snapshotSkipped(), start, sel)
 		},
 		OnGeneratePrompt: func(sel []tui.Selection, prompt string) error {
 			// Same stdout caveat as OnGenerate: the alt-screen TUI owns the
@@ -211,7 +217,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 			if application.OutputPath() == "" {
 				return fmt.Errorf("output is stdout; press Y to copy to the clipboard instead")
 			}
-			_, err := s.generateSelectionWithPrompt(snapshotFiles(), snapshotSkipped(), start, sel, prompt)
+			_, err := s.generateSelectionWithPrompt(snapshotFiles(), snapshotGraph(), snapshotSkipped(), start, sel, prompt)
 			return err
 		},
 		Delta: s.buildDeltaInfo(deltaFiles),
@@ -228,6 +234,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 			cancelScan()
 			stateMu.Lock()
 			collected = nil
+			graph = nil
 			stateMu.Unlock()
 			skippedMu.Lock()
 			skipped = nil
@@ -256,7 +263,7 @@ func (s *service) run(ctx context.Context) (Result, error) {
 			fresh := newPickStream()
 			scanCtx, cancelScan = context.WithCancel(ctx)
 			go streamScan(scanCtx, application, freshPreferred, absRoot, freshPaths,
-				&stateMu, &collected, &skippedMu, &skipped,
+				&stateMu, &collected, &graph, &skippedMu, &skipped,
 				freshFiles, freshDirs, fresh)
 			return fresh.tuiStream(), nil
 		},
@@ -274,8 +281,9 @@ func (s *service) run(ctx context.Context) (Result, error) {
 		return Result{}, nil
 	}
 
-	chosen := applySelection(application, snapshotFiles(), selected)
-	chosen = app.ExpandChosen(snapshotFiles(), chosen, s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
+	files := snapshotFiles()
+	chosen := applySelection(application, files, selected)
+	chosen = app.ExpandChosenWithGraph(files, chosen, snapshotGraph(), s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
 	if err := application.RenderFinal(chosen, snapshotSkipped(), time.Since(start), nil); err != nil {
 		return Result{}, err
 	}

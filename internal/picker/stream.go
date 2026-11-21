@@ -50,6 +50,7 @@ func (s pickStream) tuiStream() tui.Stream {
 // that can never be enriched. It never touches the TUI's data directly.
 func streamScan(ctx context.Context, application *app.App, preferredModes map[string]string,
 	absRoot string, skeletonFiles []string, stateMu *sync.Mutex, collected *[]format.FileEntry,
+	graph *map[string][]string,
 	skippedMu *sync.Mutex, skipped *[]walker.SkippedItem,
 	totalFiles, totalDirs int, s pickStream) {
 
@@ -178,16 +179,22 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 
 	// Patch unified relevance ranks now that every path is known. Non-git
 	// repos keep the skeleton's zero scores; the picker still works path-ordered.
+	// The dependency graph is retained too, so generate/copy/final render never
+	// re-parse imports for the whole repository.
 	if absRoot != "" {
-		if r := app.NewRankerWithWeights(absRoot, app.WeightsFromScoring(application.Config().Scoring)); r.Available() {
+		ranker := app.NewRankerWithWeights(absRoot, app.WeightsFromScoring(application.Config().Scoring))
+		if ranker.Available() {
 			stateMu.Lock()
 			snapshot := append([]format.FileEntry(nil), *collected...)
 			stateMu.Unlock()
 
-			scores, graph := r.RankGraph(snapshot)
-			testAffinity := app.RelatedTestAffinity(snapshot, graph)
+			scores, depGraph := ranker.RankGraph(snapshot)
+			testAffinity := app.RelatedTestAffinity(snapshot, depGraph)
 			stateMu.Lock()
 			*collected = snapshot
+			if graph != nil {
+				*graph = depGraph
+			}
 			stateMu.Unlock()
 
 			rankBatch := make([]tui.Item, 0, len(snapshot))
@@ -207,6 +214,13 @@ func streamScan(ctx context.Context, application *app.App, preferredModes map[st
 					return
 				}
 			}
+		} else if graph != nil {
+			// DependencyGraph does not need git: cache the import adjacency
+			// even when ranking is unavailable.
+			stateMu.Lock()
+			snapshot := append([]format.FileEntry(nil), *collected...)
+			*graph = ranker.DependencyGraph(snapshot)
+			stateMu.Unlock()
 		}
 	}
 

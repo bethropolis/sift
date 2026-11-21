@@ -88,11 +88,12 @@ func TestStreamScanPatchesUnifiedRanks(t *testing.T) {
 
 	var stateMu sync.Mutex
 	var collected []format.FileEntry
+	var graph map[string][]string
 	var skippedMu sync.Mutex
 	stream := newPickStream()
 
 	go streamScan(ctx, application, nil, dir, skeletonFiles,
-		&stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+		&stateMu, &collected, &graph, &skippedMu, &skipped, 0, 0, stream)
 
 	var items []tui.Item
 	for stream.nodes != nil || stream.progress != nil || stream.errCh != nil {
@@ -164,11 +165,12 @@ func TestStreamScanStreamsAndRemoves(t *testing.T) {
 
 	var stateMu sync.Mutex
 	var collected []format.FileEntry
+	var graph map[string][]string
 	var skippedMu sync.Mutex
 	stream := newPickStream()
 
 	go streamScan(ctx, application, nil, dir, skeletonFiles,
-		&stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+		&stateMu, &collected, &graph, &skippedMu, &skipped, 0, 0, stream)
 
 	var items []tui.Item
 	var removed []string
@@ -226,6 +228,9 @@ func TestStreamScanStreamsAndRemoves(t *testing.T) {
 
 	stateMu.Lock()
 	defer stateMu.Unlock()
+	if graph == nil {
+		t.Fatal("streamScan did not retain the dependency graph")
+	}
 	collectedSet := map[string]bool{}
 	for _, f := range collected {
 		collectedSet[f.Path] = true

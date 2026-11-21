@@ -48,13 +48,26 @@ func ExpandDependencies(selected, files []format.FileEntry, graph map[string][]s
 // spend is bounded by what remains after the chosen set; non-positive
 // budgets add the full closure. rootDir anchors module-root resolution.
 func ExpandChosen(files, chosen []format.FileEntry, rootDir string, budget, maxDepth int) []format.FileEntry {
+	return ExpandChosenWithGraph(files, chosen, nil, rootDir, budget, maxDepth)
+}
+
+// ExpandChosenWithGraph is ExpandChosen with a caller-supplied dependency
+// graph. The picker already computes the graph during ranking; passing it here
+// avoids re-parsing every import on every generate/copy/final render. A nil
+// graph falls back to building one from files.
+func ExpandChosenWithGraph(files, chosen []format.FileEntry, graph map[string][]string, rootDir string, budget, maxDepth int) []format.FileEntry {
 	if maxDepth == 0 || len(chosen) == 0 {
 		return chosen
 	}
-	// DependencyGraph skips git scoring: expansion needs the import
-	// adjacency only, and RankGraph's scores were discarded here anyway.
-	ranker := NewRankerWithWeights(rootDir, rank.DefaultWeights())
-	graph := ranker.DependencyGraph(files)
+	// Every eligible file is already chosen; there are no unselected
+	// dependencies left to add.
+	if len(chosen) >= len(files) {
+		return chosen
+	}
+	if graph == nil {
+		ranker := NewRankerWithWeights(rootDir, rank.DefaultWeights())
+		graph = ranker.DependencyGraph(files)
+	}
 	deps := ExpandDependencies(chosen, files, graph, maxDepth)
 	if len(deps) == 0 {
 		return chosen

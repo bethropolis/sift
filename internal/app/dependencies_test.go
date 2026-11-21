@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -68,6 +69,60 @@ func pathsOf(files []format.FileEntry) []string {
 		out = append(out, f.Path)
 	}
 	return out
+}
+
+func TestExpandChosenWithGraphUsesProvidedGraph(t *testing.T) {
+	files := []format.FileEntry{
+		{Path: "a.go", Content: []byte("package a // no imports\n"), TokensFull: 10, Tokens: 10},
+		{Path: "dep/dep.go", Content: []byte("package dep\n"), TokensFull: 50, TokensSig: 5, SigContent: []byte("package dep\n")},
+	}
+	chosen := []format.FileEntry{files[0]}
+	// A graph the ranker could not derive from content: proves the supplied
+	// adjacency is used instead of re-parsing imports.
+	graph := map[string][]string{"a.go": {"dep/dep.go"}}
+	out := ExpandChosenWithGraph(files, chosen, graph, t.TempDir(), 20, 2)
+	if len(out) != 2 || out[1].Path != "dep/dep.go" || !out[1].IsCompressed {
+		t.Fatalf("ExpandChosenWithGraph = %v, want [a.go dep/dep.go compressed]", pathsOf(out))
+	}
+	// Everything chosen: no dependency work and no budget trimming.
+	out = ExpandChosenWithGraph(files, files, graph, "", 1, 2)
+	if len(out) != len(files) {
+		t.Fatalf("all-chosen short circuit returned %d files, want %d", len(out), len(files))
+	}
+}
+
+func TestExpandGraphDirsLarge(t *testing.T) {
+	const n = 2000
+	paths := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		paths = append(paths, fmt.Sprintf("pkg%d/file%d.go", i%20, i))
+	}
+	graph := make(map[string][]string)
+	for i := 0; i < 20; i++ {
+		graph[fmt.Sprintf("pkg%d/file0.go", i)] = []string{fmt.Sprintf("pkg%d", i)}
+	}
+	out := ExpandGraphDirs(graph, paths)
+	for i := 0; i < 20; i++ {
+		if len(out[fmt.Sprintf("pkg%d/file0.go", i)]) != 100 {
+			t.Fatalf("pkg%d expanded to %d files, want 100", i, len(out[fmt.Sprintf("pkg%d/file0.go", i)]))
+		}
+	}
+}
+
+func BenchmarkExpandGraphDirs(b *testing.B) {
+	const n = 5000
+	paths := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		paths = append(paths, fmt.Sprintf("dir%d/file%d.go", i%100, i))
+	}
+	graph := make(map[string][]string)
+	for i := 0; i < 200; i++ {
+		graph[fmt.Sprintf("dir%d/file0.go", i)] = []string{fmt.Sprintf("dir%d", i)}
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		ExpandGraphDirs(graph, paths)
+	}
 }
 
 func TestSelectWithDependencies(t *testing.T) {

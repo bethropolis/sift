@@ -89,7 +89,7 @@ func TestStreamScanCancellation(t *testing.T) {
 	var skipped []walker.SkippedItem
 	stream := newPickStream()
 
-	go streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+	go streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, nil, &skippedMu, &skipped, 0, 0, stream)
 	cancel()
 
 	deadline := time.After(10 * time.Second)
@@ -143,7 +143,7 @@ func TestStreamScanCancellationNoReceiver(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+		streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, nil, &skippedMu, &skipped, 0, 0, stream)
 	}()
 	cancel()
 
@@ -248,7 +248,7 @@ func TestGenerateStdoutDestinationSkipsWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stdout = w
-	rendered, err := s.generateSelectionWithPrompt(entries, nil, time.Now(), sel, "")
+	rendered, err := s.generateSelectionWithPrompt(entries, nil, nil, time.Now(), sel, "")
 	w.Close()
 	os.Stdout = orig
 	if err != nil {
@@ -388,7 +388,7 @@ func TestStreamScanLeavesNoGoroutines(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+		streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, nil, &skippedMu, &skipped, 0, 0, stream)
 	}()
 
 	// Drain until every channel closes, like the TUI listener does.
@@ -444,7 +444,7 @@ func TestStreamScanCancellationLeavesNoGoroutines(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, &skippedMu, &skipped, 0, 0, stream)
+		streamScan(ctx, application, nil, dir, nil, &stateMu, &collected, nil, &skippedMu, &skipped, 0, 0, stream)
 	}()
 
 	// Cancel before draining, forcing every producer to unwind on ctx.Done.

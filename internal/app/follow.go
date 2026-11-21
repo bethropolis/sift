@@ -93,8 +93,12 @@ func MergeGraphs(a, b map[string][]string) map[string][]string {
 // directory with collected files are dropped.
 func ExpandGraphDirs(graph map[string][]string, paths []string) map[string][]string {
 	files := make(map[string]bool, len(paths))
+	byDir := make(map[string][]string)
 	for _, p := range paths {
-		files[filepath.ToSlash(p)] = true
+		p = filepath.ToSlash(p)
+		files[p] = true
+		dir := path.Dir(p)
+		byDir[dir] = append(byDir[dir], p)
 	}
 	out := make(map[string][]string, len(graph))
 	for src, targets := range graph {
@@ -108,11 +112,7 @@ func ExpandGraphDirs(graph map[string][]string, paths []string) map[string][]str
 				out[s] = append(out[s], t)
 				continue
 			}
-			for p := range files {
-				if path.Dir(p) == t {
-					out[s] = append(out[s], p)
-				}
-			}
+			out[s] = append(out[s], byDir[t]...)
 		}
 		if len(out[s]) > 0 {
 			sort.Strings(out[s])
