@@ -61,8 +61,11 @@ func (goDriver) Imports(path, moduleRoot string, content []byte) []string {
 			return
 		}
 		// Drop file suffix if present; a package import resolves to a dir.
-		if ext := filepath.Ext(target); ext != "" {
-			target = strings.TrimSuffix(target, ext)
+		// "." is the module root package and has no extension.
+		if target != "." {
+			if ext := filepath.Ext(target); ext != "" {
+				target = strings.TrimSuffix(target, ext)
+			}
 		}
 		targets = append(targets, target)
 	})
@@ -81,8 +84,11 @@ func (goDriver) ResolveImports(path, moduleRoot string, content []byte, exists f
 			return
 		}
 		// Drop file suffix if present; a package import resolves to a dir.
-		if ext := filepath.Ext(dir); ext != "" {
-			dir = strings.TrimSuffix(dir, ext)
+		// "." is the module root package and has no extension.
+		if dir != "." {
+			if ext := filepath.Ext(dir); ext != "" {
+				dir = strings.TrimSuffix(dir, ext)
+			}
 		}
 		dir = filepath.ToSlash(dir)
 		if seen[dir] || !exists(dir) {
@@ -145,8 +151,12 @@ func splitQuoted(s string) []string {
 // returning the repo-relative remainder. It returns "" when the spec is not
 // rooted at the module (standard library, third-party, or no module).
 func stripModulePrefix(spec, moduleRoot string) string {
-	if moduleRoot == "" || spec == moduleRoot {
+	if moduleRoot == "" {
 		return ""
+	}
+	if spec == moduleRoot {
+		// An import of the module's root package names the scan root itself.
+		return "."
 	}
 	if strings.HasPrefix(spec, moduleRoot+"/") {
 		return strings.TrimPrefix(spec, moduleRoot+"/")

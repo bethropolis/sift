@@ -190,10 +190,14 @@ func (r *Ranker) computeFanIn(files []format.FileEntry) (map[string]int, map[str
 	// exists covers collected files and their ancestor directories (so Go
 	// package imports confirm), keyed lowercase to match the normalized
 	// paths the language drivers resolve against.
-	collected := make(map[string]bool, len(files))
+	collected := make(map[string]bool, len(files)+1)
 	for _, f := range files {
 		p := strings.ToLower(filepath.ToSlash(f.Path))
 		collected[p] = true
+		if filepath.Dir(p) == "." {
+			// Imports of the scan root's own package map to ".".
+			collected["."] = true
+		}
 		for d := filepath.Dir(p); d != "." && d != "/"; d = filepath.Dir(d) {
 			d = filepath.ToSlash(d)
 			collected[d] = true
@@ -387,6 +391,11 @@ func findEnclosingModule(start string) (dir, module string) {
 		}
 		if mod := parsePubspecName(filepath.Join(cur, "pubspec.yaml")); mod != "" {
 			return cur, mod
+		}
+		// A repository boundary is authoritative: do not inherit a go.mod or
+		// pubspec from above a nested non-Go/non-Dart repository.
+		if _, err := os.Stat(filepath.Join(cur, ".git")); err == nil {
+			return "", ""
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {
