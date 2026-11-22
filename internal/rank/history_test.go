@@ -150,3 +150,16 @@ func TestShallowCloneRanks(t *testing.T) {
 		t.Fatalf("shallow clone produced no diffed files: %v", changes.Diffed)
 	}
 }
+
+func TestResolveRefHardening(t *testing.T) {
+	repo := initRepo(t)
+	g := New(repo)
+	if hash, ok := g.ResolveRef("HEAD"); !ok || hash == "" {
+		t.Fatalf("HEAD did not resolve: %q %v", hash, ok)
+	}
+	for _, bad := range []string{"--output=/tmp/x", "-1", "HEAD\n", "", "HEAD^{"} {
+		if _, ok := g.ResolveRef(bad); ok {
+			t.Errorf("ResolveRef(%q) accepted a bad ref", bad)
+		}
+	}
+}

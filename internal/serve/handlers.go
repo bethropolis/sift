@@ -168,7 +168,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		meta["app"] = app
 		meta["readOnly"] = readOnly
 		// Feature flags the UI uses to hide entry points that would 404.
-		meta["features"] = map[string]bool{"clone": s.cloneOK}
+		meta["features"] = map[string]bool{"clone": s.cloneOK, "diff": true}
 	}
 	writeJSON(w, http.StatusOK, meta)
 }

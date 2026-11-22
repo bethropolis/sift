@@ -58,6 +58,9 @@ func TestRenderPatchRedactsSecrets(t *testing.T) {
 	if metrics.Secrets == 0 {
 		t.Fatal("patch secret was not counted")
 	}
+	if metrics.PatchTokens == 0 {
+		t.Fatal("patch tokens were not counted")
+	}
 	if bytes.Contains(out.Bytes(), []byte("ghp_AAAA")) {
 		t.Fatalf("patch leaked a secret:\n%s", out.String())
 	}

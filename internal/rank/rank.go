@@ -433,6 +433,17 @@ func (g *Git) Ref(ref string) (short, subject string) {
 	return short, subject
 }
 
+// ResolveRef validates and resolves a user-supplied revision through the
+// hardened git path. Leading dashes, whitespace, and control characters are
+// rejected before git runs; -- ends option parsing.
+func (g *Git) ResolveRef(ref string) (string, bool) {
+	if cleanRef(ref) == "" {
+		return "", false
+	}
+	hash := strings.TrimSpace(g.runRef("rev-parse", "--verify", "--quiet", ref))
+	return hash, hash != ""
+}
+
 // Parent returns the short hash of ref's first parent, or "" when ref has no
 // parent (e.g. the repository root commit).
 func (g *Git) Parent(ref string) string {

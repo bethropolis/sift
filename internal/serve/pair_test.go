@@ -255,6 +255,7 @@ func TestReadOnlySessionDefaultDeny(t *testing.T) {
 		{"GET", "/api/file?root=" + root + "&path=main.go&mode=full", nil},
 		{"POST", "/api/smart-select", map[string]any{"root": root, "budget": 1000}},
 		{"POST", "/api/pack", map[string]any{"root": root, "selections": map[string]string{"main.go": "full"}}},
+		{"POST", "/api/diff", map[string]any{"root": root}},
 		{"POST", "/api/follow", map[string]any{"root": root, "seed": "main.go"}},
 	}
 	for _, tc := range allowed {

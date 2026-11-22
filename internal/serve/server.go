@@ -213,6 +213,7 @@ func (s *Server) registerRoutes() {
 	s.addRoute("GET", "/api/file", accessRead, s.apiChain(http.HandlerFunc(s.handleFile), accessRead))
 	s.addRoute("POST", "/api/smart-select", accessRead, s.apiChain(http.HandlerFunc(s.handleSmartSelect), accessRead))
 	s.addRoute("POST", "/api/pack", accessRead, s.apiChain(http.HandlerFunc(s.handlePack), accessRead))
+	s.addRoute("POST", "/api/diff", accessRead, s.apiChain(http.HandlerFunc(s.handleDiff), accessRead))
 	s.addRoute("POST", "/api/modes", accessWrite, s.apiChain(http.HandlerFunc(s.handleModes), accessWrite))
 	s.addRoute("GET", "/api/presets", accessWrite, s.apiChain(http.HandlerFunc(s.handlePresetsGet), accessWrite))
 	s.addRoute("POST", "/api/presets", accessWrite, s.apiChain(http.HandlerFunc(s.handlePresetsPost), accessWrite))
@@ -241,6 +242,7 @@ func (s *Server) apiChain(next http.Handler, access routeAccess) http.Handler {
 	h = s.idleReset(h)
 	h = s.securityHeaders(h)
 	h = s.hostAllowlist(h)
+	h = s.gzipAPI(h)
 	return h
 }
 

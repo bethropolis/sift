@@ -25,11 +25,12 @@ import (
 // baseline, so recorded counts match the document instead of the pre-budget,
 // pre-redaction collection.
 type RenderMetrics struct {
-	Files     int
-	FullCount int
-	SigCount  int
-	Tokens    int
-	Secrets   int
+	Files       int
+	FullCount   int
+	SigCount    int
+	Tokens      int
+	PatchTokens int
+	Secrets     int
 }
 
 // Render applies the token budget to files and writes the rendered document.
@@ -77,6 +78,16 @@ func (a *App) RenderPatchWithMetrics(files []format.FileEntry, patch string, ski
 // RenderPatchBuffer renders a diff plus neighbors (honoring the configured
 // budget) into a new buffer for MCP callers.
 func (a *App) RenderPatchBuffer(files []format.FileEntry, patch, prompt string) ([]byte, error) {
+	doc, _, _, err := a.RenderPatchBufferSections(context.Background(), files, patch, prompt)
+	return doc, err
+}
+
+// RenderPatchBufferSections is RenderPatchBuffer with per-file byte ranges and
+// post-budget metrics for the serve diff endpoint.
+func (a *App) RenderPatchBufferSections(ctx context.Context, files []format.FileEntry, patch, prompt string) ([]byte, []format.Section, RenderMetrics, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, RenderMetrics{}, err
+	}
 	a.patch = patch
 	defer func() { a.patch = "" }()
 	a.prepareArchitecture(files)
@@ -84,10 +95,32 @@ func (a *App) RenderPatchBuffer(files []format.FileEntry, patch, prompt string) 
 		files = a.fitToBudget(files, prompt)
 	}
 	var buf bytes.Buffer
-	if _, err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
-		return nil, err
+	sections := []format.Section{}
+	metrics, err := a.renderDocumentTo(files, prompt, ctxErrWriter{ctx: ctx, w: &buf}, &sections)
+	if err != nil {
+		return nil, nil, RenderMetrics{}, err
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), sections, metrics, nil
+}
+
+// RenderFilesBufferSections renders files without a patch, applying the same
+// budget and metrics as RenderPatchBufferSections. The serve diff endpoint
+// uses it when patch=false.
+func (a *App) RenderFilesBufferSections(ctx context.Context, files []format.FileEntry, prompt string) ([]byte, []format.Section, RenderMetrics, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, RenderMetrics{}, err
+	}
+	a.prepareArchitecture(files)
+	if a.cfg.Budget > 0 {
+		files = a.fitToBudget(files, prompt)
+	}
+	var buf bytes.Buffer
+	sections := []format.Section{}
+	metrics, err := a.renderDocumentTo(files, prompt, ctxErrWriter{ctx: ctx, w: &buf}, &sections)
+	if err != nil {
+		return nil, nil, RenderMetrics{}, err
+	}
+	return buf.Bytes(), sections, metrics, nil
 }
 
 // RenderToClipboard renders the given files and copies the result to the
@@ -185,6 +218,13 @@ func (a *App) renderDocument(files []format.FileEntry, prompt string, w io.Write
 		}
 	}
 	metrics.Secrets += patchSecrets
+	if patch != "" {
+		if tz, err := tokenize.New(a.cfg.TokenizeModel); err == nil {
+			if n, err := tz.Count([]byte(patch)); err == nil {
+				metrics.PatchTokens = n
+			}
+		}
+	}
 
 	paths := make([]string, 0, len(files))
 	for _, f := range files {
