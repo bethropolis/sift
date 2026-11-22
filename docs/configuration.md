@@ -341,12 +341,60 @@ sift dump --target sig         # codebase.sig.xml
 sift dump --target docs        # docs-context.md (md-only, short budget)
 ```
 
-Target fields (`style`, `budget`, `compress_mode`, `output`,
+Target fields (`config`, `style`, `budget`, `compress_mode`, `output`,
 `prompt`/`prompt_file`, `extensions`, `ignore`, `scoring`) override the resolved
 profile and `[sift]` defaults. Flags override everything.
 
 Targets are the cleanest way to keep several committed artifacts in one repo —
 one `--target` per artifact, each writing its own file.
+
+### Target configs for modules
+
+A target can point at another config file, so a monorepo can keep a standalone
+`.sift.toml` beside each module while the root config emits every module's
+artifact:
+
+```toml
+[[targets]]
+name = "api"
+config = "services/api/.sift.toml"
+output = "api-context.txt"
+style = "plain"
+
+[[targets]]
+name = "web"
+config = "services/web/.sift.toml"
+output = "web-context.md"
+```
+
+```sh
+sift dump --all-targets
+sift dump --target api
+```
+
+The referenced file is a full Sift config. Its `[sift]`, `[profiles]`,
+`[prompts]`, `[modes]`, `[scoring]`, and `[history]` act as a more specific
+layer than the project config; the target's own fields override it. The target
+`profile` may name a profile defined in either file.
+
+Rules for paths:
+
+- `config` is resolved relative to the config file that declares the target.
+- Relative paths inside the referenced config (`roots`, `prompt_file`,
+  `ui_theme_file`, `output`, and `[prompts.*].file`) resolve relative to the
+  referenced file's directory.
+- A target's own `output` resolves relative to the project root, so module
+  artifacts land at the root even when the module config lives in a subdirectory.
+  If the target omits `output`, the referenced config's output is used relative
+  to its own directory.
+- If neither the referenced config nor the selected profile declares `roots`,
+  the target scans the referenced file's directory. Outer `roots` and `output`
+  are not inherited by the module target.
+- `[[targets]]` inside the referenced config are ignored; only the target entry
+  in the declaring config defines the artifact.
+
+`--all-targets` still rejects duplicate output paths. `sift check` validates
+that each target's `config` exists, parses, and stays inside the project.
 
 ## Prompts
 
@@ -424,6 +472,7 @@ render.
 Built-in defaults (Config.New())
   → global ~/.config/sift/config.toml
   → local .sift.toml [sift] defaults
+  → selected target's config [sift] (if set)
   → default_profile (if set)
   → selected profile (+ extends expansion)
   → selected target overrides

@@ -147,6 +147,214 @@ func TestDumpMultipleRootsPrefixedArchitectureGraph(t *testing.T) {
 	}
 }
 
+func writeTargetConfigRepo(t *testing.T) (root, module string) {
+	t.Helper()
+	root = t.TempDir()
+	module = filepath.Join(root, "services", "api")
+	if err := os.MkdirAll(module, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		filepath.Join(module, "api.go"):     "package api\n",
+		filepath.Join(module, "README.md"):  "api docs\n",
+		filepath.Join(module, "PROMPT.md"):  "API module prompt.\n",
+		filepath.Join(module, ".sift.toml"): "[sift]\nextensions = [\"go\"]\nprompt_file = \"PROMPT.md\"\n",
+		filepath.Join(root, "main.go"):      "package main\n\nfunc main() {}\n",
+		filepath.Join(root, ".sift.toml"): `[sift]
+roots = ["."]
+output = "root-only.md"
+extensions = ["md"]
+
+[[targets]]
+name = "api"
+config = "services/api/.sift.toml"
+output = "api-context.txt"
+style = "plain"
+`,
+	}
+	for path, body := range files {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	return root, module
+}
+
+func assertTargetConfigOutput(t *testing.T, root, module string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "api-context.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "api.go") || !strings.Contains(text, "package api") {
+		t.Fatalf("module output did not include api.go:\n%s", text)
+	}
+	if !strings.Contains(text, "API module prompt.") {
+		t.Fatalf("module prompt_file did not resolve from the module config:\n%s", text)
+	}
+	if strings.Contains(text, "README") {
+		t.Fatalf("module config extensions did not apply:\n%s", text)
+	}
+	if _, err := os.Stat(filepath.Join(module, "api-context.txt")); !os.IsNotExist(err) {
+		t.Fatalf("target output landed in the module: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "root-only.md")); !os.IsNotExist(err) {
+		t.Fatalf("outer [sift] output leaked into target: %v", err)
+	}
+}
+
+func TestDumpTargetConfigUsesModuleConfigAndRootOutput(t *testing.T) {
+	root, module := writeTargetConfigRepo(t)
+	if _, err := runSift(t, "dump", "--target", "api", "--quiet", root); err != nil {
+		t.Fatal(err)
+	}
+	assertTargetConfigOutput(t, root, module)
+}
+
+func TestDumpAllTargetsTargetConfig(t *testing.T) {
+	root, module := writeTargetConfigRepo(t)
+	if _, err := runSift(t, "dump", "--all-targets", "--quiet", root); err != nil {
+		t.Fatal(err)
+	}
+	assertTargetConfigOutput(t, root, module)
+}
+
+func TestDumpTargetConfigProfileAndModuleRoots(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	module := filepath.Join(root, "services", "api")
+	if err := os.MkdirAll(filepath.Join(module, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		filepath.Join(module, "src", "api.go"): "package api\n",
+		filepath.Join(module, "README.md"):     "api docs\n",
+		filepath.Join(module, ".sift.toml"): `[sift]
+extensions = ["md"]
+
+[profiles.go_only]
+extensions = ["go"]
+roots = ["src"]
+`,
+		filepath.Join(root, ".sift.toml"): `[[targets]]
+name = "api"
+config = "services/api/.sift.toml"
+profile = "go_only"
+output = "api-context.txt"
+style = "plain"
+`,
+	}
+	for path, body := range files {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := runSift(t, "dump", "--target", "api", "--quiet", root); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "api-context.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "api.go") || strings.Contains(text, "README") {
+		t.Fatalf("target profile or module roots did not apply:\n%s", text)
+	}
+}
+
+func TestDumpAllTargetsTargetConfigMultipleRoots(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	module := filepath.Join(root, "services", "api")
+	for _, dir := range []string{filepath.Join(module, "a"), filepath.Join(module, "b")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := map[string]string{
+		filepath.Join(module, "a", "a.go"): "package a\n",
+		filepath.Join(module, "b", "b.go"): "package b\n",
+		filepath.Join(module, ".sift.toml"): `[sift]
+roots = ["a", "b"]
+`,
+		filepath.Join(root, ".sift.toml"): `[[targets]]
+name = "api"
+config = "services/api/.sift.toml"
+output = "api-context.txt"
+style = "plain"
+`,
+	}
+	for path, body := range files {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := runSift(t, "dump", "--all-targets", "--quiet", root); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "api-context.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{"a/a.go", "b/b.go"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("multi-root target config output missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestDumpTargetConfigRelativeToConfigFile(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	module := filepath.Join(root, "services", "api")
+	configs := filepath.Join(root, "configs")
+	for _, dir := range []string{module, configs} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(module, "api.go"), []byte("package api\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(module, ".sift.toml"), []byte("[sift]\nextensions = [\"go\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rootConfig := filepath.Join(configs, "root.toml")
+	if err := os.WriteFile(rootConfig, []byte(`[[targets]]
+name = "api"
+config = "../services/api/.sift.toml"
+output = "api-context.txt"
+style = "plain"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runSift(t, "dump", root, "--config", rootConfig, "--target", "api", "--quiet"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "api-context.txt")); err != nil {
+		t.Fatalf("target output not written at project root: %v", err)
+	}
+}
+
+func TestDumpTargetConfigMissing(t *testing.T) {
+	root := writeTargetRepo(t, `
+[[targets]]
+name = "api"
+config = "missing.toml"
+output = "api-context.txt"
+`)
+	_, err := runSift(t, "dump", "--target", "api", "--quiet", root)
+	if err == nil || !strings.Contains(err.Error(), "missing.toml") {
+		t.Fatalf("missing target config error = %v", err)
+	}
+}
+
 func TestDumpAllTargetsStdoutClashNamesDash(t *testing.T) {
 	root := writeTargetRepo(t, `
 [[targets]]

@@ -21,9 +21,10 @@ import (
 
 // targetRun is one resolved [[targets]] entry ready to collect and render.
 type targetRun struct {
-	name string
-	cfg  *config.Config
-	app  *app.App
+	name  string
+	cfg   *config.Config
+	app   *app.App
+	roots []string
 }
 
 // prepareTargetRuns resolves every named target from base and validates that
@@ -62,7 +63,12 @@ func prepareTargetRuns(base config.Config, flags *pflag.FlagSet) ([]*targetRun, 
 			return nil, fmt.Errorf("targets %q and %q write the same output %s", prev, name, out)
 		}
 		outputs[out] = name
-		runs = append(runs, &targetRun{name: name, cfg: &runCfg})
+		run := &targetRun{name: name, cfg: &runCfg}
+		if len(runCfg.Roots) > 1 {
+			run.roots = append([]string(nil), runCfg.Roots...)
+			runCfg.Roots = nil
+		}
+		runs = append(runs, run)
 	}
 
 	var cache *scan.ContentCache
@@ -92,6 +98,12 @@ func closeTargetRuns(runs []*targetRun) {
 // concise summary line per target unless quiet.
 func renderTargetRuns(runs []*targetRun) error {
 	for _, run := range runs {
+		if len(run.roots) > 1 {
+			if err := renderMultiRoot(run.cfg, run.roots); err != nil {
+				return fmt.Errorf("target %q: %w", run.name, err)
+			}
+			continue
+		}
 		start := time.Now()
 		files, skipped, err := run.app.Collect()
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) {

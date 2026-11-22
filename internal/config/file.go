@@ -66,6 +66,7 @@ func (p PromptRef) ResolvedPrompt() (string, error) {
 type Target struct {
 	Name              string       `toml:"name"`
 	Profile           string       `toml:"profile"`
+	Config            string       `toml:"config"`
 	Output            string       `toml:"output"`
 	Style             string       `toml:"style"`
 	TokenizeModel     string       `toml:"tokenize_model"`
@@ -92,6 +93,10 @@ type Target struct {
 	CopyOnGenerate    *bool        `toml:"copy_on_generate"`
 	Scoring           *Scoring     `toml:"scoring"`
 	Modes             *ModesConfig `toml:"modes"`
+
+	// sourceDir is the directory of the config file that declared this target.
+	// It anchors a relative target config path. Unexported so TOML can ignore it.
+	sourceDir string
 }
 
 // Automation holds optional declarative automation hints.

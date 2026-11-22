@@ -182,6 +182,12 @@ func ValidateConfigFile(path string, rootDir string) (*CheckResult, error) {
 	}
 
 	configDir := filepath.Dir(targetPath)
+	if abs, err := filepath.Abs(configDir); err == nil {
+		configDir = abs
+	}
+	for i := range cf.Targets {
+		cf.Targets[i].sourceDir = configDir
+	}
 	effectiveRoot := rootDir
 	if effectiveRoot == "" {
 		effectiveRoot = configDir
@@ -193,7 +199,7 @@ func ValidateConfigFile(path string, rootDir string) (*CheckResult, error) {
 	// 6. Security escapes check against the parsed file, not a reload of
 	// <effectiveRoot>/.sift.toml.
 	if effectiveRoot != "" {
-		for _, escape := range checkParsedConfig(cf, effectiveRoot) {
+		for _, escape := range checkParsedConfigAt(cf, effectiveRoot, effectiveRoot, true) {
 			result.Issues = append(result.Issues, ValidationIssue{
 				Severity: SeverityError,
 				Field:    "security",
@@ -437,8 +443,26 @@ func validateSemantic(cf *configFile, root string, result *CheckResult) {
 			})
 		}
 
+		var targetCF *configFile
+		if t.Config != "" {
+			loaded, _, err := readTargetConfig(&t, root)
+			if err != nil {
+				result.Issues = append(result.Issues, ValidationIssue{
+					Severity: SeverityError,
+					Field:    prefix + ".config",
+					Message:  err.Error(),
+				})
+			} else {
+				targetCF = &loaded
+			}
+		}
+
 		if t.Profile != "" {
-			if _, ok := cf.Profiles[t.Profile]; !ok {
+			_, ok := cf.Profiles[t.Profile]
+			if !ok && targetCF != nil {
+				_, ok = targetCF.Profiles[t.Profile]
+			}
+			if !ok {
 				result.Issues = append(result.Issues, ValidationIssue{
 					Severity: SeverityError,
 					Field:    prefix + ".profile",

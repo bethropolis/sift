@@ -75,6 +75,12 @@ func readConfigFile(path string) (configFile, error) {
 	if cf.Prompts == nil {
 		cf.Prompts = map[string]PromptRef{}
 	}
+	if abs, absErr := filepath.Abs(path); absErr == nil {
+		dir := filepath.Dir(abs)
+		for i := range cf.Targets {
+			cf.Targets[i].sourceDir = dir
+		}
+	}
 	return cf, nil
 }
 
@@ -350,6 +356,32 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	// Merge global + local into one view for resolution.
 	merged := mergeConfigFiles(globalCF, localCF)
 
+	var target *Target
+	if ro.targetName != "" {
+		target = findTarget(merged.Targets, ro.targetName)
+		if target == nil {
+			return fmt.Errorf("target %q not found", ro.targetName)
+		}
+	}
+
+	// A target-level config is a more specific local layer. Load it before
+	// profile expansion so its profiles can be selected by the target.
+	var targetConfigDir string
+	if target != nil && target.Config != "" {
+		targetCF, configDir, err := readTargetConfig(target, c.RootDir)
+		if err != nil {
+			return err
+		}
+		targetConfigDir = configDir
+		if targetCF.Sift == nil || len(targetCF.Sift.Roots) == 0 {
+			clearInheritedRoots(&merged)
+		}
+		if targetCF.Sift == nil || targetCF.Sift.Output == "" {
+			clearInheritedOutput(&merged)
+		}
+		merged = mergeConfigFiles(merged, targetCF)
+	}
+
 	if merged.Automation != nil {
 		c.Automation = *merged.Automation
 	}
@@ -375,10 +407,8 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	profileName := c.Profile
 	if profileName == "" {
 		// If a target was requested and it names a profile, prefer that.
-		if ro.targetName != "" {
-			if tgt := findTarget(merged.Targets, ro.targetName); tgt != nil && tgt.Profile != "" {
-				profileName = tgt.Profile
-			}
+		if target != nil && target.Profile != "" {
+			profileName = target.Profile
 		}
 		if profileName == "" {
 			profileName = merged.DefaultProfile
@@ -418,13 +448,13 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	}
 
 	// Apply target overrides.
-	if ro.targetName != "" {
-		tgt := findTarget(merged.Targets, ro.targetName)
-		if tgt == nil {
-			return fmt.Errorf("target %q not found", ro.targetName)
-		}
-		if err := tgt.applyTo(c, fs); err != nil {
+	outputBase := c.RootDir
+	if target != nil {
+		if err := target.applyTo(c, fs); err != nil {
 			return err
+		}
+		if target.Config != "" {
+			applyTargetConfigRoot(c, targetConfigDir, fs)
 		}
 	}
 	// Apply prompts ref if requested and prompt not already set by target/profile.
@@ -466,6 +496,9 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 		c.FallbackMode = CanonicalMode(c.FallbackMode)
 	}
 	c.ResolveOutputFile()
+	if target != nil && target.Config != "" {
+		anchorTargetOutput(c, target, fs, outputBase)
+	}
 
 	return nil
 }
@@ -576,6 +609,149 @@ func applySiftWithFlagGuard(c *Config, s *SiftDefaults, fs *pflag.FlagSet) error
 		c.Modes = *s.Modes
 	}
 	return nil
+}
+
+// readTargetConfig loads a target's referenced config file and resolves its
+// relative paths against that file's directory. Targets declared inside the
+// referenced file are ignored: only the named target from the declaring config
+// defines the artifact.
+func readTargetConfig(t *Target, projectRoot string) (configFile, string, error) {
+	var empty configFile
+	if t == nil || t.Config == "" {
+		return empty, "", nil
+	}
+
+	path := t.Config
+	if !filepath.IsAbs(path) {
+		base := t.sourceDir
+		if base == "" {
+			base = projectRoot
+		}
+		if base == "" {
+			base = "."
+		}
+		path = filepath.Join(base, path)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return empty, "", fmt.Errorf("target %q config %q: %w", t.Name, t.Config, err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return empty, "", fmt.Errorf("target %q config %q: %w", t.Name, t.Config, err)
+	}
+	if info.IsDir() {
+		return empty, "", fmt.Errorf("target %q config %q is a directory", t.Name, t.Config)
+	}
+
+	cf, err := readConfigFile(abs)
+	if err != nil {
+		return empty, "", fmt.Errorf("target %q config %q: %w", t.Name, t.Config, err)
+	}
+	cf.Targets = nil
+	resolveConfigPaths(&cf, filepath.Dir(abs))
+	return cf, filepath.Dir(abs), nil
+}
+
+// resolveConfigPaths makes paths declared by a target config absolute relative
+// to that config's directory, so they keep working when the target runs from
+// the project root.
+func resolveConfigPaths(cf *configFile, base string) {
+	resolve := func(path string) string {
+		if path == "" || path == "-" || filepath.IsAbs(path) {
+			return path
+		}
+		return filepath.Join(base, path)
+	}
+	resolveList := func(paths StringList) StringList {
+		if len(paths) == 0 {
+			return paths
+		}
+		out := make(StringList, len(paths))
+		for i, path := range paths {
+			out[i] = resolve(path)
+		}
+		return out
+	}
+
+	if cf.Sift != nil {
+		s := *cf.Sift
+		s.Roots = resolveList(s.Roots)
+		s.PromptFile = resolve(s.PromptFile)
+		s.Output = resolve(s.Output)
+		s.UIThemeFile = resolve(s.UIThemeFile)
+		cf.Sift = &s
+	}
+	for name, p := range cf.Profiles {
+		p.Roots = resolveList(p.Roots)
+		p.PromptFile = resolve(p.PromptFile)
+		p.Output = resolve(p.Output)
+		p.UIThemeFile = resolve(p.UIThemeFile)
+		cf.Profiles[name] = p
+	}
+	for name, p := range cf.Prompts {
+		p.File = resolve(p.File)
+		cf.Prompts[name] = p
+	}
+}
+
+// clearInheritedRoots removes roots inherited from the outer config when a
+// target config does not declare its own. The target then defaults to the
+// referenced config's directory.
+func clearInheritedRoots(cf *configFile) {
+	if cf.Sift == nil {
+		return
+	}
+	s := *cf.Sift
+	s.Roots = nil
+	cf.Sift = &s
+}
+
+// clearInheritedOutput removes an outer output path for the same reason: a
+// target config without an output should not inherit the project root's.
+func clearInheritedOutput(cf *configFile) {
+	if cf.Sift == nil {
+		return
+	}
+	s := *cf.Sift
+	s.Output = ""
+	cf.Sift = &s
+}
+
+// applyTargetConfigRoot scopes the target to its config file's directory. A
+// single explicit root is promoted to RootDir, matching the normal dump path.
+func applyTargetConfigRoot(c *Config, configDir string, fs *pflag.FlagSet) {
+	if configDir == "" {
+		return
+	}
+	if len(c.Roots) == 0 {
+		if fs == nil || !fs.Changed("dir") {
+			c.RootDir = configDir
+		}
+		return
+	}
+	if len(c.Roots) == 1 {
+		c.RootDir = c.Roots[0]
+		c.Roots = nil
+	}
+}
+
+// anchorTargetOutput puts a target's relative output at the project root
+// instead of the target config's module directory.
+func anchorTargetOutput(c *Config, t *Target, fs *pflag.FlagSet, base string) {
+	if t.Output == "" || c.OutputFile == "" || c.OutputFile == "-" || filepath.IsAbs(c.OutputFile) {
+		return
+	}
+	if fs != nil && fs.Changed("output") {
+		return
+	}
+	if base == "" {
+		base = "."
+	}
+	if abs, err := filepath.Abs(base); err == nil {
+		base = abs
+	}
+	c.OutputFile = filepath.Join(base, c.OutputFile)
 }
 
 func findTarget(targets []Target, name string) *Target {

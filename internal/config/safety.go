@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 
@@ -107,9 +108,20 @@ func CheckProjectConfig(root string) []string {
 // file, so `sift check <custom.toml>` validates the file it was given instead
 // of reloading <root>/.sift.toml.
 func checkParsedConfig(cf configFile, root string) []string {
+	return checkParsedConfigAt(cf, root, root, true)
+}
+
+// checkParsedConfigAt checks paths declared in a config file against the
+// project root. baseDir is the directory the config declares relative paths
+// from; includeTargets is false for target configs because their [[targets]]
+// are ignored during resolution.
+func checkParsedConfigAt(cf configFile, baseDir, root string, includeTargets bool) []string {
+	if baseDir == "" {
+		baseDir = root
+	}
 	var issues []string
 	check := func(where, p string) {
-		if escapesRoot(root, p) {
+		if escapesFrom(root, baseDir, p) {
 			issues = append(issues, where+" escapes the project root")
 		}
 	}
@@ -123,13 +135,71 @@ func checkParsedConfig(cf configFile, root string) []string {
 		check("profile "+name+" output", p.Output)
 		check("profile "+name+" ui_theme_file", p.UIThemeFile)
 	}
-	for _, t := range cf.Targets {
-		check("target "+t.Name+" prompt_file", t.PromptFile)
-		check("target "+t.Name+" output", t.Output)
-		check("target "+t.Name+" ui_theme_file", t.UIThemeFile)
-	}
 	for name, p := range cf.Prompts {
 		check("prompt "+name+" file", p.File)
 	}
+	if !includeTargets {
+		return issues
+	}
+	for _, t := range cf.Targets {
+		configBase := baseDir
+		if t.sourceDir != "" {
+			configBase = t.sourceDir
+		}
+		if escapesFrom(root, configBase, t.Config) {
+			issues = append(issues, "target "+t.Name+" config escapes the project root")
+		}
+		check("target "+t.Name+" prompt_file", t.PromptFile)
+		check("target "+t.Name+" output", t.Output)
+		check("target "+t.Name+" ui_theme_file", t.UIThemeFile)
+
+		if t.Config == "" || escapesFrom(root, configBase, t.Config) {
+			continue
+		}
+		path := filepath.Join(configBase, filepath.FromSlash(t.Config))
+		if abs, err := filepath.Abs(path); err == nil {
+			path = abs
+		}
+		if _, err := os.Stat(path); err != nil {
+			issues = append(issues, "target "+t.Name+" config is unreadable")
+			continue
+		}
+		data, err := readConfigFileCapped(path)
+		if err != nil {
+			issues = append(issues, "target "+t.Name+" config is unreadable")
+			continue
+		}
+		moduleCF, err := parseConfigBytes(data)
+		if err != nil {
+			issues = append(issues, "target "+t.Name+" config is unparsable")
+			continue
+		}
+		issues = append(issues, checkParsedConfigAt(moduleCF, filepath.Dir(path), root, false)...)
+	}
 	return issues
+}
+
+// escapesFrom reports whether p, resolved from baseDir, escapes root.
+func escapesFrom(root, baseDir, p string) bool {
+	if p == "" {
+		return false
+	}
+	clean := filepath.Clean(filepath.FromSlash(p))
+	if filepath.IsAbs(clean) {
+		return true
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return true
+	}
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return true
+	}
+	target := filepath.Join(absBase, clean)
+	rel, err := filepath.Rel(absRoot, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return true
+	}
+	return fsx.Escapes(absRoot, rel)
 }

@@ -189,6 +189,8 @@ Use `[[targets]]` when one repository needs more than one repeatable view, such 
 
 A target can choose a profile and override `style`, `budget`, `compress_mode`, `output`, `prompt`/`prompt_file`, `extensions`, `ignore`, and supported scoring fields. Give every target a distinct output filename and exclude those generated outputs from later scans.
 
+In a monorepo, a target can set `config = "services/api/.sift.toml"` to reuse a module's standalone config while writing the artifact at the project root. The module config supplies `[sift]`, profiles, prompts, modes, scoring, and history; the target's own fields still win.
+
 Do not create targets just to demonstrate the feature. Add only targets with a clear recurring use.
 
 ## 4. Choose files deliberately

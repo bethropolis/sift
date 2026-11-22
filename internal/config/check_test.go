@@ -239,6 +239,68 @@ output = "../outside.xml"
 	}
 }
 
+func TestValidateConfigFile_TargetConfigProfile(t *testing.T) {
+	tempDir := t.TempDir()
+	moduleDir := filepath.Join(tempDir, "services", "api")
+	if err := os.MkdirAll(moduleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(moduleDir, ".sift.toml"), []byte("[profiles.module]\nextensions = [\"go\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(tempDir, ".sift.toml")
+	content := `
+[[targets]]
+name = "api"
+config = "services/api/.sift.toml"
+profile = "module"
+output = "api.md"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ValidateConfigFile(configPath, tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Valid {
+		t.Fatalf("target config profile rejected: %v", result.Issues)
+	}
+}
+
+func TestValidateConfigFile_TargetConfigMissing(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".sift.toml")
+	content := `
+[[targets]]
+name = "api"
+config = "missing.toml"
+output = "api.md"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ValidateConfigFile(configPath, tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Valid {
+		t.Fatal("expected missing target config to fail validation")
+	}
+	found := false
+	for _, issue := range result.Errors() {
+		if issue.Field == `target "api".config` {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("missing target config issue: %v", result.Issues)
+	}
+}
+
 func TestValidateConfigFile_Nonexistent(t *testing.T) {
 	tempDir := t.TempDir()
 	_, err := ValidateConfigFile("", tempDir)

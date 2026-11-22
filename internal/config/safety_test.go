@@ -53,6 +53,29 @@ file = "../../secret.txt"
 	}
 }
 
+// TestCheckProjectConfigTargetConfigEscape checks paths declared inside a
+// referenced target config, not just the outer file.
+func TestCheckProjectConfigTargetConfigEscape(t *testing.T) {
+	root := t.TempDir()
+	module := filepath.Join(root, "services", "api")
+	if err := os.MkdirAll(module, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(module, ".sift.toml"), []byte("[sift]\noutput = \"/tmp/escape.md\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeConfig(t, root, `
+[[targets]]
+name = "api"
+config = "services/api/.sift.toml"
+output = "api.md"
+`)
+	issues := CheckProjectConfig(root)
+	if len(issues) == 0 {
+		t.Fatal("target config escape was not flagged")
+	}
+}
+
 // TestCheckProjectConfigMissing is silent when there is no config.
 func TestCheckProjectConfigMissing(t *testing.T) {
 	if issues := CheckProjectConfig(t.TempDir()); len(issues) != 0 {
