@@ -73,7 +73,6 @@ func TestPairConfigRefusalMatrix(t *testing.T) {
 		mutate func(*Config)
 		want   string
 	}{
-		{"roots", func(c *Config) { c.Roots = nil }, "--root"},
 		{"clone", func(c *Config) { c.AllowClone = true }, "--allow-clone"},
 		{"unredacted", func(c *Config) { c.AllowUnredacted = true }, "--allow-unredacted"},
 		{"app", func(c *Config) { c.App = true }, "--app"},
@@ -102,6 +101,19 @@ func TestPairConfigRefusalMatrix(t *testing.T) {
 	ok := base
 	if _, err := ok.Validate(); err != nil {
 		t.Fatalf("happy path rejected: %v", err)
+	}
+
+	cwdDefault := base
+	cwdDefault.Roots = nil
+	if _, err := cwdDefault.Validate(); err != nil {
+		t.Fatalf("pair without --root rejected: %v", err)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cwdDefault.Roots) != 1 || cwdDefault.Roots[0] != wd {
+		t.Fatalf("pair default roots = %v, want cwd %q", cwdDefault.Roots, wd)
 	}
 	if !ok.BehindProxy {
 		t.Fatal("https public URL on a loopback bind should imply --behind-proxy")

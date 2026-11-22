@@ -173,7 +173,11 @@ func (c *Config) Validate() (*auth.Auth, error) {
 // always redacted, and always remote-gated, regardless of the bind address.
 func (c *Config) validatePair(remote bool) (*auth.Auth, error) {
 	if len(c.Roots) == 0 {
-		return nil, fmt.Errorf("--pair needs at least one explicit --root")
+		cwd, err := os.Getwd()
+		if err != nil || cwd == "" {
+			return nil, fmt.Errorf("--pair needs an explicit --root (cannot resolve the working directory: %v)", err)
+		}
+		c.Roots = []string{cwd}
 	}
 	if c.AllowClone {
 		return nil, fmt.Errorf("--pair cannot be combined with --allow-clone")

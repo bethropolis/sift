@@ -96,7 +96,9 @@ an optional branch or tag, and a history depth (default 1, like
 `sift serve --pair` turns the browser UI into a read-only mobile companion.
 It prints a QR whose URL carries a one-time token in the fragment; scanning it
 creates a signed read-only session. Pairing is always remote-gated, even on a
-loopback bind.
+loopback bind. With no `--root`, pair mode exposes the current working
+directory (read-only) so `sift serve --pair --insecure-http` works from the
+project you are already in.
 
 ```bash
 # Recommended: Tailscale Serve (or any HTTPS tunnel) in front of loopback.
@@ -142,6 +144,8 @@ are unavailable; the UI says so.
 
 ### Pairing troubleshooting
 
+- **Wrong project** — pair defaults to the current working directory when
+  `--root` is omitted; pass one or more `--root` flags to scope it elsewhere.
 - **Stuck on “Pairing this phone…”** — the page loaded, so the network is
   fine. Restart the server after rebuilding sift (the running process embeds
   the old UI), then reload the phone tab and scan a fresh QR. Check the

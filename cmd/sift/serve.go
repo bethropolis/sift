@@ -35,9 +35,10 @@ a short-lived one-time token, and the server exits when that window closes
 then to the printed URL.
 
 With --pair the UI prints a one-time QR for a phone. Paired sessions are
-read-only and always redacted. Use an HTTPS --public-url (Tailscale Serve,
-Cloudflare Tunnel, Caddy, Nginx) for PWA install and Share; --insecure-http
-is available for a trusted LAN but is pair-only.`,
+read-only and always redacted. With no --root it serves the current working
+directory. Use an HTTPS --public-url (Tailscale Serve, Cloudflare Tunnel,
+Caddy, Nginx) for PWA install and Share; --insecure-http is available for a
+trusted LAN but is pair-only.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Snapshot explicitly-passed flags before profile resolution: each
 			// request re-applies them over the target project's own .sift.toml
@@ -76,7 +77,7 @@ is available for a trusted LAN but is pair-only.`,
 // flag values (shell history, ps): the password comes from a file or env.
 func registerServeFlags(fs *pflag.FlagSet, serveCfg *serve.Config) {
 	fs.StringVar(&serveCfg.Listen, "listen", serveCfg.Listen, "Host:port to bind (default loopback)")
-	fs.StringArrayVar(&serveCfg.Roots, "root", nil, "Allowed project root (repeatable; default $HOME locally, required remotely)")
+	fs.StringArrayVar(&serveCfg.Roots, "root", nil, "Allowed project root (repeatable; default cwd with --pair, $HOME locally, required remotely)")
 	fs.StringArrayVar(&serveCfg.Deny, "deny", nil, "Extra denylisted path (repeatable)")
 	fs.StringVar(&serveCfg.PasswordFile, "password-file", "", "File holding the password (also SIFT_SERVE_PASSWORD)")
 	fs.BoolVar(&serveCfg.AllowRemote, "allow-remote", false, "Required for any non-loopback bind")
