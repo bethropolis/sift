@@ -127,7 +127,8 @@
   }
 
   $effect(() => {
-    if (meta?.readOnly) {
+    if (!meta) return;
+    if (meta.readOnly) {
       projects.loadingRecents = false;
     } else {
       loadRecents();

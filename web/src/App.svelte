@@ -209,7 +209,7 @@ import { clearHashQuery } from './lib/router.svelte';
     //
     // With a launch token, refreshAuth runs from the handshake instead, after
     // the session exists; racing it here would cache a stale "not signed in".
-    if (routeState.launchToken) return;
+    if (routeState.launchToken || routeState.pairToken || launchPending || pairPending) return;
     void refreshAuth();
   });
 

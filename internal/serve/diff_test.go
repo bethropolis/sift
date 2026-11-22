@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bethropolis/sift/internal/config"
 )
@@ -138,5 +139,56 @@ func TestDiffRedactsPatchAndRejectsBadInput(t *testing.T) {
 	plainCookies := loginCookies(t, plain)
 	if rec := do(plain, "POST", "/api/diff", map[string]any{"root": plainRoot}, plainCookies); rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-git root = %d, want 400", rec.Code)
+	}
+}
+
+func TestPairDiffExcludesSensitivePatch(t *testing.T) {
+	root := diffRepo(t, false)
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("AWS=AKIAIOSFODNN7EXAMPLE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitAdd := exec.Command("git", "add", ".env")
+	gitAdd.Dir = root
+	if err := gitAdd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	gitCommit := exec.Command("git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "env")
+	gitCommit.Dir = root
+	if err := gitCommit.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("AWS=AKIAIOSFODNN7EXAMPLE\nEXTRA=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n\nfunc A() { println(\"safe change\") }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	engineCfg := config.New()
+	engineCfg.Quiet = true
+	engineCfg.SmartFilter = false
+	srv, err := New(&Config{
+		Listen: "127.0.0.1:7777", Roots: []string{root}, Pair: true,
+		PublicURL: "https://example.com", PairTTL: time.Minute, PairSessionTTL: time.Hour,
+	}, engineCfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookies := pairCookies(t, srv)
+	rec := do(srv, "POST", "/api/diff", map[string]any{"root": root}, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("diff = %d: %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Document string `json:"document"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.Document, ".env") || strings.Contains(out.Document, "AKIAIOSFODNN7EXAMPLE") || strings.Contains(out.Document, "EXTRA=1") {
+		t.Fatalf("pair diff leaked a sensitive file:\n%s", out.Document)
+	}
+	if !strings.Contains(out.Document, "a.go") || !strings.Contains(out.Document, "safe change") {
+		t.Fatalf("pair diff dropped the safe change:\n%s", out.Document)
 	}
 }

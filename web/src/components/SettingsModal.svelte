@@ -38,6 +38,7 @@
 
   async function handleSave(e: SubmitEvent) {
     e.preventDefault();
+    if (readOnly) return;
     isSaving = true;
     try {
       await api.saveSettings(settings);

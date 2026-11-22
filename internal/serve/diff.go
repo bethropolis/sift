@@ -88,6 +88,10 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 			patch = g.RawWorktreePatch("HEAD")
 		}
 	}
+	if s.cfg.Pair {
+		changed = filterPairChanged(changed)
+		patch = filterPairPatch(patch)
+	}
 	if len(changed) == 0 && patch == "" {
 		writeEmptyDiff(w)
 		return
@@ -199,6 +203,57 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 		"skipped":    skipped,
 		"sections":   outSections,
 	})
+}
+
+// filterPairChanged removes sensitive paths from the changed set so pair
+// sessions do not even learn their names.
+func filterPairChanged(changed []string) []string {
+	out := changed[:0]
+	for _, p := range changed {
+		if !pairSensitivePath(p) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// filterPairPatch drops whole diff sections whose old or new path is in the
+// pair-mode hard-exclusion set. Redaction alone is not enough: a .env or key
+// can contain non-token values that a regex would not recognize, and even its
+// filename is not part of a paired session's read surface.
+func filterPairPatch(patch string) string {
+	if patch == "" {
+		return ""
+	}
+	var out strings.Builder
+	keep := true
+	for _, line := range strings.SplitAfter(patch, "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			keep = !pairSensitiveDiffHeader(line)
+			if !keep {
+				continue
+			}
+		}
+		if keep {
+			out.WriteString(line)
+		}
+	}
+	return out.String()
+}
+
+func pairSensitiveDiffHeader(line string) bool {
+	for _, field := range strings.Fields(line) {
+		field = strings.Trim(field, "\"")
+		if field == "a" || field == "b" || field == "diff" || field == "--git" {
+			continue
+		}
+		field = strings.TrimPrefix(field, "a/")
+		field = strings.TrimPrefix(field, "b/")
+		if pairSensitivePath(field) {
+			return true
+		}
+	}
+	return false
 }
 
 func writeEmptyDiff(w http.ResponseWriter) {

@@ -112,6 +112,9 @@
 
   // Load project tree (re-runs when projectRoot changes; stale responses ignored).
   $effect(() => {
+    // Wait for meta before deciding whether this is a read-only session; a
+    // premature getRecents would 403 and reject the tree load on reload.
+    if (!meta) return;
     const root = projectRoot;
     let alive = true;
     loadingTree = true;

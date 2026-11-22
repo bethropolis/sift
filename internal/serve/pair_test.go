@@ -388,3 +388,25 @@ func TestPairURLUsesFragment(t *testing.T) {
 		t.Fatal("insecure pair base URL is empty")
 	}
 }
+
+func TestPairSensitiveFilesIgnoreNegation(t *testing.T) {
+	srv, root := pairServer(t, nil)
+	if err := os.WriteFile(filepath.Join(root, "id_rsa"), []byte("PRIVATE"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".sift.toml"), []byte("[sift]\nignore = [\"!id_rsa\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cookies := pairCookies(t, srv)
+	rec := do(srv, "GET", "/api/tree?root="+root, nil, cookies)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("tree = %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "id_rsa") {
+		t.Fatalf("ignore negation re-opened id_rsa: %s", rec.Body.String())
+	}
+	rec = do(srv, "GET", "/api/file?root="+root+"&path=id_rsa&mode=full", nil, cookies)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("file id_rsa = %d, want 403", rec.Code)
+	}
+}
