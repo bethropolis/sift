@@ -53,9 +53,11 @@ func init() {
 			"companion_object", "function_declaration", "property_declaration", "type_alias",
 			"getter", "setter",
 		),
-		Grammar:          kotlin.GetLanguage(),
-		HeaderOrConst:    func(t string) bool { return t == "package_header" || t == "import_header" },
-		TypeDefinition:   func(t string) bool { return t == "class_declaration" || t == "object_declaration" || t == "companion_object" || t == "type_alias" },
+		Grammar:       kotlin.GetLanguage(),
+		HeaderOrConst: func(t string) bool { return t == "package_header" || t == "import_header" },
+		TypeDefinition: func(t string) bool {
+			return t == "class_declaration" || t == "object_declaration" || t == "companion_object" || t == "type_alias"
+		},
 		FunctionOrMethod: func(t string) bool { return t == "function_declaration" || t == "getter" || t == "setter" },
 	})
 
