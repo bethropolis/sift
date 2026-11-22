@@ -112,10 +112,11 @@
 
   // Load project tree (re-runs when projectRoot changes; stale responses ignored).
   $effect(() => {
-    // Wait for meta before deciding whether this is a read-only session; a
-    // premature getRecents would 403 and reject the tree load on reload.
-    if (!meta) return;
     const root = projectRoot;
+    // Until meta arrives we cannot know whether recents are allowed. Skip
+    // them rather than let a paired session's 403 reject the tree load; the
+    // tree itself is safe to fetch with the existing cookie.
+    const ro = meta?.readOnly === true;
     let alive = true;
     loadingTree = true;
     treeError = null;
@@ -126,9 +127,12 @@
 
     // Record the open so recents stay fresh; never blocks the tree. A paired
     // session is default-denied every server-state write, so skip it entirely.
-    if (!readOnly) api.recordRecent(root).catch(() => {});
+    if (meta && !ro) api.recordRecent(root).catch(() => {});
 
-    Promise.all([api.getTree(root), readOnly ? Promise.resolve([]) : api.getRecents()])
+    const recentsPromise = meta && !ro
+      ? api.getRecents().catch(() => [] as RecentProject[])
+      : Promise.resolve([] as RecentProject[]);
+    Promise.all([api.getTree(root), recentsPromise])
       .then(([treeRes, recentsRes]) => {
         if (!alive) return;
         files = treeRes.files;
