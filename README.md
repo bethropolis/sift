@@ -68,7 +68,7 @@ The full key list is in [docs/picker.md](docs/picker.md).
 
 ![Sift's web UI with the same file tree, live token counts, and preview pane, running in a browser](docs/assets/picker-web.png)
 
-Details: [docs/serve.md](docs/serve.md).
+Mobile pairing, remote TLS, and the PWA flow: [docs/serve.md](docs/serve.md).
 
 ## Incremental deltas
 
@@ -162,6 +162,7 @@ sift delta [path]   # only changes since the last recorded dump
 sift follow <file>  # render a file plus its import-graph neighbors
 sift watch [path]   # re-render on file changes
 sift serve          # browser picker at http://127.0.0.1:7777
+sift serve --pair   # read-only phone pairing via QR (needs --public-url or --insecure-http)
 sift skill install  # install Sift skill into detected AI tools
 ```
 

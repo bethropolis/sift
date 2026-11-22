@@ -103,9 +103,16 @@ loopback bind.
 sift serve --pair --root ~/code \
   --public-url https://machine.tailnet.ts.net
 
-# Plain HTTP only for a trusted LAN; Share and PWA install need HTTPS.
-sift serve --pair --root ~/code --insecure-http
+# Same Wi-Fi, trusted LAN. Replace the IP with `ip route get 1.1.1.1`.
+sift serve --pair --root ~/code --listen 0.0.0.0:7777 \
+  --public-url http://192.168.1.101:7777 --insecure-http
+
+# Without --public-url, --insecure-http picks the first LAN IPv4.
+sift serve --pair --root ~/code --listen 0.0.0.0:7777 --insecure-http
 ```
+
+Scan the QR, or type the printed `pair → …/#pair=…` URL into the phone.
+The token is single-use and lives in the fragment, never in the query string.
 
 - **Read-only by contract:** paired sessions may read the tree, preview,
   smart-select, pack, diff, and follow. Recents, settings, presets, clones,
@@ -132,6 +139,25 @@ are unavailable; the UI says so.
 | Phone stolen while paired | Read-only access to `--root` until session TTL or server stop |
 | Public tunnel hostname discovered | Reachable login endpoint, throttled and single-use |
 | Behind a proxy without client-IP forwarding | Throttling is global, not per-IP |
+
+### Pairing troubleshooting
+
+- **Stuck on “Pairing this phone…”** — the page loaded, so the network is
+  fine. Restart the server after rebuilding sift (the running process embeds
+  the old UI), then reload the phone tab and scan a fresh QR. Check the
+  browser console for a `ReferenceError` if it persists.
+- **“Expired or already used”** — QR tokens are single-use and default to
+  120s. Press Enter in the terminal (or send `SIGUSR1`) for a new QR.
+- **Phone cannot connect** — use the machine's LAN IP, bind `0.0.0.0`, and
+  allow the port through the host firewall. A VPN on either device can hide
+  the LAN route.
+- **Share or install missing** — both need HTTPS. Use Tailscale Serve,
+  Cloudflare Tunnel, Caddy, or Nginx with `--public-url https://…`; plain
+  HTTP is read-only browsing/packing only.
+- **Server restart signs the phone out** — the session key is process-local
+  by design. Scan a new QR after every restart.
+- **`--insecure-http` without `--pair`** — refused. Password-based remote
+  mode still requires TLS or a trusted proxy.
 
 ## Remote use
 

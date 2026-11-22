@@ -32,7 +32,12 @@ password, explicit roots and hosts, and exactly one TLS story.
 With --app the UI opens in a chromeless Chromium window, logs itself in with
 a short-lived one-time token, and the server exits when that window closes
 (use --keep-alive to keep it running). Falls back to a normal browser tab,
-then to the printed URL.`,
+then to the printed URL.
+
+With --pair the UI prints a one-time QR for a phone. Paired sessions are
+read-only and always redacted. Use an HTTPS --public-url (Tailscale Serve,
+Cloudflare Tunnel, Caddy, Nginx) for PWA install and Share; --insecure-http
+is available for a trusted LAN but is pair-only.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Snapshot explicitly-passed flags before profile resolution: each
 			// request re-applies them over the target project's own .sift.toml
