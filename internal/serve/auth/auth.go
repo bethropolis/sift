@@ -26,7 +26,7 @@ const SessionLifetime = 12 * time.Hour
 // CookieName is the session cookie.
 const CookieName = "sift_session"
 
-const cookieVersion = "v1"
+const cookieVersion = "v2"
 
 // lockoutBase is the first backoff step; each consecutive failure doubles it.
 const lockoutBase = 2 * time.Second
@@ -43,12 +43,19 @@ const globalMaxPerMinute = 60
 type Auth struct {
 	token    string
 	password string
+	pair     bool
 
 	key [32]byte
 
 	mu       sync.Mutex
 	attempts map[string]*attempt
 	global   []time.Time
+
+	// pairMu guards the expiries of live paired sessions. The signed cookie is
+	// still the session; this list only enforces the concurrent-session cap and
+	// is pruned lazily, never by a goroutine.
+	pairMu     sync.Mutex
+	pairExpiry []time.Time
 }
 
 type attempt struct {
@@ -70,6 +77,14 @@ func NewPassword(password string) (*Auth, error) {
 		return nil, fmt.Errorf("password must be at least 12 characters")
 	}
 	return newAuth("", password), nil
+}
+
+// NewPair builds session-only auth for --pair: there is no token or password
+// credential, only the per-process signing key and one-time pairing tokens.
+func NewPair() (*Auth, error) {
+	a := newAuth("", "")
+	a.pair = true
+	return a, nil
 }
 
 func newAuth(token, password string) *Auth {
@@ -99,6 +114,9 @@ func (a *Auth) Token() string { return a.token }
 // Kind reports "token" or "password" for banners and /api/meta. Local mode
 // (which always has a token) reports token even when a password is also set.
 func (a *Auth) Kind() string {
+	if a.pair {
+		return "pair"
+	}
 	if a.token != "" {
 		return "token"
 	}
@@ -158,72 +176,122 @@ func (a *Auth) MintCookie() *http.Cookie {
 // MintSessionCookie issues a session cookie, marking it as an app-mode
 // session when app is true.
 func (a *Auth) MintSessionCookie(app bool) *http.Cookie {
-	return a.mintCookieAt(time.Now().Add(SessionLifetime), app)
+	return a.mintCookieAt(time.Now().Add(SessionLifetime), app, false)
 }
 
-func (a *Auth) mintCookieAt(expiry time.Time, app bool) *http.Cookie {
+// MintPairCookie issues a read-only cookie with an absolute lifetime. It
+// fails when max live paired sessions already exist. Expired entries are
+// pruned on the way in; there is no janitor.
+func (a *Auth) MintPairCookie(ttl time.Duration, max int) (*http.Cookie, bool) {
+	if ttl <= 0 {
+		return nil, false
+	}
+	now := time.Now()
+	a.pairMu.Lock()
+	kept := a.pairExpiry[:0]
+	for _, exp := range a.pairExpiry {
+		if now.Before(exp) {
+			kept = append(kept, exp)
+		}
+	}
+	a.pairExpiry = kept
+	if max > 0 && len(a.pairExpiry) >= max {
+		a.pairMu.Unlock()
+		return nil, false
+	}
+	a.pairExpiry = append(a.pairExpiry, now.Add(ttl))
+	a.pairMu.Unlock()
+	return a.mintCookieAt(now.Add(ttl), false, true), true
+}
+
+func (a *Auth) mintCookieAt(expiry time.Time, app, readOnly bool) *http.Cookie {
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		panic("auth: no randomness: " + err.Error())
 	}
-	flag := "0"
-	if app {
-		flag = "1"
-	}
-	return a.cookieFor(expiry, flag, base64.RawURLEncoding.EncodeToString(nonce[:]))
+	return a.cookieFor(expiry, appFlag(app), readOnlyFlag(readOnly), base64.RawURLEncoding.EncodeToString(nonce[:]))
 }
 
-func (a *Auth) cookieFor(expiry time.Time, appFlag, nonce string) *http.Cookie {
-	body := cookieVersion + "." + strconv.FormatInt(expiry.Unix(), 10) + "." + appFlag + "." + nonce
+func appFlag(v bool) string {
+	if v {
+		return "1"
+	}
+	return "0"
+}
+
+func readOnlyFlag(v bool) string {
+	if v {
+		return "1"
+	}
+	return "0"
+}
+
+func (a *Auth) cookieFor(expiry time.Time, appFlag, readOnlyFlag, nonce string) *http.Cookie {
+	body := cookieVersion + "." + strconv.FormatInt(expiry.Unix(), 10) + "." + appFlag + "." + readOnlyFlag + "." + nonce
 	sig := base64.RawURLEncoding.EncodeToString(hmacSHA256(a.key[:], []byte(body)))
+	maxAge := int(time.Until(expiry).Seconds())
+	if maxAge < 0 {
+		maxAge = 0
+	}
+	if maxAge == 0 && time.Now().Before(expiry) {
+		maxAge = 1
+	}
 	return &http.Cookie{
 		Name:     CookieName,
 		Value:    body + "." + sig,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		MaxAge:   int(SessionLifetime.Seconds()),
+		MaxAge:   maxAge,
 	}
 }
 
 // ValidSession reports whether r carries a live session cookie, and whether
 // the cookie should be re-issued (less than half the lifetime remains).
 func (a *Auth) ValidSession(r *http.Request) (ok, reissue bool) {
-	ok, _, reissue = a.SessionState(r)
+	ok, _, _, reissue = a.SessionState(r)
 	return ok, reissue
 }
 
 // SessionState reports whether r carries a live session cookie, whether that
-// session was created by an app-mode launch, and whether the cookie should be
-// re-issued. The app flag is authenticated: it is part of the signed body.
-func (a *Auth) SessionState(r *http.Request) (ok, app, reissue bool) {
+// session was created by an app-mode launch, whether it is read-only, and
+// whether the cookie should be re-issued. The app and readOnly flags are
+// authenticated: they are part of the signed body. Read-only sessions never
+// slide: their absolute expiry is the pairing TTL.
+func (a *Auth) SessionState(r *http.Request) (ok, app, readOnly, reissue bool) {
 	c, err := r.Cookie(CookieName)
 	if err != nil {
-		return false, false, false
+		return false, false, false, false
 	}
 	parts := strings.Split(c.Value, ".")
-	if len(parts) != 5 || parts[0] != cookieVersion {
-		return false, false, false
+	if len(parts) != 6 || parts[0] != cookieVersion {
+		return false, false, false, false
 	}
-	body := strings.Join(parts[:4], ".")
-	sig, err := base64.RawURLEncoding.DecodeString(parts[4])
+	body := strings.Join(parts[:5], ".")
+	sig, err := base64.RawURLEncoding.DecodeString(parts[5])
 	if err != nil {
-		return false, false, false
+		return false, false, false, false
 	}
 	want := hmacSHA256(a.key[:], []byte(body))
 	if subtle.ConstantTimeCompare(sig, want) != 1 {
-		return false, false, false
+		return false, false, false, false
 	}
 	expiryUnix, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return false, false, false
+		return false, false, false, false
 	}
 	expiry := time.Unix(expiryUnix, 0)
 	now := time.Now()
-	if now.After(expiry) {
-		return false, false, false
+	if !now.Before(expiry) {
+		return false, false, false, false
 	}
-	return true, parts[2] == "1", expiry.Sub(now) < SessionLifetime/2
+	app = parts[2] == "1"
+	readOnly = parts[3] == "1"
+	if app && readOnly {
+		return false, false, false, false
+	}
+	reissue = !readOnly && expiry.Sub(now) < SessionLifetime/2
+	return true, app, readOnly, reissue
 }
 
 // SecureCookie marks the session cookie Secure for TLS/proxied responses.
@@ -244,11 +312,42 @@ func ClientIP(r *http.Request, behindProxy bool) string {
 			}
 		}
 	}
+	return directIP(r)
+}
+
+// ProxiedClientIP is the pairing/login IP used behind a trusted proxy. The
+// X-Forwarded-For chain is trusted only when the TCP peer is loopback and
+// behindProxy is set, and it uses the right-most hop (the one appended by the
+// proxy closest to us) so a client cannot spoof the left side.
+func ProxiedClientIP(r *http.Request, behindProxy bool) string {
+	peer := directIP(r)
+	if !behindProxy || !isLoopbackIP(peer) {
+		return peer
+	}
+	parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		ip := strings.TrimSpace(parts[i])
+		if ip != "" && net.ParseIP(ip) != nil {
+			return ip
+		}
+	}
+	return peer
+}
+
+func directIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+func isLoopbackIP(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
 }
 
 // CheckLogin enforces throttling before a credential check. It returns nil

@@ -128,15 +128,21 @@ func isJSONContent(ct string) bool {
 }
 
 // requireSession gates every non-public route. A valid session also refreshes
-// the idle timer; an expiring-soon cookie is re-issued transparently.
-func (s *Server) requireSession(next http.Handler) http.Handler {
+// the idle timer; an expiring-soon writable cookie is re-issued transparently.
+// Read-only paired sessions never slide and are default-denied unless the
+// route is explicitly classified read.
+func (s *Server) requireSession(next http.Handler, access routeAccess) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ok, reissue := s.auth.ValidSession(r)
+		ok, _, readOnly, reissue := s.auth.SessionState(r)
 		if !ok {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if reissue {
+		if readOnly && access != accessRead {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if reissue && !readOnly {
 			c := s.auth.MintCookie()
 			s.secureCookie(c, r)
 			http.SetCookie(w, c)

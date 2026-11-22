@@ -87,7 +87,61 @@ func (s *Server) engineConfigFor(root string) (*config.Config, error) {
 	runCfg.CopyOnGenerate = false
 	runCfg.ShowProgress = false
 	runCfg.Quiet = true
+	if s.cfg.Pair {
+		s.applyPairPolicy(runCfg)
+	}
 	return runCfg, nil
+}
+
+// pairSensitivePatterns are hard-excluded for paired sessions regardless of
+// the project or serve flags. The default ignore baseline covers some of
+// them, but pair mode must not depend on the user's file being well-formed.
+var pairSensitivePatterns = []string{
+	".env*",
+	"*.pem",
+	"*.key",
+	"*.crt",
+	"*.cer",
+	"*.p12",
+	"*.pfx",
+	"*.jks",
+	"*.keystore",
+	"id_rsa*",
+	"id_dsa*",
+	"id_ecdsa*",
+	"id_ed25519*",
+}
+
+// applyPairPolicy locks redaction on and appends the sensitive-file
+// exclusions last, so a project's negation cannot re-open them.
+func (s *Server) applyPairPolicy(cfg *config.Config) {
+	cfg.SecretScan = true
+	cfg.ForceSecrets = false
+	cfg.IncludeBinary = false
+	if cfg.CustomIgnore != "" {
+		cfg.CustomIgnore += ","
+	}
+	cfg.CustomIgnore += strings.Join(pairSensitivePatterns, ",")
+}
+
+// pairSensitivePath reports whether a project-relative path is in the
+// pair-mode hard-exclusion set. This is a second check for endpoints such as
+// /api/file that read a path directly instead of walking the tree.
+func pairSensitivePath(rel string) bool {
+	base := strings.ToLower(filepath.Base(filepath.ToSlash(rel)))
+	if strings.HasPrefix(base, ".env") {
+		return true
+	}
+	switch filepath.Ext(base) {
+	case ".pem", ".key", ".crt", ".cer", ".p12", ".pfx", ".jks", ".keystore":
+		return true
+	}
+	for _, prefix := range []string{"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"} {
+		if strings.HasPrefix(base, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // handleMeta serves version/mode/TLS/auth facts. Unauthenticated callers get
@@ -105,13 +159,14 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		meta["mode"] = "remote"
 	}
 	if authed {
-		_, app, _ := s.auth.SessionState(r)
+		_, app, readOnly, _ := s.auth.SessionState(r)
 		meta["roots"] = s.jail.Roots()
 		meta["styles"] = []string{"xml", "markdown", "plain"}
 		meta["defaultBrowse"] = s.defaultBrowse()
 		// app is read from the signed session, not a URL hint, so it survives
 		// reloads. Drives the Quit button and the liveness stream.
 		meta["app"] = app
+		meta["readOnly"] = readOnly
 		// Feature flags the UI uses to hide entry points that would 404.
 		meta["features"] = map[string]bool{"clone": s.cloneOK}
 	}
@@ -398,6 +453,10 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	}
 	rel, err := filepath.Rel(root, mustResolve(s, root, q.Get("path")))
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		writeAPIError(w, http.StatusForbidden, "cannot read that file")
+		return
+	}
+	if s.cfg.Pair && pairSensitivePath(rel) {
 		writeAPIError(w, http.StatusForbidden, "cannot read that file")
 		return
 	}

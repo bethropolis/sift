@@ -14,7 +14,11 @@ import (
 // newServeCmd starts the browser-frontend server: an embedded Svelte SPA
 // backed by the same scan/rank/render engine as the TUI and the MCP server.
 func newServeCmd(cfg *config.Config) *cobra.Command {
-	serveCfg := &serve.Config{Listen: serve.DefaultListen}
+	serveCfg := &serve.Config{
+		Listen:         serve.DefaultListen,
+		PairTTL:        serve.DefaultPairTTL,
+		PairSessionTTL: serve.DefaultPairSessionTTL,
+	}
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -44,8 +48,8 @@ then to the printed URL.`,
 			if err := applyProfile(cfg, cmd); err != nil {
 				return err
 			}
-			if serveCfg.InsecureHTTP && serveCfg.AllowRemote {
-				cmd.PrintErrln("WARNING: serving remote traffic over plain HTTP; credentials and code cross the network unencrypted.")
+			if serveCfg.InsecureHTTP {
+				cmd.PrintErrln("WARNING: pairing over plain HTTP; Android Chrome needs HTTPS for PWA install and Share.")
 			}
 			log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 			srv, err := serve.New(serveCfg, cfg, log)
@@ -78,7 +82,11 @@ func registerServeFlags(fs *pflag.FlagSet, serveCfg *serve.Config) {
 	fs.StringArrayVar(&serveCfg.AllowedHosts, "allowed-host", nil, "Extra allowed Host value (repeatable)")
 	fs.BoolVar(&serveCfg.AllowUnredacted, "allow-unredacted", false, "Remote only: permit redact=false")
 	fs.BoolVar(&serveCfg.AllowClone, "allow-clone", false, "Enable cloning repositories in the web UI (requires git)")
-	fs.BoolVar(&serveCfg.InsecureHTTP, "insecure-http", false, "Remote without TLS (loud warning)")
+	fs.BoolVar(&serveCfg.Pair, "pair", false, "Serve a read-only mobile session via a one-time QR token")
+	fs.StringVar(&serveCfg.PublicURL, "public-url", "", "External HTTPS base URL encoded in the pairing QR")
+	fs.DurationVar(&serveCfg.PairTTL, "pair-ttl", serveCfg.PairTTL, "Pairing token lifetime")
+	fs.DurationVar(&serveCfg.PairSessionTTL, "pair-session-ttl", serveCfg.PairSessionTTL, "Absolute lifetime of a paired read-only session")
+	fs.BoolVar(&serveCfg.InsecureHTTP, "insecure-http", false, "Pair only: allow a plain-HTTP QR URL (loud warning)")
 	fs.DurationVar(&serveCfg.IdleTimeout, "idle-timeout", 0, "Exit after no requests for this long (e.g. '30m')")
 	fs.BoolVar(&serveCfg.Open, "open", false, "Open the browser (local only)")
 	fs.BoolVar(&serveCfg.App, "app", false, "Open the UI in a chromeless app window and stop the server with it (local only)")

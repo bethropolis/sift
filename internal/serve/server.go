@@ -60,8 +60,9 @@ type Server struct {
 	clones  *cloneState
 	cloneOK bool
 
-	mux     *http.ServeMux
-	packSem chan struct{}
+	mux       *http.ServeMux
+	routeList []route
+	packSem   chan struct{}
 
 	// Shared theme-independent syntax documents for preview spans.
 	syntaxCache *highlight.SyntaxCache
@@ -73,6 +74,12 @@ type Server struct {
 
 	idleMu    sync.Mutex
 	idleTimer *time.Timer
+
+	// Pair mode. pairTokens holds the single live QR credential; pairBase is
+	// the external base URL printed in the QR (set after binding). Pair mode
+	// has no launch tokens or app controller.
+	pairTokens *pairTokens
+	pairBase   string
 
 	// App mode. launchTokens backs auto-login for the launched window; appCtl
 	// owns the window-liveness shutdown. done is closed at the start of every
@@ -87,11 +94,36 @@ type Server struct {
 	appLaunched bool
 }
 
+// routeAccess classifies a registered route for the read-only pairing guard.
+// Paired sessions may call public routes (which do not need a session) and
+// read routes; every write route is default-denied.
+type routeAccess int
+
+const (
+	accessUnclassified routeAccess = iota
+	accessPublic
+	accessRead
+	accessWrite
+)
+
+func (a routeAccess) String() string {
+	switch a {
+	case accessPublic:
+		return "public"
+	case accessRead:
+		return "read"
+	case accessWrite:
+		return "write"
+	default:
+		return "unclassified"
+	}
+}
+
 // route describes one registered route for the enumeration test.
 type route struct {
 	method string
 	path   string
-	public bool
+	access routeAccess
 }
 
 // New validates the config (refusing bad remote setups before binding),
@@ -118,6 +150,7 @@ func New(cfg *Config, engineCfg *config.Config, log *slog.Logger) (*Server, erro
 		syntaxCache:  highlight.NewSyntaxCache(),
 		contentCache: app.NewContentCache(engineCfg),
 		launchTokens: newLaunchTokens(),
+		pairTokens:   newPairTokens(),
 		done:         make(chan struct{}),
 		clones:       newCloneState(),
 	}
@@ -125,7 +158,7 @@ func New(cfg *Config, engineCfg *config.Config, log *slog.Logger) (*Server, erro
 		s.log.Info(reason)
 		s.shutdown()
 	}, nil)
-	s.remote = s.isRemoteBind()
+	s.remote = s.isRemoteBind() || cfg.Pair
 	s.cloneOK = s.cloneAllowed()
 	s.tls = cfg.TLSCert != "" || cfg.TLSSelfSigned
 	s.hosts = s.buildHostSet()
@@ -133,84 +166,76 @@ func New(cfg *Config, engineCfg *config.Config, log *slog.Logger) (*Server, erro
 	return s, nil
 }
 
-// routes enumerates every route; the security test asserts the public set.
+// routes enumerates every registered route; the security test asserts the
+// public set and the read-only classification.
 func (s *Server) routes() []route {
-	return []route{
-		{"GET", "/", true},
-		{"GET", "/assets/", true},
-		{"GET", "/api/meta", true},
-		{"POST", "/api/login", true},
-		{"POST", "/api/logout", false},
-		{"GET", "/api/recents", false},
-		{"POST", "/api/recents", false},
-		{"DELETE", "/api/recents", false},
-		{"GET", "/api/browse", false},
-		{"GET", "/api/tree", false},
-		{"GET", "/api/file", false},
-		{"POST", "/api/smart-select", false},
-		{"POST", "/api/pack", false},
-		{"POST", "/api/modes", false},
-		{"GET", "/api/presets", false},
-		{"POST", "/api/presets", false},
-		{"DELETE", "/api/presets", false},
-		{"POST", "/api/follow", false},
-		{"GET", "/api/settings", false},
-		{"PUT", "/api/settings", false},
-		// Temporary clones: 404 unless git exists and (loopback or --allow-clone).
-		{"POST", "/api/clone", false},
-		{"GET", "/api/clones", false},
-		{"DELETE", "/api/clone", false},
-		// Auto-login for the launched window. Public like /api/login because
-		// the token itself is the credential, and loopback-only via --app.
-		{"POST", "/api/session/launch", true},
-		{"GET", "/api/app/heartbeat", false},
-	}
+	return append([]route(nil), s.routeList...)
+}
+
+// addRoute records a route and registers its handler from the same fact, so
+// the enumeration test cannot drift from the mux.
+func (s *Server) addRoute(method, path string, access routeAccess, h http.Handler) {
+	s.routeList = append(s.routeList, route{method: method, path: path, access: access})
+	s.mux.Handle(method+" "+path, h)
 }
 
 func (s *Server) registerRoutes() {
-	mux := http.NewServeMux()
+	s.mux = http.NewServeMux()
 
-	// Static UI.
-	mux.Handle("GET /", s.securityHeaders(s.hostAllowlist(http.HandlerFunc(s.handleStatic))))
+	// Static UI. GET / owns both the shell and /assets/*; the route list
+	// records /assets/ because it is the only public prefix worth probing.
+	static := s.securityHeaders(s.hostAllowlist(http.HandlerFunc(s.handleStatic)))
+	s.addRoute("GET", "/", accessPublic, static)
+	s.routeList = append(s.routeList, route{"GET", "/assets/", accessPublic})
 
 	// Public API.
-	mux.Handle("GET /api/meta", s.apiChain(http.HandlerFunc(s.handleMeta), true))
-	mux.Handle("POST /api/login", s.apiChain(http.HandlerFunc(s.handleLogin), true))
+	s.addRoute("GET", "/api/meta", accessPublic, s.apiChain(http.HandlerFunc(s.handleMeta), accessPublic))
+	s.addRoute("POST", "/api/login", accessPublic, s.apiChain(http.HandlerFunc(s.handleLogin), accessPublic))
+	if s.cfg.Pair {
+		// The one-time pairing token is the credential, so this is public in
+		// the middleware sense; the handler applies the shared login throttle.
+		s.addRoute("POST", "/api/session/pair", accessPublic, s.apiChain(http.HandlerFunc(s.handleSessionPair), accessPublic))
+	} else {
+		// Without --pair the path is 404, not the 405 a bare mux gives a
+		// method-mismatched match under GET /. It is deliberately absent from
+		// the route list so enumeration sees no pairing surface.
+		s.mux.Handle("POST /api/session/pair", s.securityHeaders(s.hostAllowlist(http.NotFoundHandler())))
+	}
 
-	// Session API.
-	mux.Handle("POST /api/logout", s.apiChain(http.HandlerFunc(s.handleLogout), false))
-	mux.Handle("GET /api/recents", s.apiChain(http.HandlerFunc(s.handleRecentsGet), false))
-	mux.Handle("POST /api/recents", s.apiChain(http.HandlerFunc(s.handleRecentsPost), false))
-	mux.Handle("DELETE /api/recents", s.apiChain(http.HandlerFunc(s.handleRecentsDelete), false))
-	mux.Handle("GET /api/browse", s.apiChain(http.HandlerFunc(s.handleBrowse), false))
-	mux.Handle("GET /api/tree", s.apiChain(http.HandlerFunc(s.handleTree), false))
-	mux.Handle("GET /api/file", s.apiChain(http.HandlerFunc(s.handleFile), false))
-	mux.Handle("POST /api/smart-select", s.apiChain(http.HandlerFunc(s.handleSmartSelect), false))
-	mux.Handle("POST /api/pack", s.apiChain(http.HandlerFunc(s.handlePack), false))
-	mux.Handle("POST /api/modes", s.apiChain(http.HandlerFunc(s.handleModes), false))
-	mux.Handle("GET /api/presets", s.apiChain(http.HandlerFunc(s.handlePresetsGet), false))
-	mux.Handle("POST /api/presets", s.apiChain(http.HandlerFunc(s.handlePresetsPost), false))
-	mux.Handle("DELETE /api/presets", s.apiChain(http.HandlerFunc(s.handlePresetsDelete), false))
-	mux.Handle("POST /api/follow", s.apiChain(http.HandlerFunc(s.handleFollow), false))
-	mux.Handle("GET /api/settings", s.apiChain(http.HandlerFunc(s.handleSettingsGet), false))
-	mux.Handle("PUT /api/settings", s.apiChain(http.HandlerFunc(s.handleSettingsPut), false))
-	mux.Handle("POST /api/clone", s.apiChain(http.HandlerFunc(s.handleClone), false))
-	mux.Handle("GET /api/clones", s.apiChain(http.HandlerFunc(s.handleClonesGet), false))
-	mux.Handle("DELETE /api/clone", s.apiChain(http.HandlerFunc(s.handleCloneDelete), false))
+	// Session API. Shared server state (recents, settings, presets, clones)
+	// is classified write so a paired phone cannot read or mutate it.
+	s.addRoute("POST", "/api/logout", accessWrite, s.apiChain(http.HandlerFunc(s.handleLogout), accessWrite))
+	s.addRoute("GET", "/api/recents", accessWrite, s.apiChain(http.HandlerFunc(s.handleRecentsGet), accessWrite))
+	s.addRoute("POST", "/api/recents", accessWrite, s.apiChain(http.HandlerFunc(s.handleRecentsPost), accessWrite))
+	s.addRoute("DELETE", "/api/recents", accessWrite, s.apiChain(http.HandlerFunc(s.handleRecentsDelete), accessWrite))
+	s.addRoute("GET", "/api/browse", accessRead, s.apiChain(http.HandlerFunc(s.handleBrowse), accessRead))
+	s.addRoute("GET", "/api/tree", accessRead, s.apiChain(http.HandlerFunc(s.handleTree), accessRead))
+	s.addRoute("GET", "/api/file", accessRead, s.apiChain(http.HandlerFunc(s.handleFile), accessRead))
+	s.addRoute("POST", "/api/smart-select", accessRead, s.apiChain(http.HandlerFunc(s.handleSmartSelect), accessRead))
+	s.addRoute("POST", "/api/pack", accessRead, s.apiChain(http.HandlerFunc(s.handlePack), accessRead))
+	s.addRoute("POST", "/api/modes", accessWrite, s.apiChain(http.HandlerFunc(s.handleModes), accessWrite))
+	s.addRoute("GET", "/api/presets", accessWrite, s.apiChain(http.HandlerFunc(s.handlePresetsGet), accessWrite))
+	s.addRoute("POST", "/api/presets", accessWrite, s.apiChain(http.HandlerFunc(s.handlePresetsPost), accessWrite))
+	s.addRoute("DELETE", "/api/presets", accessWrite, s.apiChain(http.HandlerFunc(s.handlePresetsDelete), accessWrite))
+	s.addRoute("POST", "/api/follow", accessRead, s.apiChain(http.HandlerFunc(s.handleFollow), accessRead))
+	s.addRoute("GET", "/api/settings", accessWrite, s.apiChain(http.HandlerFunc(s.handleSettingsGet), accessWrite))
+	s.addRoute("PUT", "/api/settings", accessWrite, s.apiChain(http.HandlerFunc(s.handleSettingsPut), accessWrite))
+	s.addRoute("POST", "/api/clone", accessWrite, s.apiChain(http.HandlerFunc(s.handleClone), accessWrite))
+	s.addRoute("GET", "/api/clones", accessWrite, s.apiChain(http.HandlerFunc(s.handleClonesGet), accessWrite))
+	s.addRoute("DELETE", "/api/clone", accessWrite, s.apiChain(http.HandlerFunc(s.handleCloneDelete), accessWrite))
 
 	// App-mode endpoints.
-	mux.Handle("POST /api/session/launch", s.apiChain(http.HandlerFunc(s.handleSessionLaunch), true))
-	mux.Handle("GET /api/app/heartbeat", s.apiChain(http.HandlerFunc(s.handleAppHeartbeat), false))
-
-	s.mux = mux
+	s.addRoute("POST", "/api/session/launch", accessPublic, s.apiChain(http.HandlerFunc(s.handleSessionLaunch), accessPublic))
+	s.addRoute("GET", "/api/app/heartbeat", accessWrite, s.apiChain(http.HandlerFunc(s.handleAppHeartbeat), accessWrite))
 }
 
 // apiChain wraps API handlers: host check, headers, idle reset, origin
-// check, then the session gate for non-public routes.
-func (s *Server) apiChain(next http.Handler, public bool) http.Handler {
+// check, then the session gate for non-public routes and the read-only
+// default-deny guard for paired sessions.
+func (s *Server) apiChain(next http.Handler, access routeAccess) http.Handler {
 	h := next
-	if !public {
-		h = s.requireSession(h)
+	if access != accessPublic {
+		h = s.requireSession(h, access)
 	}
 	h = originCheck(h)
 	h = s.idleReset(h)
@@ -254,6 +279,21 @@ func (s *Server) buildHostSet() map[string]bool {
 	for _, h := range s.cfg.AllowedHosts {
 		set[h] = true
 	}
+	if s.cfg.Pair && s.cfg.PublicURL != "" {
+		if u, err := url.Parse(s.cfg.PublicURL); err == nil && u.Host != "" {
+			set[u.Host] = true
+			set[u.Hostname()] = true
+		}
+	}
+	if s.cfg.Pair && s.cfg.PublicURL == "" && port != "" {
+		// --insecure-http without --public-url: the QR names a LAN address,
+		// so accept that Host too.
+		if addrs, err := net.InterfaceAddrs(); err == nil {
+			for _, ip := range lanIPv4s(addrs) {
+				set[net.JoinHostPort(ip, port)] = true
+			}
+		}
+	}
 	return set
 }
 
@@ -285,7 +325,7 @@ func lanIPv4s(addrs []net.Addr) []string {
 // secureCookie applies the Secure flag when the session travels over TLS:
 // direct TLS, or a trusted proxy reporting https.
 func (s *Server) secureCookie(c *http.Cookie, r *http.Request) {
-	if s.tls || s.secureProxyRequest(r) {
+	if s.tls || s.secureProxyRequest(r) || (s.cfg.Pair && strings.HasPrefix(s.cfg.PublicURL, "https://")) {
 		c.Secure = true
 	}
 }
@@ -453,9 +493,18 @@ func (s *Server) Run() error {
 		}
 	}
 
+	if s.cfg.Pair {
+		s.pairBase = s.pairBaseURL(scheme, addr)
+		if s.pairBase == "" {
+			return fmt.Errorf("cannot derive a pairing URL; pass --public-url")
+		}
+		s.mintAndPrintPairing()
+		s.startPairInput()
+	}
+
 	if s.cfg.App {
 		s.startAppWindow(scheme, addr)
-	} else if s.cfg.Open {
+	} else if s.cfg.Open && !s.cfg.Pair {
 		openBrowser(scheme + "://" + addr + "/#/login?token=" + s.auth.Token())
 	}
 
@@ -510,6 +559,17 @@ func (s *Server) serveWithSignals(ln net.Listener) error {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(stop)
+
+	if s.cfg.Pair {
+		pairCh := make(chan os.Signal, 1)
+		pairSignalNotify(pairCh)
+		defer pairSignalStop(pairCh)
+		go func() {
+			for range pairCh {
+				s.mintAndPrintPairing()
+			}
+		}()
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

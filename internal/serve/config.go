@@ -3,6 +3,7 @@ package serve
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,10 +27,22 @@ type Config struct {
 	BehindProxy     bool
 	AllowedHosts    []string
 	AllowUnredacted bool
+	// Pair enables the mobile pairing flow: read-only sessions minted by
+	// scanning a one-time QR. It implies the full remote posture even on a
+	// loopback bind.
+	Pair           bool
+	PublicURL      string
+	PairTTL        time.Duration
+	PairSessionTTL time.Duration
+	// PairMaxSessions caps concurrent paired phones. Zero resolves to the
+	// default in Validate.
+	PairMaxSessions int
 	// AllowClone enables "clone a repository" in the web UI (needs system
 	// git too). Off by default on every bind; without it the clone routes
 	// are 404 and the UI hides every entry point.
-	AllowClone   bool
+	AllowClone bool
+	// InsecureHTTP is pair-only: it permits an HTTP public URL. Remote
+	// password mode still requires TLS or a trusted proxy.
 	InsecureHTTP bool
 	IdleTimeout  time.Duration
 	Open         bool
@@ -49,6 +62,14 @@ type Config struct {
 // DefaultListen is the fixed local port, keeping the browser origin stable.
 const DefaultListen = "127.0.0.1:7777"
 
+// Pairing defaults. They are deliberately short for the token and long
+// enough to be useful for the read-only session.
+const (
+	DefaultPairTTL         = 120 * time.Second
+	DefaultPairSessionTTL  = 12 * time.Hour
+	DefaultPairMaxSessions = 5
+)
+
 // maxRequestBody caps API request bodies (4 MiB).
 const maxRequestBody = 4 << 20
 
@@ -63,6 +84,13 @@ func (c *Config) Validate() (*auth.Auth, error) {
 		return nil, fmt.Errorf("bad --listen %q: %w", c.Listen, err)
 	}
 	remote := !isLoopbackHost(host)
+
+	if c.InsecureHTTP && !c.Pair {
+		return nil, fmt.Errorf("--insecure-http is only valid with --pair")
+	}
+	if c.Pair {
+		return c.validatePair(remote)
+	}
 
 	if c.Open && remote {
 		return nil, fmt.Errorf("--open is local-only; refusing non-loopback bind %q", c.Listen)
@@ -132,16 +160,66 @@ func (c *Config) Validate() (*auth.Auth, error) {
 	if c.BehindProxy {
 		tlsModes++
 	}
-	if c.InsecureHTTP {
-		tlsModes++
-	}
 	if tlsModes != 1 {
-		return nil, fmt.Errorf("remote mode needs exactly one of --tls-cert/--tls-key, --tls-self-signed, --behind-proxy, --insecure-http")
+		return nil, fmt.Errorf("remote mode needs exactly one of --tls-cert/--tls-key, --tls-self-signed, --behind-proxy")
 	}
 	if c.TLSCert != "" && c.TLSKey == "" || c.TLSCert == "" && c.TLSKey != "" {
 		return nil, fmt.Errorf("remote mode needs both --tls-cert and --tls-key")
 	}
 	return a, nil
+}
+
+// validatePair enforces the pairing refusal matrix. Pair is read-only,
+// always redacted, and always remote-gated, regardless of the bind address.
+func (c *Config) validatePair(remote bool) (*auth.Auth, error) {
+	if len(c.Roots) == 0 {
+		return nil, fmt.Errorf("--pair needs at least one explicit --root")
+	}
+	if c.AllowClone {
+		return nil, fmt.Errorf("--pair cannot be combined with --allow-clone")
+	}
+	if c.AllowUnredacted {
+		return nil, fmt.Errorf("--pair cannot be combined with --allow-unredacted")
+	}
+	if c.App {
+		return nil, fmt.Errorf("--pair cannot be combined with --app")
+	}
+	if c.PublicURL == "" && !c.InsecureHTTP {
+		return nil, fmt.Errorf("--pair needs --public-url (HTTPS) or --insecure-http")
+	}
+	if c.PublicURL != "" {
+		u, err := url.Parse(c.PublicURL)
+		if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil ||
+			u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+			return nil, fmt.Errorf("bad --public-url %q: need an absolute http(s) URL without userinfo, query, or fragment", c.PublicURL)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return nil, fmt.Errorf("bad --public-url %q: scheme must be http or https", c.PublicURL)
+		}
+		if u.Scheme == "http" && !c.InsecureHTTP {
+			return nil, fmt.Errorf("--public-url uses http://; pass --insecure-http to allow plain HTTP pairing")
+		}
+		c.PublicURL = strings.TrimRight(c.PublicURL, "/")
+		if u.Scheme == "https" && !remote {
+			// A loopback bind behind a TLS tunnel is the recommended setup.
+			c.BehindProxy = true
+		}
+	}
+	if remote && !c.BehindProxy && c.TLSCert == "" && !c.TLSSelfSigned {
+		return nil, fmt.Errorf("--pair on a non-loopback bind needs --behind-proxy or a TLS certificate")
+	}
+	if c.PairTTL <= 0 {
+		c.PairTTL = DefaultPairTTL
+	}
+	if c.PairSessionTTL <= 0 {
+		c.PairSessionTTL = DefaultPairSessionTTL
+	}
+	if c.PairMaxSessions <= 0 {
+		c.PairMaxSessions = DefaultPairMaxSessions
+	}
+	// The startup token/password paths are intentionally absent. Pair mode
+	// has exactly one credential: the one-time token.
+	return auth.NewPair()
 }
 
 // resolvePassword reads the password from --password-file or

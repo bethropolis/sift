@@ -61,14 +61,14 @@ func TestCookieRoundTrip(t *testing.T) {
 func TestCookieExpiryAndReissue(t *testing.T) {
 	a, _ := NewToken("x")
 
-	expired := a.mintCookieAt(time.Now().Add(-time.Minute), false)
+	expired := a.mintCookieAt(time.Now().Add(-time.Minute), false, false)
 	r := httptest.NewRequest("GET", "/", nil)
 	r.AddCookie(expired)
 	if ok, _ := a.ValidSession(r); ok {
 		t.Fatal("expired cookie accepted")
 	}
 
-	old := a.mintCookieAt(time.Now().Add(time.Hour), false) // < half of 12h
+	old := a.mintCookieAt(time.Now().Add(time.Hour), false, false) // < half of 12h
 	r2 := httptest.NewRequest("GET", "/", nil)
 	r2.AddCookie(old)
 	if ok, reissue := a.ValidSession(r2); !ok || !reissue {
@@ -82,7 +82,7 @@ func TestCookieTamper(t *testing.T) {
 
 	for _, mutate := range []func(string) string{
 		func(v string) string { return v + "x" },
-		func(v string) string { return strings.Replace(v, "v1.", "v2.", 1) },
+		func(v string) string { return strings.Replace(v, "v2.", "v1.", 1) },
 		func(v string) string { return "garbage" },
 	} {
 		r := httptest.NewRequest("GET", "/", nil)
@@ -102,6 +102,35 @@ func TestCookieTamper(t *testing.T) {
 	a2req := r
 	if ok, _ := a.ValidSession(a2req); ok {
 		t.Fatal("foreign-process cookie accepted")
+	}
+}
+
+func TestPairCookieReadOnlyAndAbsolute(t *testing.T) {
+	a, err := NewPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Kind() != "pair" {
+		t.Fatalf("Kind = %q, want pair", a.Kind())
+	}
+	cookie, ok := a.MintPairCookie(2*time.Hour, 2)
+	if !ok {
+		t.Fatal("first pair cookie refused")
+	}
+	r := httptest.NewRequest("GET", "/", nil)
+	r.AddCookie(cookie)
+	valid, app, readOnly, reissue := a.SessionState(r)
+	if !valid || app || !readOnly || reissue {
+		t.Fatalf("pair state = valid:%v app:%v readOnly:%v reissue:%v", valid, app, readOnly, reissue)
+	}
+	if cookie.MaxAge > int((2*time.Hour).Seconds()) || cookie.MaxAge <= 0 {
+		t.Fatalf("pair MaxAge = %d, want absolute TTL", cookie.MaxAge)
+	}
+	if _, ok := a.MintPairCookie(time.Hour, 2); !ok {
+		t.Fatal("second pair cookie refused")
+	}
+	if _, ok := a.MintPairCookie(time.Hour, 2); ok {
+		t.Fatal("pair cookie cap not enforced")
 	}
 }
 
@@ -157,5 +186,21 @@ func TestClientIP(t *testing.T) {
 	}
 	if got := ClientIP(r, true); got != "203.0.113.9" {
 		t.Fatalf("proxied IP = %q", got)
+	}
+}
+
+func TestProxiedClientIP(t *testing.T) {
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "127.0.0.1:1234"
+	r.Header.Set("X-Forwarded-For", "spoofed, 198.51.100.2, 203.0.113.5")
+	if got := ProxiedClientIP(r, true); got != "203.0.113.5" {
+		t.Fatalf("proxied IP = %q, want right-most hop", got)
+	}
+	if got := ProxiedClientIP(r, false); got != "127.0.0.1" {
+		t.Fatalf("untrusted proxy IP = %q, want peer", got)
+	}
+	r.RemoteAddr = "192.0.2.1:1234"
+	if got := ProxiedClientIP(r, true); got != "192.0.2.1" {
+		t.Fatalf("non-loopback peer trusted XFF: %q", got)
 	}
 }
