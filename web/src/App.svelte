@@ -4,8 +4,10 @@
   import { buildContextMenuItems } from './lib/contextmenu';
   import { closeCtxMenu, ctxMenuState, openCtxMenu } from './lib/ctxmenu.svelte';
 import { applyFavicon } from './lib/favicon';
+  import { applyThemeColor } from './lib/themes';
 import { applyMeta, appState, exchangeLaunchToken, startHeartbeat } from './lib/appmode.svelte';
 import { clearHashQuery } from './lib/router.svelte';
+  import { getUIPrefs, setUIPrefs } from './lib/persist';
   import GlobalNav from './components/GlobalNav.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
   import ToastHost from './components/ToastHost.svelte';
