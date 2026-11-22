@@ -23,6 +23,8 @@
   let copied = $state(false);
   let copiedSection = $state<string | null>(null);
   let copyError = $state<string | null>(null);
+  let shareSupport = $state<'none' | 'file' | 'text'>('none');
+  let showSecureHint = $state(true);
   let showSkipped = $state(false);
   // The file outline stays closed once collapsed (view state, persisted).
   let outlineOpen = $state(getUIPrefs().outlineOpen);
@@ -43,6 +45,43 @@
     if (style === 'markdown') return 'md';
     return 'txt';
   }
+
+  function mimeFor(kind: 'native' | 'text'): string {
+    if (kind === 'text') return 'text/plain';
+    if (style === 'xml') return 'application/xml';
+    if (style === 'markdown') return 'text/markdown';
+    return 'text/plain';
+  }
+
+  function safeName(): string {
+    return (projectName || 'project').replace(/[^a-zA-Z0-9._-]+/g, '_');
+  }
+
+  function contextFile(kind: 'native' | 'text'): File {
+    return new File([packResult?.document ?? ''], `${safeName()}-context.${ext()}`, {
+      type: mimeFor(kind),
+    });
+  }
+
+  // Probe once per rendered document. If the native MIME is refused, keep the
+  // real extension but try text/plain; if that also fails, Save is primary.
+  $effect(() => {
+    void (packResult?.document ?? null);
+    shareSupport = 'none';
+    if (!packResult?.document) return;
+    if (typeof window === 'undefined' || !window.isSecureContext) return;
+    const nav = navigator as Navigator & {
+      canShare?: (data?: ShareData) => boolean;
+      share?: (data?: ShareData) => Promise<void>;
+    };
+    if (!nav.share || !nav.canShare) return;
+    try {
+      if (nav.canShare({ files: [contextFile('native')] })) shareSupport = 'file';
+      else if (nav.canShare({ files: [contextFile('text')] })) shareSupport = 'text';
+    } catch {
+      shareSupport = 'none';
+    }
+  });
 
   function updateViewport() {
     viewportHeight = containerEl?.clientHeight || 500;
@@ -128,6 +167,9 @@
     if (!packResult) return;
     if (await copyText(packResult.document)) {
       flashCopied(null);
+      if (window.innerWidth < 768 && packResult.document.length > 500_000) {
+        copyError = 'Large document copied — Share or Save is more reliable on mobile.';
+      }
       return;
     }
     if (packResult.document.length > COPY_FALLBACK_LIMIT) {
@@ -144,6 +186,25 @@
       return;
     }
     copyError = `Copy failed for ${path}`;
+  }
+
+  async function handleShare() {
+    if (!packResult || shareSupport === 'none') return;
+    const nav = navigator as Navigator & {
+      share?: (data?: ShareData) => Promise<void>;
+    };
+    if (!nav.share) return;
+    const kind = shareSupport === 'text' ? 'text' : 'native';
+    try {
+      await nav.share({
+        files: [contextFile(kind)],
+        title: `${projectName} context`,
+      });
+    } catch (err) {
+      if ((err as DOMException)?.name !== 'AbortError') {
+        copyError = 'Share failed — use Save instead.';
+      }
+    }
   }
 
   function handleDownload() {
@@ -199,12 +260,26 @@
             <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
 
+          {#if shareSupport !== 'none'}
+            <button onclick={handleShare} class="mini-btn">
+              <Icon name="share" size={12} />
+              <span>Share</span>
+            </button>
+          {/if}
+
           <button onclick={handleDownload} class="mini-btn dim">
             <Icon name="download" size={12} />
             <span>Save</span>
           </button>
         </div>
       </div>
+
+      {#if !window.isSecureContext && window.innerWidth < 768 && showSecureHint}
+        <div class="secure-hint">
+          <span>HTTPS unlocks Share and install on mobile.</span>
+          <button type="button" class="secure-dismiss" onclick={() => (showSecureHint = false)} aria-label="Dismiss">✕</button>
+        </div>
+      {/if}
 
       <div class="stats-line">
         <span class="upper">{style}</span>
@@ -216,6 +291,9 @@
         <span class="tabular-nums">{lines.length.toLocaleString()} lines</span>
         <span>·</span>
         <span class="tabular-nums">{packResult.redactions} redacted</span>
+        {#if copyError}
+          <span class="copy-error">{copyError}</span>
+        {/if}
 
         {#if skipped.length > 0}
           <span>·</span>
@@ -227,10 +305,6 @@
             {/if}
             <span>{skipped.length} skipped</span>
           </button>
-        {/if}
-        {#if copyError}
-          <span>·</span>
-          <span class="copy-error">{copyError}</span>
         {/if}
       </div>
     </div>
@@ -539,5 +613,28 @@
     height: 18px;
     white-space: pre;
     padding-right: 16px;
+  }
+  .secure-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--surface-alt);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+  }
+  .secure-dismiss {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: var(--ink-faint);
+    min-width: 32px;
+    min-height: 32px;
+  }
+  @media (max-width: 767px) {
+    .mini-btn {
+      min-height: 48px;
+    }
   }
 </style>

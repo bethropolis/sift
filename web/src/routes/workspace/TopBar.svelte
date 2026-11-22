@@ -18,6 +18,7 @@
     /** Where the displayed budget came from; `custom` is a session override. */
     budgetSource: 'toml' | 'flag' | 'default' | 'custom';
     fileCount: number;
+    readOnly?: boolean;
   }
 
   let {
@@ -32,6 +33,7 @@
     onBudgetChange,
     budgetSource,
     fileCount,
+    readOnly = false,
   }: Props = $props();
 
   const budgetPresets = [32000, 64000, 120000, 200000];
@@ -92,6 +94,9 @@
     </div>
 
     <div class="topbar-right">
+      {#if readOnly}
+        <span class="font-mono readonly-pill" title="Paired read-only session">Read-only</span>
+      {/if}
       <div class="budget-presets">
         <span class="hide-on-compact budget-label">budget:</span>
         {#if budgetSource === 'toml'}
@@ -262,5 +267,14 @@
     font-size: 11px;
     color: var(--ink-faint);
     margin-left: 4px;
+  }
+  .readonly-pill {
+    font-size: 10px;
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--accent);
+    background-color: var(--surface-alt);
+    white-space: nowrap;
   }
 </style>

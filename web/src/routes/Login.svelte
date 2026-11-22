@@ -6,7 +6,7 @@
 
   interface Props {
     loginToken: string | null;
-    authKind: 'token' | 'password';
+    authKind: 'token' | 'password' | 'pair';
     onLoginSuccess: () => void;
   }
 
@@ -165,6 +165,13 @@
       <p class="info-copy">
         The password was configured in your terminal when
         <code class="font-mono info-code">sift serve</code> started.
+      </p>
+    {/if}
+
+    {#if authKind === 'pair'}
+      <p class="info-copy">
+        This server uses read-only mobile pairing. Scan a fresh QR from the
+        terminal running <code class="font-mono info-code">sift serve --pair</code>.
       </p>
     {/if}
 

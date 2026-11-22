@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>sift serve</title>
     <meta name="description" content="Developer-grade code context picker and token budget manager for AI prompts" />
     <meta property="og:title" content="sift serve" />
@@ -10,8 +10,8 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%2314171c'/><rect x='6' y='11' width='14' height='3' rx='1.5' fill='%23e3a63f'/><rect x='12' y='18' width='14' height='3' rx='1.5' fill='%23e3a63f'/></svg>" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0d12" />
+    <meta id="sift-theme-color" name="theme-color" content="#0b0d12" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <!-- First-paint guard (CSP-hashed in internal/serve/middleware.go): paints
          the OS-matched page background during HTML parse, before the bundled
          CSS arrives. Keep single-line; Vite rewrites the bytes at build time,

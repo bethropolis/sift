@@ -19,22 +19,20 @@ import (
 // Content-Encoding: gzip, and the rare client without gzip support gets a
 // decompressed stream. index.html is no-cache; hashed assets are immutable.
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		// Only / and /assets/* exist; the hash router owns the rest, so any
-		// other path serves the app shell. Unknown /assets/* paths 404.
-		if !strings.HasPrefix(r.URL.Path, "/assets/") {
-			serveGzFile(w, r, "dist/index.html", "text/html; charset=utf-8", false)
-			return
-		}
-	}
 	name := path.Clean(strings.TrimPrefix(r.URL.Path, "/"))
 	if name == "" || name == "." {
 		name = "index.html"
 	}
-	asset := "dist/" + name
-	contentType := contentTypeFor(name)
-	immutable := strings.HasPrefix(r.URL.Path, "/assets/")
-	serveGzFile(w, r, asset, contentType, immutable)
+	// Public install assets and hashed chunks are real files; everything else
+	// is the hash-routed app shell. Unknown /assets/* paths still 404.
+	public := strings.HasPrefix(name, "assets/") ||
+		name == "manifest.webmanifest" ||
+		strings.HasPrefix(name, "icons/")
+	if !public {
+		serveGzFile(w, r, "dist/index.html", "text/html; charset=utf-8", false)
+		return
+	}
+	serveGzFile(w, r, "dist/"+name, contentTypeFor(name), strings.HasPrefix(name, "assets/"))
 }
 
 func serveGzFile(w http.ResponseWriter, r *http.Request, asset, contentType string, immutable bool) {
@@ -97,6 +95,8 @@ func contentTypeFor(name string) string {
 		return "text/css; charset=utf-8"
 	case strings.HasSuffix(name, ".svg"):
 		return "image/svg+xml"
+	case strings.HasSuffix(name, ".png"):
+		return "image/png"
 	case strings.HasSuffix(name, ".json"):
 		return "application/json"
 	case strings.HasSuffix(name, ".webmanifest"):

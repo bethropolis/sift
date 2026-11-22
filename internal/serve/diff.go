@@ -187,10 +187,14 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 			End:    fs.End,
 		})
 	}
+	fileCount := metrics.Files
+	if includePatch {
+		fileCount += len(changed)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"document":   string(doc),
 		"tokens":     metrics.Tokens + metrics.PatchTokens,
-		"fileCount":  metrics.Files,
+		"fileCount":  fileCount,
 		"redactions": metrics.Secrets,
 		"skipped":    skipped,
 		"sections":   outSections,

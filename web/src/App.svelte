@@ -14,6 +14,7 @@ import { clearHashQuery } from './lib/router.svelte';
   import Login from './routes/Login.svelte';
   import Projects from './routes/Projects.svelte';
   import Workspace from './routes/Workspace.svelte';
+  import Pairing from './routes/Pairing.svelte';
   import type { Component } from 'svelte';
 
   let routeState = $state<RouteState>(parseHash(window.location.hash || '#/projects'));
@@ -38,6 +39,11 @@ import { clearHashQuery } from './lib/router.svelte';
   // fire an authenticated request before the session exists — deterministically
   // landing on the login screen despite a successful exchange.
   let launchPending = $state(routeState.launchToken !== null);
+  // Pairing has the same mount guard as app launch: no route may fire an
+  // authenticated request until the fragment token has been exchanged.
+  let pairPending = $state(routeState.pairToken !== null);
+  let pairError = $state<string | null>(null);
+  let pairAttempted = $state(false);
 
   // Lazy-load the settings modal to keep the initial bundle small. Resolved
   // inside an effect, never during render (render-phase $state writes throw).
@@ -66,6 +72,10 @@ import { clearHashQuery } from './lib/router.svelte';
   }
 
   async function persistTheme(id: string): Promise<void> {
+    if (meta?.readOnly) {
+      setUIPrefs({ theme: id });
+      return;
+    }
     try {
       const base = lastSettings ?? (await api.getSettings());
       lastSettings = { ...base, theme: id };
@@ -82,8 +92,10 @@ import { clearHashQuery } from './lib/router.svelte';
     const dark =
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.setAttribute('data-theme', dark ? 'classic-dark' : 'classic-light');
-    applyFavicon(document.documentElement.getAttribute('data-theme') ?? 'classic-dark');
+    const id = dark ? 'classic-dark' : 'classic-light';
+    document.documentElement.setAttribute('data-theme', id);
+    applyFavicon(id);
+    applyThemeColor(id);
   }
 
   // Apply the theme via data-theme on <html> and retint the favicon. In system
@@ -92,6 +104,7 @@ import { clearHashQuery } from './lib/router.svelte';
     if (theme) {
       document.documentElement.setAttribute('data-theme', theme);
       applyFavicon(theme);
+      applyThemeColor(theme);
     } else {
       applySystemTheme();
     }
@@ -132,6 +145,33 @@ import { clearHashQuery } from './lib/router.svelte';
     })();
   });
 
+  // Mobile pairing. Clear the fragment before the POST so the token never
+  // lingers in history; a pre-existing session makes the exchange unnecessary.
+  $effect(() => {
+    const token = routeState.pairToken;
+    if (!token || pairAttempted) return;
+    pairAttempted = true;
+    clearHashQuery();
+    routeState = parseHash(window.location.hash);
+    void (async () => {
+      try {
+        const before = await api.getMeta();
+        if (!before.authenticated) await api.pairSession(token);
+        await refreshAuth();
+        const roots = meta?.roots ?? [];
+        if (roots.length === 1) {
+          navigate(`/p/${encodeURIComponent(roots[0])}`);
+        } else {
+          navigate('/projects');
+        }
+      } catch (err) {
+        pairError = err instanceof Error ? err.message : 'Pairing failed';
+      } finally {
+        pairPending = false;
+      }
+    })();
+  });
+
   async function refreshAuth(): Promise<void> {
     try {
       const data = await api.getMeta();
@@ -143,6 +183,11 @@ import { clearHashQuery } from './lib/router.svelte';
       // an authenticated app window must (re)start the stream here, or the
       // server's grace timer exits 15s after the reload.
       if (data.app) startHeartbeat();
+      if (data.readOnly) {
+        const pref = getUIPrefs().theme;
+        if (pref && pref !== 'system') theme = pref;
+        return;
+      }
       try {
         const s = await api.getSettings();
         lastSettings = s;
@@ -248,7 +293,9 @@ import { clearHashQuery } from './lib/router.svelte';
   {/if}
 
   <main class="app-main">
-    {#if launchPending}
+    {#if pairPending || pairError}
+      <Pairing error={pairError} />
+    {:else if launchPending}
       <!-- The launch token is still being exchanged. Mounting a route here
            would fire authenticated calls that 401 before the session exists,
            and the 401 handler would bounce the window to the login screen
@@ -286,6 +333,7 @@ import { clearHashQuery } from './lib/router.svelte';
         currentTheme={theme ?? 'system'}
         onThemeChange={setTheme}
         onClose={() => (showSettings = false)}
+        readOnly={meta?.readOnly === true}
       />
     {:else}
       <div role="dialog" aria-label="Settings" class="modal-loading">

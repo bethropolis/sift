@@ -14,15 +14,17 @@ export interface ApiMeta {
   roots: string[];
   /** Preferred folder-browser start dir (~/Projects when jailed, else first root). */
   defaultBrowse?: string;
-  authKind: 'token' | 'password';
+  authKind: 'token' | 'password' | 'pair';
   authenticated: boolean;
   /** Session came from `sift serve --app`; drives Quit + the liveness stream. */
   app?: boolean;
+  /** True for a paired phone: read-only, no server-state writes. */
+  readOnly?: boolean;
   /**
    * Server-side feature switches (authenticated meta only). A missing key
    * means off: the UI hides entry points for features that would 404.
    */
-  features?: { clone?: boolean };
+  features?: { clone?: boolean; diff?: boolean };
 }
 
 /** Body of POST /api/clone. */
@@ -136,6 +138,17 @@ export interface FollowPayload {
   root: string;
   path: string;
   direction: 'deps' | 'dependents' | 'both';
+}
+
+export interface DiffPayload {
+  root: string;
+  from?: string;
+  patch?: boolean;
+  withContext?: boolean;
+  budget?: number;
+  style?: string;
+  prompt?: string;
+  redact?: boolean;
 }
 
 export interface PackPayload {

@@ -712,4 +712,10 @@
     color: var(--ink-faint);
     opacity: 0.6;
   }
+  @media (max-width: 767px) {
+    .row {
+      height: 48px;
+      font-size: 12.5px;
+    }
+  }
 </style>

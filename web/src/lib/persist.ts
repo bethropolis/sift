@@ -27,6 +27,10 @@ export interface UIPrefs {
   lastProject: string;
   /** Output document style (xml | markdown | plain). */
   style: string;
+  /** Client-local theme for read-only paired sessions. */
+  theme: string;
+  /** Client-local token budget for read-only paired sessions. */
+  budget: number;
 }
 
 const DEFAULTS: UIPrefs = {
@@ -35,6 +39,8 @@ const DEFAULTS: UIPrefs = {
   outlineOpen: true,
   lastProject: '',
   style: 'xml',
+  theme: 'system',
+  budget: 64000,
 };
 
 const STYLES = new Set(['xml', 'markdown', 'plain']);
@@ -60,6 +66,8 @@ export function getUIPrefs(): UIPrefs {
     outlineOpen: typeof v.outlineOpen === 'boolean' ? v.outlineOpen : DEFAULTS.outlineOpen,
     lastProject: typeof v.lastProject === 'string' ? v.lastProject : DEFAULTS.lastProject,
     style: typeof v.style === 'string' && STYLES.has(v.style) ? v.style : DEFAULTS.style,
+    theme: typeof v.theme === 'string' ? v.theme : DEFAULTS.theme,
+    budget: typeof v.budget === 'number' && v.budget > 0 ? v.budget : DEFAULTS.budget,
   };
 }
 

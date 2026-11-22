@@ -6,9 +6,10 @@
   interface Props {
     onOpenProject: (root: string) => void;
     onSwitchToBrowse: () => void;
+    readOnly?: boolean;
   }
 
-  let { onOpenProject, onSwitchToBrowse }: Props = $props();
+  let { onOpenProject, onSwitchToBrowse, readOnly = false }: Props = $props();
 
   let filteredRecents = $derived(filterRecents());
 
@@ -29,12 +30,18 @@
             <div class="empty-state">
               <Icon name="sieve-empty" size={48} />
               <span class="font-mono empty-title">
-                {projects.searchQuery ? `No projects match "${projects.searchQuery}"` : 'No recent projects yet'}
+                {projects.searchQuery
+                  ? `No projects match "${projects.searchQuery}"`
+                  : readOnly
+                    ? 'Paired sessions stay out of server recents'
+                    : 'No recent projects yet'}
               </span>
               <span class="empty-sub">
                 {projects.searchQuery
                   ? 'Press Enter to open this path directly, or browse local directories.'
-                  : 'Switch to the Folder Browser above to open your first local repository.'}
+                  : readOnly
+                    ? 'Use the Folder Browser to open one of the allowed roots.'
+                    : 'Switch to the Folder Browser above to open your first local repository.'}
               </span>
               {#if !projects.searchQuery}
                 <button type="button" onclick={onSwitchToBrowse} class="btn btn-sm btn-primary empty-cta">
@@ -86,16 +93,18 @@
                   <div class="c-time"><span class="tabular-nums opened-at" title={item.lastOpened}>{formatRelativeTime(item.lastOpened)}</span></div>
 
                   <div class="c-act">
-                    <button
-                      type="button"
-                      onclick={(e) => handleRemove(e, item.root)}
-                      class="del-btn"
-                      class:visible={isHovered || isKeyboardSelected}
-                      title="Remove from recent projects"
-                      aria-label={`Remove ${item.name} from recent projects`}
-                    >
-                      <Icon name="trash" size={13} />
-                    </button>
+                    {#if !readOnly}
+                      <button
+                        type="button"
+                        onclick={(e) => handleRemove(e, item.root)}
+                        class="del-btn"
+                        class:visible={isHovered || isKeyboardSelected}
+                        title="Remove from recent projects"
+                        aria-label={`Remove ${item.name} from recent projects`}
+                      >
+                        <Icon name="trash" size={13} />
+                      </button>
+                    {/if}
                   </div>
                 </div>
               {/each}

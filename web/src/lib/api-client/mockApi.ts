@@ -11,6 +11,7 @@ import type {
   CloneError,
   CloneProgress,
   CloneRequest,
+  DiffPayload,
   FileContentResult,
   FollowPayload,
   FollowResult,
@@ -502,6 +503,25 @@ export async function pack(payload: PackPayload): Promise<PackResult> {
     skipped,
     sections: mockSections,
   };
+}
+
+export async function diff(payload: DiffPayload): Promise<PackResult> {
+  const selections: Record<string, 'full'> = {};
+  for (const file of mockTreeFiles) selections[file.path] = 'full';
+  return pack({
+    root: payload.root,
+    selections,
+    budget: payload.budget ?? 64000,
+    style: payload.style ?? 'xml',
+    prompt: payload.prompt ?? '',
+    redact: true,
+  });
+}
+
+/** Mobile pairing in the mock simply creates a session. */
+export async function pairSession(_token: string): Promise<void> {
+  await delay(40);
+  setMockAuthenticated(true);
 }
 
 /** App-mode auto-login is inert in the mock: no server to log into. */

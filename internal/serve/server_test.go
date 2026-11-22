@@ -909,3 +909,25 @@ func TestIdleGoroutines(t *testing.T) {
 		t.Fatalf("goroutines %d, baseline %d: server does not settle", got, baseline)
 	}
 }
+
+func TestManifestAndIconsServed(t *testing.T) {
+	srv, _ := testServer(t)
+	for path, wantType := range map[string]string{
+		"/manifest.webmanifest": "application/manifest+json",
+		"/icons/icon-192.png":   "image/png",
+	} {
+		rec := do(srv, "GET", path, nil, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s = %d", path, rec.Code)
+		}
+		if got := rec.Header().Get("Content-Type"); got != wantType {
+			t.Errorf("%s Content-Type = %q, want %q", path, got, wantType)
+		}
+		if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-cache") {
+			t.Errorf("%s Cache-Control = %q, want no-cache", path, got)
+		}
+		if rec.Body.Len() == 0 {
+			t.Errorf("%s served an empty body", path)
+		}
+	}
+}

@@ -21,7 +21,7 @@ import (
 // first-paint hash, while style-src-attr allows 'unsafe-inline'. Style
 // attributes cannot execute script, so script-src stays locked down; the
 // plain style-src fallback is kept for browsers without level-3 CSP.
-const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'sha256-DOZ3BdFEccmOTseuxFlYHYD6ZM2KNwWBvAkmsBN0zOI='; style-src-elem 'self' 'sha256-DOZ3BdFEccmOTseuxFlYHYD6ZM2KNwWBvAkmsBN0zOI='; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'sha256-DOZ3BdFEccmOTseuxFlYHYD6ZM2KNwWBvAkmsBN0zOI='; style-src-elem 'self' 'sha256-DOZ3BdFEccmOTseuxFlYHYD6ZM2KNwWBvAkmsBN0zOI='; style-src-attr 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 // securityHeaders sets the response headers from the spec on everything.
 func (s *Server) securityHeaders(next http.Handler) http.Handler {

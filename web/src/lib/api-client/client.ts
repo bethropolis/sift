@@ -12,6 +12,7 @@ import type {
   CloneError,
   CloneProgress,
   CloneRequest,
+  DiffPayload,
   FileContentResult,
   FollowPayload,
   FollowResult,
@@ -150,6 +151,36 @@ export async function exportModes(payload: ModesPayload): Promise<ModesResult> {
     if (res.status === 401) handle401();
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+}
+
+export async function diff(payload: DiffPayload): Promise<PackResult> {
+    const res = await fetch('/api/diff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.status === 401) handle401();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+export async function pairSession(token: string): Promise<void> {
+    let res: Response;
+    try {
+        res = await fetch('/api/session/pair', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+        });
+    } catch {
+        throw new Error('Could not reach the sift server. Check the tunnel and try again.');
+    }
+    if (res.status === 401) {
+        throw new Error('That pairing code expired or was already used. Press Enter in the terminal for a new QR.');
+    }
+    if (!res.ok) {
+        throw new Error(`Pairing failed (HTTP ${res.status}). Check the tunnel and try again.`);
+    }
 }
 
 export async function pack(payload: PackPayload): Promise<PackResult> {

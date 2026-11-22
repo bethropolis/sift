@@ -73,6 +73,8 @@
   let packResult = $state<PackResult | null>(null);
   let isGenerating = $state(false);
   let isSmartSelecting = $state(false);
+  let isDiffing = $state(false);
+  let readOnly = $derived(meta?.readOnly === true);
   let copiedNotification = $state(false);
 
   // Toolbar dialogs: modes export preview, preset save, preset list.
@@ -87,7 +89,7 @@
   // Top/footer configuration. The format choice persists: the server default
   // seeds it, the user's own pick is kept (see lib/persist.ts).
   let selectedStyle = $state(uiPrefs.style);
-  let budget = $state(64000);
+  let budget = $state(uiPrefs.budget || 64000);
   // Where the displayed budget came from. A preset pick sets a session-only
   // override (still sent with pack/smart-select); otherwise the server's
   // resolved value wins: flag > .sift.toml > persisted default > builtin.
@@ -118,10 +120,11 @@
     // session's override.
     budgetOverride = null;
 
-    // Record the open so recents stay fresh; never blocks the tree.
-    api.recordRecent(root).catch(() => {});
+    // Record the open so recents stay fresh; never blocks the tree. A paired
+    // session is default-denied every server-state write, so skip it entirely.
+    if (!readOnly) api.recordRecent(root).catch(() => {});
 
-    Promise.all([api.getTree(root), api.getRecents()])
+    Promise.all([api.getTree(root), readOnly ? Promise.resolve([]) : api.getRecents()])
       .then(([treeRes, recentsRes]) => {
         if (!alive) return;
         files = treeRes.files;
@@ -129,8 +132,8 @@
         // Adopt the resolved budget unless the user already picked a preset
         // while the tree was loading (their explicit pick wins).
         if (budgetOverride === null) {
-          budget = treeRes.budget;
-          treeBudgetSource = treeRes.budgetSource;
+          budget = readOnly ? getUIPrefs().budget : treeRes.budget;
+          treeBudgetSource = readOnly ? 'default' : treeRes.budgetSource;
         }
 
         const initial: Record<string, FileSelectionMode> = {};
@@ -449,6 +452,10 @@
   function handleBudgetChange(b: number) {
     budgetOverride = b;
     budget = b;
+    if (readOnly) {
+      setUIPrefs({ budget: b });
+      return;
+    }
     if (treeBudgetSource === 'default') {
       void api
         .getSettings()
@@ -529,6 +536,27 @@
     if (preset.prompt !== undefined) taskPrompt = preset.prompt;
     if (preset.style) selectedStyle = preset.style;
     if (preset.budget) budget = preset.budget;
+  }
+
+  async function handleWipDiff() {
+    if (isGenerating || isDiffing || meta?.features?.diff !== true) return;
+    isDiffing = true;
+    activeTab = 'output';
+    try {
+      packResult = await api.diff({
+        root: projectRoot,
+        withContext: true,
+        budget,
+        style: selectedStyle,
+        prompt: taskPrompt,
+        redact: true,
+      });
+    } catch (err) {
+      console.error(err);
+      toast({ id: 'diff-failed', kind: 'error', message: 'Could not generate the WIP diff.' });
+    } finally {
+      isDiffing = false;
+    }
   }
 
   async function handleGenerate() {
@@ -629,6 +657,7 @@
       sidebarOpen,
       tab: activeTab,
       style: selectedStyle,
+      budget,
       lastProject: isTempCloneRoot(projectRoot) ? getUIPrefs().lastProject : projectRoot,
     });
   });
@@ -743,6 +772,7 @@
     onBudgetChange={handleBudgetChange}
     budgetSource={budgetOverride !== null ? 'custom' : treeBudgetSource}
     fileCount={files.length}
+    {readOnly}
   />
 
   <div class="panes">
@@ -837,29 +867,31 @@
             </div>
           </div>
 
-          <div class="tabs-right">
-            <button
-              class="btn btn-sm btn-ghost action-btn"
-              onclick={() => void openModes()}
-              title="Preview and copy the current modes as a [modes] TOML block"
-            >
-              Modes
-            </button>
-            <button
-              class="btn btn-sm btn-ghost action-btn"
-              onclick={() => void openSavePreset()}
-              title="Save the current selection as a preset"
-            >
-              Save
-            </button>
-            <button
-              class="btn btn-sm btn-ghost action-btn"
-              onclick={() => void openPresets()}
-              title="Load or delete a saved selection preset"
-            >
-              Presets
-            </button>
-          </div>
+          {#if !readOnly}
+            <div class="tabs-right">
+              <button
+                class="btn btn-sm btn-ghost action-btn"
+                onclick={() => void openModes()}
+                title="Preview and copy the current modes as a [modes] TOML block"
+              >
+                Modes
+              </button>
+              <button
+                class="btn btn-sm btn-ghost action-btn"
+                onclick={() => void openSavePreset()}
+                title="Save the current selection as a preset"
+              >
+                Save
+              </button>
+              <button
+                class="btn btn-sm btn-ghost action-btn"
+                onclick={() => void openPresets()}
+                title="Load or delete a saved selection preset"
+              >
+                Presets
+              </button>
+            </div>
+          {/if}
         </div>
 
         {#if activeTab === 'preview'}
@@ -894,6 +926,24 @@
       </div>
     {/if}
   </div>
+
+  <div class="mobile-quick" aria-label="Quick actions">
+    <button class="btn btn-sm btn-primary" disabled={isSmartSelecting} onclick={() => void handleSmartSelect()}>
+      {isSmartSelecting ? 'Smart…' : 'Smart'}
+    </button>
+    {#if meta?.features?.diff}
+      <button class="btn btn-sm" disabled={isDiffing} onclick={() => void handleWipDiff()}>
+        {isDiffing ? 'Diffing…' : 'WIP Diff'}
+      </button>
+    {/if}
+    <span class="mobile-count font-mono tabular-nums">{selectedCount} files · {formatTokens(usedTokens)} / {formatTokens(budget)}</span>
+  </div>
+
+  <nav class="mobile-nav" aria-label="Workspace panes">
+    <button class="mobile-tab" class:active={sidebarOpen} onclick={() => (sidebarOpen = true)}>Files</button>
+    <button class="mobile-tab" class:active={!sidebarOpen && activeTab === 'preview'} onclick={() => { sidebarOpen = false; activeTab = 'preview'; }}>Preview</button>
+    <button class="mobile-tab" class:active={!sidebarOpen && activeTab === 'output'} onclick={() => { sidebarOpen = false; activeTab = 'output'; }}>Output</button>
+  </nav>
 
   <BudgetMeter
     {selectedCount}
@@ -1073,5 +1123,61 @@
     min-width: 0;
     display: flex;
     overflow: hidden;
+  }
+  .mobile-quick,
+  .mobile-nav {
+    display: none;
+  }
+  @media (max-width: 767px) {
+    .mobile-quick {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-top: 1px solid var(--border);
+      background-color: var(--surface-raised);
+      overflow-x: auto;
+    }
+    .mobile-count {
+      margin-left: auto;
+      font-size: 10px;
+      color: var(--ink-faint);
+      white-space: nowrap;
+    }
+    .mobile-nav {
+      display: flex;
+      border-top: 1px solid var(--border);
+      background-color: var(--surface-raised);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .mobile-tab {
+      flex: 1;
+      min-height: 48px;
+      border: 0;
+      background: transparent;
+      color: var(--ink-soft);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .mobile-tab.active {
+      color: var(--accent);
+      background-color: var(--surface-alt);
+    }
+    .tabs {
+      height: 44px;
+      min-height: 48px;
+    }
+    .action-btn,
+    .files-btn {
+      min-height: 36px;
+    }
+    .tab-body,
+    .output,
+    .code-preview {
+      overscroll-behavior: contain;
+    }
+    .mobile-quick .btn {
+      min-height: 48px;
+    }
   }
 </style>

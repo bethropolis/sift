@@ -127,8 +127,12 @@
   }
 
   $effect(() => {
-    loadRecents();
-    loadBrowsePrefs();
+    if (meta?.readOnly) {
+      projects.loadingRecents = false;
+    } else {
+      loadRecents();
+      loadBrowsePrefs();
+    }
     lastProject = getUIPrefs().lastProject;
   });
 
@@ -252,7 +256,7 @@
       {/if}
 
       {#if projects.activeView === 'recents'}
-        <RecentsList {onOpenProject} onSwitchToBrowse={() => switchToBrowse(meta)} />
+        <RecentsList {onOpenProject} onSwitchToBrowse={() => switchToBrowse(meta)} readOnly={meta?.readOnly === true} />
       {/if}
 
       {#if projects.activeView === 'browse'}

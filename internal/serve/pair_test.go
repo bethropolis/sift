@@ -121,6 +121,14 @@ func TestPairConfigRefusalMatrix(t *testing.T) {
 		t.Fatalf("no-url+insecure rejected: %v", err)
 	}
 
+	remoteInsecure := base
+	remoteInsecure.Listen = "0.0.0.0:7777"
+	remoteInsecure.PublicURL = "http://example.com"
+	remoteInsecure.InsecureHTTP = true
+	if _, err := remoteInsecure.Validate(); err != nil {
+		t.Fatalf("remote+insecure rejected: %v", err)
+	}
+
 	insecureWithoutPair := Config{Listen: "127.0.0.1:7777", InsecureHTTP: true}
 	if _, err := insecureWithoutPair.Validate(); err == nil || !strings.Contains(err.Error(), "--pair") {
 		t.Fatalf("--insecure-http without --pair = %v, want pair refusal", err)

@@ -10,6 +10,8 @@ export interface RouteState {
   loginToken: string | null;
   /** One-time app-mode launch token from #launch= (fragment-only, never sent). */
   launchToken: string | null;
+  /** One-time mobile pairing token from #pair= (fragment-only, never sent). */
+  pairToken: string | null;
 }
 
 export function parseHash(hash: string): RouteState {
@@ -17,10 +19,17 @@ export function parseHash(hash: string): RouteState {
   // off before path parsing and the app resolves it into a session.
   let rest = hash;
   let launchToken: string | null = null;
+  let pairToken: string | null = null;
   const bare = /^(?:#|\/?)launch=([^&]+)(?:&(.*))?$/.exec(rest);
   if (bare) {
     launchToken = bare[1];
     rest = bare[2] ? `#/${bare[2]}` : '';
+  } else {
+    const pair = /^(?:#|\/?)pair=([^&]+)(?:&(.*))?$/.exec(rest);
+    if (pair) {
+      pairToken = pair[1];
+      rest = pair[2] ? `#/${pair[2]}` : '';
+    }
   }
   const [hashPath, query] = rest.split('?');
   const clean = hashPath.replace(/^#\/?/, '').replace(/^\//, '');
@@ -31,25 +40,25 @@ export function parseHash(hash: string): RouteState {
     } catch {
       loginToken = null;
     }
-    return { path: '/login', route: 'login', projectRoot: null, loginToken, launchToken };
+    return { path: '/login', route: 'login', projectRoot: null, loginToken, launchToken, pairToken };
   }
   if (!clean || clean === 'projects') {
-    return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken };
+    return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken, pairToken };
   }
   // Former settings page: settings now float as a modal, so a stale
   // bookmark lands on projects instead of a dead route.
   if (clean === 'settings') {
-    return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken };
+    return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken, pairToken };
   }
   if (clean.startsWith('p/')) {
     const rawRoot = clean.slice(2);
     try {
-      return { path: `/p/${rawRoot}`, route: 'workspace', projectRoot: decodeURIComponent(rawRoot), loginToken: null, launchToken };
+      return { path: `/p/${rawRoot}`, route: 'workspace', projectRoot: decodeURIComponent(rawRoot), loginToken: null, launchToken, pairToken };
     } catch {
-      return { path: `/p/${rawRoot}`, route: 'workspace', projectRoot: rawRoot, loginToken: null, launchToken };
+      return { path: `/p/${rawRoot}`, route: 'workspace', projectRoot: rawRoot, loginToken: null, launchToken, pairToken };
     }
   }
-  return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken };
+  return { path: '/projects', route: 'projects', projectRoot: null, loginToken: null, launchToken, pairToken };
 }
 
 export function navigate(path: string) {
@@ -63,7 +72,7 @@ export function navigate(path: string) {
 export function clearHashQuery() {
   const h = window.location.hash;
   // A launch URL keeps no path: land on projects rather than re-parsing it.
-  if (h === '#launch' || h.startsWith('#launch=')) {
+  if (h === '#launch' || h.startsWith('#launch=') || h === '#pair' || h.startsWith('#pair=')) {
     history.replaceState(null, '', '#/projects');
     return;
   }

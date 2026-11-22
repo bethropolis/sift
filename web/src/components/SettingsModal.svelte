@@ -9,9 +9,10 @@
     currentTheme: string;
     onThemeChange: (theme: string) => void;
     onClose: () => void;
+    readOnly?: boolean;
   }
 
-  let { meta, currentTheme, onThemeChange, onClose }: Props = $props();
+  let { meta, currentTheme, onThemeChange, onClose, readOnly = false }: Props = $props();
 
   let settings = $state<SettingsData>({
     defaultStyle: 'xml',
@@ -25,6 +26,7 @@
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
+    if (readOnly) return;
     api.getSettings().then((data) => {
       settings = data;
     });
@@ -186,14 +188,18 @@
       </section>
 
       <div class="save-row">
-        <button type="submit" disabled={isSaving} class="btn btn-primary save-btn">
-          {isSaving ? 'Saving...' : 'Save Settings'}
-        </button>
-        {#if saveSuccess}
-          <div class="save-ok">
-            <Icon name="check" size={14} />
-            <span>Settings saved to server</span>
-          </div>
+        {#if readOnly}
+          <p class="read-only-note">Read-only paired session — preferences stay on this phone.</p>
+        {:else}
+          <button type="submit" disabled={isSaving} class="btn btn-primary save-btn">
+            {isSaving ? 'Saving...' : 'Save Settings'}
+          </button>
+          {#if saveSuccess}
+            <div class="save-ok">
+              <Icon name="check" size={14} />
+              <span>Settings saved to server</span>
+            </div>
+          {/if}
         {/if}
       </div>
     </form>
@@ -361,5 +367,11 @@
     gap: 6px;
     font-size: 12px;
     color: var(--status-ok);
+  }
+  .read-only-note {
+    margin: 0;
+    font-size: 11px;
+    color: var(--ink-faint);
+    line-height: 1.5;
   }
 </style>

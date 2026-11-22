@@ -205,8 +205,8 @@ func (c *Config) validatePair(remote bool) (*auth.Auth, error) {
 			c.BehindProxy = true
 		}
 	}
-	if remote && !c.BehindProxy && c.TLSCert == "" && !c.TLSSelfSigned {
-		return nil, fmt.Errorf("--pair on a non-loopback bind needs --behind-proxy or a TLS certificate")
+	if remote && !c.BehindProxy && !c.InsecureHTTP && c.TLSCert == "" && !c.TLSSelfSigned {
+		return nil, fmt.Errorf("--pair on a non-loopback bind needs --behind-proxy, --insecure-http, or a TLS certificate")
 	}
 	if c.PairTTL <= 0 {
 		c.PairTTL = DefaultPairTTL

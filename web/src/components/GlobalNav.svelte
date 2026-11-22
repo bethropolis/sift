@@ -15,6 +15,7 @@
   let { meta, currentTheme, onOpenThemePicker, onOpenShortcuts, onOpenSettings, onNavigate }: Props = $props();
 
   let isRemote = $derived(meta?.mode === 'remote');
+  let isReadOnly = $derived(meta?.readOnly === true);
   let isTlsUnencrypted = $derived(isRemote && meta?.tls === false);
   let themeInfo: { name: string } = $derived(
     currentTheme === 'system' ? { name: 'System' } : getThemeById(currentTheme),
@@ -41,6 +42,9 @@
   </div>
 
   <div class="topbar-right">
+    {#if isReadOnly}
+      <span class="readonly-pill font-mono" title="Paired read-only session">Read-only</span>
+    {/if}
     <span class="status-line" title={isRemote ? 'Connected to a remote sift server' : 'Local sift server'}>
       <span class:remote={isRemote}>{isRemote ? 'Remote' : 'Local'}</span>
       {#if meta?.version}
@@ -135,6 +139,15 @@
     font-weight: 600;
     letter-spacing: -0.02em;
     color: var(--ink);
+  }
+  .readonly-pill {
+    font-size: 10px;
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--accent);
+    background-color: var(--surface-alt);
+    white-space: nowrap;
   }
   .topbar-right {
     display: flex;
