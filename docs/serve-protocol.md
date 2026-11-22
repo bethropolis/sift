@@ -7,12 +7,15 @@ reference; this document is normative where they differ.
 ## Endpoints
 
 All `/api/*` responses are `Cache-Control: no-store`. POST/PUT bodies are
-capped at 4 MiB and must be `application/json` (415 otherwise).
+capped at 4 MiB and must be `application/json` (415 otherwise). JSON API
+responses larger than 1 KiB are gzipped when the client sends
+`Accept-Encoding: gzip`; `Vary: Accept-Encoding` is always present. SSE,
+clone NDJSON, 204s, and pre-encoded bodies are never compressed.
 
 | Route | Auth | Notes |
 | :-- | :-- | :-- |
-| `GET /`, `/assets/*` | public | `index.html` is `no-cache`; hashed assets `immutable`. |
-| `GET /api/meta` | public (minimal) | Always: `{version, mode, tls, authKind, authenticated}`. Authed adds `{roots, styles, defaultBrowse}` (`~/Projects` when jailed, else first root) and `{features: {clone}}` (true only with `--allow-clone` and git installed); the UI hides clone entry points when false. |
+| `GET /`, `/assets/*`, `/manifest.webmanifest`, `/icons/*` | public | `index.html` is `no-cache`; hashed assets `immutable`; manifest and icons `no-cache`. |
+| `GET /api/meta` | public (minimal) | Always: `{version, mode, tls, authKind, authenticated}`. Authed adds `{roots, styles, defaultBrowse}` (`~/Projects` when jailed, else first root), `readOnly` (true for paired sessions), and `{features: {clone, diff}}`; the UI hides clone and WIP Diff entry points when false. |
 | `POST /api/login`, `POST /api/logout` | public / session | `{password}` or `{token}`. 204, 401, or 429 with `retryAfter`. |
 | `GET /api/recents`, `POST /api/recents`, `DELETE /api/recents?root=` | session | POST records an open (GETs never mutate). Cap 25. |
 | `GET /api/browse?path=` | session | Directories only, 5000 entries, `isGitRepo` by `lstat(.git)`. Dot-directories hidden unless `&hidden=1`. Entries carry `modTime` (unix millis) for sort-by-updated. |
@@ -23,8 +26,10 @@ capped at 4 MiB and must be `application/json` (415 otherwise).
 | `POST /api/presets` | session | `{root, name, selections, prompt?, style?, budget?}` → stored preset. |
 | `DELETE /api/presets?root=&name=` | session | Deletes a named preset (204). |
 | `POST /api/modes` | session | `{root, selections}` → `{toml}`. Exports the client's per-file modes as a minimal `[modes]` block; empty `toml` means every file uses the default full mode. |
-| `POST /api/pack` | session | `{root, selections, budget, style, prompt, redact}` → `{document, tokens, fileCount, redactions, skipped, sections}`. At most 2 concurrent packs (503 otherwise. `sections` is always an array of `{path, tokens, start, end}` byte ranges into `document` (XML/Markdown/Plain) for outline navigation; empty when no files are kept. |
+| `POST /api/diff` | session / paired read | `{root, from?, patch?, withContext?, budget?, style?, prompt?, redact?}` → same shape as pack. Empty `from` means uncommitted worktree changes; otherwise `from..HEAD`. Refs are validated through the hardened git path; a clean tree returns an empty document, not an error. Patches are redacted. |
+| `POST /api/pack` | session / paired read | `{root, selections, budget, style, prompt, redact}` → `{document, tokens, fileCount, redactions, skipped, sections}`. At most 2 concurrent packs (503 otherwise. `sections` is always an array of `{path, tokens, start, end}` byte ranges into `document` (XML/Markdown/Plain) for outline navigation; empty when no files are kept. |
 | `GET/PUT /api/settings` | session | `{defaultStyle, defaultBudget, theme, showHidden, fileSort}`; theme validated `[a-z0-9-]{1,32}` (`system` follows the OS), `fileSort` is `name` or `updated`. The theme id is shared with the TUI (mirrored to the legacy field), so changing it in either frontend changes it in both. `defaultBudget` seeds fresh workspaces (see Budget). |
+| `POST /api/session/pair` | public (token is the credential) | `--pair` only, `404` otherwise. `{token}` → `204` plus a read-only session cookie. One live token, message-identical 401s, shared login throttle. |
 | `POST /api/session/launch` | public (token is the credential) | `{token}` → `{app}`. `--app` auto-login: one-time, 60s TTL, loopback-only. Shares the login lockout. Any failure is the same generic `401`. |
 | `GET /api/app/heartbeat` | session | SSE liveness stream, app mode only (`404` otherwise). No server-side ticker; the handler blocks until the client leaves or the server starts shutting down. |
 | `POST /api/clone` | session | `{url, branch?, depth?}` → NDJSON progress lines (`{"type":"progress","phase","percent"}`), then one `done` (`{root, name, url}`) or `error` (`{message, detail?}`). 404 without `--allow-clone` (or without git). Rejects local paths, `file://`, `ext::`, leading `-`, URLs with embedded passwords, and depths outside 1–1000. One clone at a time, 5-minute timeout; aborting the request cancels git and removes the checkout. |
@@ -53,14 +58,21 @@ path exists; denied project opens log only the last two path segments.
 - **Password:** compared as `HMAC-SHA256(key, candidate)` vs
   `HMAC-SHA256(key, password)` with `subtle.ConstantTimeCompare`. Never
   persisted; restart-safe because there is nothing to persist.
-- **Session cookie:** `v1.<expiry>.<app>.<nonce>.<HMAC>`, per-process key, 12h
-  lifetime, re-issued under half-life. `app` is `1` for a session created by a
-  `--app` launch token, so app mode survives reloads without server state.
-  `HttpOnly; SameSite=Strict; Path=/`, `Secure` on TLS (or trusted-proxy https).
+- **Session cookie:** `v2.<expiry>.<app>.<readOnly>.<nonce>.<HMAC>`, per-process
+  key, 12h lifetime for writable sessions, re-issued under half-life. `app` is
+  `1` for a session created by a `--app` launch token, so app mode survives
+  reloads without server state. `readOnly` is authenticated and never
+  re-issued or slid; paired sessions carry the absolute `--pair-session-ttl`.
+  Old-format cookies fail closed. `HttpOnly; SameSite=Strict; Path=/`, `Secure`
+  on TLS (or a trusted-proxy HTTPS request, or an HTTPS `--public-url`).
 - **Throttling:** exponential per-IP backoff (first failure answers 401, the
   next waits) plus a global rate cap; 429 carries `retryAfter`. Pruned lazily.
-- **Public set:** static assets, `GET /api/meta` (minimal), `POST /api/login`.
-  Everything else 401s without a session (asserted by enumeration test).
+- **Public set:** static assets, `GET /api/meta` (minimal), `POST /api/login`,
+  and `POST /api/session/pair` only with `--pair`. Everything else 401s
+  without a session (asserted by enumeration test).
+- **Paired sessions:** read-only and default-deny. Every route is classified
+  `public`/`read`/`write`; paired sessions may use public and read routes
+  only. `recents`, `settings`, `presets`, clones, and all writes are 403.
 
 ## Network hygiene
 
@@ -73,7 +85,8 @@ path exists; denied project opens log only the last two path segments.
   plus one `sha256` hash for the inline first-paint `<style>` in
   `web/index.html`, pinned by `TestFirstPaintStyleHash`; `style-src-elem`
   repeats both, and `style-src-attr 'unsafe-inline'` allows Svelte's runtime
-  style bindings, which cannot execute script), `nosniff`, `no-referrer`,
+  style bindings, which cannot execute script; `manifest-src 'self'` for the
+  PWA manifest), `nosniff`, `no-referrer`,
   `DENY` framing, `same-origin` COOP/CORP, HSTS on TLS.
 - **Limits:** 5s header / 30s read timeouts, 16 KiB headers, request-context
   cancellation into scan and render.

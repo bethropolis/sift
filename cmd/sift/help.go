@@ -719,6 +719,7 @@ func getCommandExamples(cmd *cobra.Command) []exampleItem {
 			{"sift serve --listen 0.0.0.0:8080 --allow-remote", "Bind to all interfaces for remote access"},
 			{"sift serve --password-file ./pw --tls-self-signed", "Secure remote instance with TLS and password"},
 			{"sift serve --root /path/to/project", "Restrict allowed filesystem roots"},
+			{"sift serve --pair --root ~/code --public-url https://host.example", "Read-only mobile pairing via a QR code"},
 			{"sift serve --app --keep-alive", "Keep server running even after app window closes"},
 		}
 	case "watch":

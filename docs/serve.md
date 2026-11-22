@@ -91,6 +91,48 @@ an optional branch or tag, and a history depth (default 1, like
   system git installed). Without the flag the button and the search-box offer
   are hidden entirely — on loopback binds too.
 
+## Mobile pairing
+
+`sift serve --pair` turns the browser UI into a read-only mobile companion.
+It prints a QR whose URL carries a one-time token in the fragment; scanning it
+creates a signed read-only session. Pairing is always remote-gated, even on a
+loopback bind.
+
+```bash
+# Recommended: Tailscale Serve (or any HTTPS tunnel) in front of loopback.
+sift serve --pair --root ~/code \
+  --public-url https://machine.tailnet.ts.net
+
+# Plain HTTP only for a trusted LAN; Share and PWA install need HTTPS.
+sift serve --pair --root ~/code --insecure-http
+```
+
+- **Read-only by contract:** paired sessions may read the tree, preview,
+  smart-select, pack, diff, and follow. Recents, settings, presets, clones,
+  and every other write are 403, even if a route is added later.
+- **Redaction is locked on:** `.env*`, private keys, and certificate files
+  are hard-excluded from tree, preview, pack, and diff.
+- **Single-use tokens:** one live token, two-minute default TTL, new token on
+  Enter or `SIGUSR1`, invalidated when re-minted. Sessions default to five
+  concurrent phones and a 12-hour absolute lifetime with no sliding renewal.
+- **No new persistence:** tokens and the signing key live only in memory;
+  stopping the server signs every phone out.
+- **Transport-agnostic:** `--public-url` is the only thing the QR needs.
+  Tailscale Serve, Cloudflare Tunnel, Caddy, and Nginx all work the same way.
+  `--behind-proxy` is implied for an HTTPS public URL on a loopback bind.
+
+The PWA install, pairing login, and Share action require a secure context.
+Android Chrome over plain HTTP can still pair and read, but Share and install
+are unavailable; the UI says so.
+
+| Event | Exposure |
+| :-- | :-- |
+| QR photographed after use or after TTL | None, the token is single-use |
+| QR photographed within TTL, before scanning | Read-only access to `--root` until the session TTL |
+| Phone stolen while paired | Read-only access to `--root` until session TTL or server stop |
+| Public tunnel hostname discovered | Reachable login endpoint, throttled and single-use |
+| Behind a proxy without client-IP forwarding | Throttling is global, not per-IP |
+
 ## Remote use
 
 Remote mode is deliberately strict. Any non-loopback bind (including
@@ -102,7 +144,7 @@ Remote mode is deliberately strict. Any non-loopback bind (including
 - at least one explicit `--root`
 - at least one `--allowed-host`
 - exactly one of `--tls-cert`/`--tls-key`, `--tls-self-signed`,
-  `--behind-proxy`, `--insecure-http`
+  `--behind-proxy`
 - `--allow-clone` to enable cloning repositories (off by default on every
   bind; needs system git too)
 
@@ -126,8 +168,9 @@ sift serve --listen 0.0.0.0:7777 --allow-remote \
 ```
 
 Verify the printed SHA-256 fingerprint out of band on first connect.
-`--insecure-http` works but prints a loud warning and the UI shows a
-persistent "connection is not encrypted" banner; prefer the tunnel.
+`--insecure-http` is pair-only now; password mode keeps the TLS/proxy
+requirement and shows a persistent "connection is not encrypted" banner on
+plain-HTTP UI loads.
 
 ## Reference
 
