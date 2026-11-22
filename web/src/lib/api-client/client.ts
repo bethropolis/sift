@@ -30,8 +30,23 @@ import type {
   TreeResult,
 } from './types';
 
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 15_000): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 export async function getMeta(): Promise<ApiMeta> {
-    const res = await fetch('/api/meta');
+    let res: Response;
+    try {
+        res = await fetchWithTimeout('/api/meta');
+    } catch {
+        throw new Error('Could not reach the sift server.');
+    }
     if (res.status === 401) handle401();
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     return res.json();
@@ -167,7 +182,7 @@ export async function diff(payload: DiffPayload): Promise<PackResult> {
 export async function pairSession(token: string): Promise<void> {
     let res: Response;
     try {
-        res = await fetch('/api/session/pair', {
+        res = await fetchWithTimeout('/api/session/pair', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token }),

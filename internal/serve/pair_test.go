@@ -76,11 +76,14 @@ func TestPairConfigRefusalMatrix(t *testing.T) {
 		{"clone", func(c *Config) { c.AllowClone = true }, "--allow-clone"},
 		{"unredacted", func(c *Config) { c.AllowUnredacted = true }, "--allow-unredacted"},
 		{"app", func(c *Config) { c.App = true }, "--app"},
+		{"open", func(c *Config) { c.Open = true }, "--open"},
+		{"keep-alive", func(c *Config) { c.KeepAlive = true }, "--keep-alive"},
 		{"no-url", func(c *Config) { c.PublicURL = "" }, "--public-url"},
 		{"bad-scheme", func(c *Config) { c.PublicURL = "ftp://example.com" }, "scheme"},
 		{"userinfo", func(c *Config) { c.PublicURL = "https://user@example.com" }, "userinfo"},
 		{"query", func(c *Config) { c.PublicURL = "https://example.com?x=1" }, "query"},
 		{"fragment", func(c *Config) { c.PublicURL = "https://example.com#x" }, "fragment"},
+		{"subpath", func(c *Config) { c.PublicURL = "https://example.com/sift" }, "subpath"},
 		{"plain-http", func(c *Config) { c.PublicURL = "http://example.com" }, "--insecure-http"},
 		{"remote-no-proxy", func(c *Config) {
 			c.Listen = "0.0.0.0:7777"

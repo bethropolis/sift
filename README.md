@@ -172,7 +172,7 @@ sift history        # recent dumps (opt-in; see docs/configuration.md)
 sift follow <file>  # render a file plus its import-graph neighbors
 sift watch [path]   # re-render on file changes
 sift serve          # browser picker at http://127.0.0.1:7777
-sift serve --pair   # read-only phone pairing via QR (needs --public-url or --insecure-http)
+sift serve --pair --insecure-http --listen 0.0.0.0:7777  # read-only phone pairing on a trusted LAN
 sift skill install  # install Sift skill into detected AI tools
 ```
 

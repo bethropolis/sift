@@ -481,9 +481,10 @@ func (s *Server) Run() error {
 				serveDim.Sprint("open →"),
 				serveURL.Sprintf("%s://%s/#/login?token=%s", scheme, addr, s.auth.Token()))
 		}
-	} else {
+	} else if !s.cfg.Pair {
 		// Remote logins are password-only, so print plain URLs: one per
-		// usable LAN address, ready to type into a phone browser.
+		// usable LAN address, ready to type into a phone browser. Pair mode
+		// prints its own public QR URL instead.
 		if _, port, err := net.SplitHostPort(addr); err == nil {
 			if addrs, err := net.InterfaceAddrs(); err == nil {
 				for _, ip := range lanIPv4s(addrs) {

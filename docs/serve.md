@@ -146,6 +146,12 @@ are unavailable; the UI says so.
 
 - **Wrong project** — pair defaults to the current working directory when
   `--root` is omitted; pass one or more `--root` flags to scope it elsewhere.
+- **Pairing screen times out** — pairing requests give up after 15s and show
+  a connectivity message instead of waiting forever. Check the tunnel.
+- **`--open` / `--keep-alive` with `--pair`** — refused; pair mode prints the
+  QR instead of opening a browser and has no app-window lifecycle.
+- **Subpath `--public-url`** — refused. The UI uses root-absolute `/api` and
+  `/assets` paths, so terminate TLS at the root or add a reverse-proxy rewrite.
 - **Stuck on “Pairing this phone…”** — the page loaded, so the network is
   fine. Restart the server after rebuilding sift (the running process embeds
   the old UI), then reload the phone tab and scan a fresh QR. Check the

@@ -97,6 +97,14 @@ func TestGzipSkipsStreamingAndNoContent(t *testing.T) {
 	}
 }
 
+func TestGzipSkipsQZero(t *testing.T) {
+	body := []byte(`{"document":"` + strings.Repeat("x", 2048) + `"}`)
+	rec := serveGzip(t, "/api/pack", "gzip;q=0", "application/json", body, http.StatusOK)
+	if got := rec.Header().Get("Content-Encoding"); got != "" {
+		t.Fatalf("Content-Encoding = %q, want none for q=0", got)
+	}
+}
+
 func TestGzipHonorsExistingEncoding(t *testing.T) {
 	h := (&Server{}).gzipAPI(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

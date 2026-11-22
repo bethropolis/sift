@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/bethropolis/sift/web"
@@ -78,7 +79,20 @@ func serveGzFile(w http.ResponseWriter, r *http.Request, asset, contentType stri
 
 func acceptsGzip(r *http.Request) bool {
 	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
-		if strings.TrimSpace(strings.SplitN(part, ";", 2)[0]) == "gzip" {
+		encoding, params, _ := strings.Cut(part, ";")
+		if !strings.EqualFold(strings.TrimSpace(encoding), "gzip") {
+			continue
+		}
+		q := 1.0
+		for _, param := range strings.Split(params, ";") {
+			key, val, ok := strings.Cut(param, "=")
+			if ok && strings.EqualFold(strings.TrimSpace(key), "q") {
+				if parsed, err := strconv.ParseFloat(strings.TrimSpace(val), 64); err == nil {
+					q = parsed
+				}
+			}
+		}
+		if q > 0 {
 			return true
 		}
 	}

@@ -188,6 +188,12 @@ func (c *Config) validatePair(remote bool) (*auth.Auth, error) {
 	if c.App {
 		return nil, fmt.Errorf("--pair cannot be combined with --app")
 	}
+	if c.Open {
+		return nil, fmt.Errorf("--pair cannot be combined with --open")
+	}
+	if c.KeepAlive {
+		return nil, fmt.Errorf("--pair cannot be combined with --keep-alive")
+	}
 	if c.PublicURL == "" && !c.InsecureHTTP {
 		return nil, fmt.Errorf("--pair needs --public-url (HTTPS) or --insecure-http")
 	}
@@ -199,6 +205,9 @@ func (c *Config) validatePair(remote bool) (*auth.Auth, error) {
 		}
 		if u.Scheme != "http" && u.Scheme != "https" {
 			return nil, fmt.Errorf("bad --public-url %q: scheme must be http or https", c.PublicURL)
+		}
+		if u.Path != "" && u.Path != "/" {
+			return nil, fmt.Errorf("bad --public-url %q: a subpath is not supported", c.PublicURL)
 		}
 		if u.Scheme == "http" && !c.InsecureHTTP {
 			return nil, fmt.Errorf("--public-url uses http://; pass --insecure-http to allow plain HTTP pairing")
