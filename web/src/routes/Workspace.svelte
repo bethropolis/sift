@@ -74,6 +74,7 @@
   let isGenerating = $state(false);
   let isSmartSelecting = $state(false);
   let isDiffing = $state(false);
+  let mobileOptionsOpen = $state(false);
   let readOnly = $derived(meta?.readOnly === true);
   let copiedNotification = $state(false);
 
@@ -895,7 +896,9 @@
         </div>
 
         {#if activeTab === 'preview'}
-          <TaskPrompt prompt={taskPrompt} onChange={(v) => (taskPrompt = v)} />
+          <div class="desktop-prompt">
+            <TaskPrompt prompt={taskPrompt} onChange={(v) => (taskPrompt = v)} />
+          </div>
         {/if}
 
         <div class="tab-body">
@@ -936,8 +939,43 @@
         {isDiffing ? 'Diffing…' : 'WIP Diff'}
       </button>
     {/if}
+    <button class="btn btn-sm" onclick={() => (mobileOptionsOpen = true)}>Options</button>
     <span class="mobile-count font-mono tabular-nums">{selectedCount} files · {formatTokens(usedTokens)} / {formatTokens(budget)}</span>
   </div>
+
+  {#if mobileOptionsOpen}
+    <div class="sheet-backdrop" role="presentation" onclick={() => (mobileOptionsOpen = false)}></div>
+    <div class="mobile-sheet" role="dialog" aria-modal="true" aria-label="Pack options">
+      <div class="sheet-head">
+        <span class="font-mono">Pack options</span>
+        <button class="sheet-close" onclick={() => (mobileOptionsOpen = false)} aria-label="Close">✕</button>
+      </div>
+      <label class="sheet-label" for="mobile-style">Format</label>
+      <select id="mobile-style" class="input" bind:value={selectedStyle}>
+        {#each stylesList as st (st)}
+          <option value={st}>{st}</option>
+        {/each}
+      </select>
+      <span class="sheet-label">Budget</span>
+      <div class="sheet-budgets">
+        {#each [32000, 64000, 120000, 200000] as b (b)}
+          <button class="btn btn-sm" class:active={budget === b} onclick={() => handleBudgetChange(b)}>
+            {formatTokens(b)}
+          </button>
+        {/each}
+      </div>
+      <span class="sheet-label">Task prompt</span>
+      <TaskPrompt prompt={taskPrompt} onChange={(v) => (taskPrompt = v)} />
+      {#if !readOnly}
+        <span class="sheet-label">Selection</span>
+        <div class="sheet-budgets">
+          <button class="btn btn-sm" onclick={() => { mobileOptionsOpen = false; void openModes(); }}>Modes</button>
+          <button class="btn btn-sm" onclick={() => { mobileOptionsOpen = false; void openSavePreset(); }}>Save preset</button>
+          <button class="btn btn-sm" onclick={() => { mobileOptionsOpen = false; void openPresets(); }}>Presets</button>
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   <nav class="mobile-nav" aria-label="Workspace panes">
     <button class="mobile-tab" class:active={sidebarOpen} onclick={() => (sidebarOpen = true)}>Files</button>
@@ -1005,6 +1043,7 @@
     height: 100%;
     background-color: var(--bg);
     overflow: hidden;
+    overflow-x: hidden;
   }
   .panes {
     flex: 1;
@@ -1164,12 +1203,17 @@
       background-color: var(--surface-alt);
     }
     .tabs {
-      height: 44px;
+      height: 48px;
       min-height: 48px;
     }
     .action-btn,
-    .files-btn {
-      min-height: 36px;
+    .files-btn,
+    .segmented-btn {
+      min-height: 48px;
+    }
+    .desktop-prompt,
+    .tabs-right {
+      display: none;
     }
     .tab-body,
     .output,
@@ -1178,6 +1222,62 @@
     }
     .mobile-quick .btn {
       min-height: 48px;
+    }
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 40;
+    }
+    .mobile-sheet {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 41;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+      background-color: var(--surface-raised);
+      border-top: 1px solid var(--border);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--ink);
+    }
+    .sheet-close {
+      border: 0;
+      background: transparent;
+      color: var(--ink-soft);
+      min-width: 48px;
+      min-height: 48px;
+    }
+    .sheet-label {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ink-faint);
+      margin-top: 6px;
+    }
+    .sheet-budgets {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .sheet-budgets .btn {
+      min-height: 48px;
+      flex: 1;
+    }
+    .sheet-budgets .btn.active {
+      color: var(--accent);
+      border-color: var(--accent);
     }
   }
 </style>

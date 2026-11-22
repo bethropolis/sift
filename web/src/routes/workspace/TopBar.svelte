@@ -277,4 +277,12 @@
     background-color: var(--surface-alt);
     white-space: nowrap;
   }
+  @media (max-width: 767px) {
+    .budget-presets {
+      display: none;
+    }
+    .topbar .btn {
+      min-height: 48px;
+    }
+  }
 </style>
