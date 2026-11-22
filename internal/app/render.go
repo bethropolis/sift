@@ -47,17 +47,78 @@ func (a *App) RenderWithMetrics(files []format.FileEntry, skippedItems []walker.
 	return a.renderWithPrompt(files, skippedItems, duration, runErr, true, a.cfg.Prompt)
 }
 
+// RenderWithMetricsCaptured is RenderWithMetrics plus a copy of the exact
+// bytes delivered to the configured destination.
+func (a *App) RenderWithMetricsCaptured(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) (RenderMetrics, []byte, error) {
+	return a.captureRender(func() (RenderMetrics, error) {
+		return a.RenderWithMetrics(files, skippedItems, duration, runErr)
+	})
+}
+
+// RenderFinalCaptured is RenderFinalWithMetrics plus the rendered bytes.
+func (a *App) RenderFinalCaptured(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) (RenderMetrics, []byte, error) {
+	return a.captureRender(func() (RenderMetrics, error) {
+		return a.RenderFinalWithMetrics(files, skippedItems, duration, runErr)
+	})
+}
+
+// RenderEntriesWithMetricsCaptured is RenderEntriesWithMetrics plus bytes.
+func (a *App) RenderEntriesWithMetricsCaptured(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) (RenderMetrics, []byte, error) {
+	return a.captureRender(func() (RenderMetrics, error) {
+		return a.RenderEntriesWithMetrics(files, skippedItems, duration, runErr)
+	})
+}
+
+// RenderPatchWithMetricsCaptured is RenderPatchWithMetrics plus bytes.
+func (a *App) RenderPatchWithMetricsCaptured(files []format.FileEntry, patch string, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) (RenderMetrics, []byte, error) {
+	return a.captureRender(func() (RenderMetrics, error) {
+		return a.RenderPatchWithMetrics(files, patch, skippedItems, duration, runErr)
+	})
+}
+
+func (a *App) captureBytes(data []byte) {
+	if a.capture == nil {
+		return
+	}
+	_, _ = a.capture.Write(data)
+}
+
+func (a *App) captureRender(render func() (RenderMetrics, error)) (RenderMetrics, []byte, error) {
+	var buf bytes.Buffer
+	previous := a.capture
+	a.capture = &buf
+	defer func() { a.capture = previous }()
+
+	metrics, err := render()
+	if err != nil {
+		return metrics, nil, err
+	}
+	return metrics, buf.Bytes(), nil
+}
+
 // RenderFinal renders exactly the given files without re-applying the token
 // budget. It is used by the interactive picker, whose TUI owns budget
 // accounting (including smart auto-selection); nothing is dropped afterwards.
 func (a *App) RenderFinal(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) error {
-	return a.RenderFinalWithPrompt(files, skippedItems, duration, runErr, a.cfg.Prompt)
+	_, err := a.RenderFinalWithMetrics(files, skippedItems, duration, runErr)
+	return err
 }
 
+// RenderFinalWithMetrics is RenderFinal with the rendered counts exposed.
+func (a *App) RenderFinalWithMetrics(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error) (RenderMetrics, error) {
+	return a.renderWithPrompt(files, skippedItems, duration, runErr, false, a.cfg.Prompt)
+}
+
+// RenderFinalWithPrompt renders exactly the given files with a caller-supplied
 // directive without mutating application configuration.
 func (a *App) RenderFinalWithPrompt(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, prompt string) error {
-	_, err := a.renderWithPrompt(files, skippedItems, duration, runErr, false, prompt)
+	_, err := a.RenderFinalWithPromptMetrics(files, skippedItems, duration, runErr, prompt)
 	return err
+}
+
+// RenderFinalWithPromptMetrics is RenderFinalWithPrompt with metrics.
+func (a *App) RenderFinalWithPromptMetrics(files []format.FileEntry, skippedItems []walker.SkippedItem, duration time.Duration, runErr error, prompt string) (RenderMetrics, error) {
+	return a.renderWithPrompt(files, skippedItems, duration, runErr, false, prompt)
 }
 
 // RenderEntriesWithMetrics applies the token budget and renders an explicit
@@ -146,12 +207,20 @@ func (a *App) RenderToClipboardWithPrompt(files []format.FileEntry, prompt strin
 // non-destructively: the render must fully succeed before the previous dump is
 // truncated, so a failed render never destroys the last good document.
 func (a *App) RenderFinalToBuffer(files []format.FileEntry, prompt string) ([]byte, error) {
+	doc, _, err := a.RenderFinalToBufferWithMetrics(files, prompt)
+	return doc, err
+}
+
+// RenderFinalToBufferWithMetrics is RenderFinalToBuffer with the rendered
+// counts exposed. It backs the picker, which needs both for history.
+func (a *App) RenderFinalToBufferWithMetrics(files []format.FileEntry, prompt string) ([]byte, RenderMetrics, error) {
 	a.prepareArchitecture(files)
 	var buf bytes.Buffer
-	if _, err := a.renderDocumentTo(files, prompt, &buf, nil); err != nil {
-		return nil, err
+	metrics, err := a.renderDocumentTo(files, prompt, &buf, nil)
+	if err != nil {
+		return nil, metrics, err
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), metrics, nil
 }
 
 // renderDocumentTo builds the output document for the given files (applying
@@ -360,6 +429,7 @@ func (a *App) renderToDestination(files []format.FileEntry, prompt string) (Rend
 		if err != nil {
 			return metrics, fmt.Errorf("render output: %w", err)
 		}
+		a.captureBytes(buf.Bytes())
 		start := time.Now()
 		if err := clipboard.Copy(buf.Bytes()); err != nil {
 			return metrics, fmt.Errorf("copy output to clipboard: %w", err)
@@ -374,6 +444,7 @@ func (a *App) renderToDestination(files []format.FileEntry, prompt string) (Rend
 		if err != nil {
 			return metrics, fmt.Errorf("render output: %w", err)
 		}
+		a.captureBytes(buf.Bytes())
 		if err := a.WriteOutput(buf.Bytes()); err != nil {
 			return metrics, err
 		}
@@ -393,8 +464,12 @@ func (a *App) renderToDestination(files []format.FileEntry, prompt string) (Rend
 			// Buffer the render: renderers emit one fmt.Fprintf per line/fence,
 			// which would otherwise be a write syscall per call on large dumps.
 			bufw := bufio.NewWriterSize(out, 256<<10)
+			destination := io.Writer(bufw)
+			if a.capture != nil {
+				destination = io.MultiWriter(bufw, a.capture)
+			}
 			start := time.Now()
-			metrics, renderErr := a.renderDocumentTo(files, prompt, bufw, nil)
+			metrics, renderErr := a.renderDocumentTo(files, prompt, destination, nil)
 			if renderErr != nil {
 				return metrics, fmt.Errorf("render output: %w", renderErr)
 			}
@@ -409,7 +484,11 @@ func (a *App) renderToDestination(files []format.FileEntry, prompt string) (Rend
 		start := time.Now()
 		err := writeFileAtomic(a.outputPath, func(w io.Writer) error {
 			var renderErr error
-			metrics, renderErr = a.renderDocumentTo(files, prompt, w, nil)
+			destination := io.Writer(w)
+			if a.capture != nil {
+				destination = io.MultiWriter(w, a.capture)
+			}
+			metrics, renderErr = a.renderDocumentTo(files, prompt, destination, nil)
 			if renderErr != nil {
 				return fmt.Errorf("render output: %w", renderErr)
 			}

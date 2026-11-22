@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bethropolis/sift/internal/app"
 	"github.com/bethropolis/sift/internal/clipboard"
 	"github.com/bethropolis/sift/internal/format"
 	"github.com/bethropolis/sift/internal/rank"
@@ -100,6 +101,7 @@ func (s *service) performDelta(files []format.FileEntry, sel tui.DeltaSelection)
 	if !g.Available() {
 		return fmt.Errorf("not inside a git repository")
 	}
+	changed := g.ChangedBetween(sel.From, sel.To)
 
 	if sel.Strategy == tui.DeltaPatch {
 		patch := g.RawPatch(sel.From, sel.To)
@@ -122,11 +124,14 @@ func (s *service) performDelta(files []format.FileEntry, sel tui.DeltaSelection)
 				}
 			}
 		}
-		return s.env.RecordDelta(absRootDir, sel.To, len(g.ChangedBetween(sel.From, sel.To)), s.env.CountTokens(body))
+		tokens := s.env.CountTokens(body)
+		if s.env.RecordHistory != nil {
+			s.env.RecordHistory("delta", body, app.RenderMetrics{Files: len(changed), Tokens: tokens})
+		}
+		return s.env.RecordDelta(absRootDir, sel.To, len(g.ChangedBetween(sel.From, sel.To)), tokens)
 	}
 
 	// Full strategy: keep only files changed in the range.
-	changed := g.ChangedBetween(sel.From, sel.To)
 	only := make(map[string]bool, len(changed))
 	for _, p := range changed {
 		only[filepath.ToSlash(p)] = true
@@ -144,10 +149,31 @@ func (s *service) performDelta(files []format.FileEntry, sel tui.DeltaSelection)
 	}
 
 	if sel.Clipboard {
-		return s.env.App.RenderToClipboard(chosen)
+		rendered, metrics, err := s.env.App.RenderFinalToBufferWithMetrics(chosen, s.cfg.Prompt)
+		if err != nil {
+			return fmt.Errorf("render output: %w", err)
+		}
+		if err := clipboard.Copy(rendered); err != nil {
+			return err
+		}
+		if s.env.RecordHistory != nil {
+			s.env.RecordHistory("delta", rendered, metrics)
+		}
+		return nil
 	}
-	if err := s.env.App.RenderFinal(chosen, nil, 0, nil); err != nil {
+
+	var metrics app.RenderMetrics
+	var rendered []byte
+	if s.cfg.HistoryEnabled && !s.cfg.NoHistory {
+		metrics, rendered, err = s.env.App.RenderFinalCaptured(chosen, nil, 0, nil)
+	} else {
+		err = s.env.App.RenderFinal(chosen, nil, 0, nil)
+	}
+	if err != nil {
 		return err
+	}
+	if s.env.RecordHistory != nil {
+		s.env.RecordHistory("delta", rendered, metrics)
 	}
 	return s.env.RecordDump(absRootDir, chosen, sel.To)
 }

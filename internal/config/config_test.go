@@ -315,3 +315,60 @@ style = "markdown"
 		t.Errorf("Budget = %d, want 60000 from global", p.Budget)
 	}
 }
+
+func TestHistoryDefaultsAndNoHistoryFlag(t *testing.T) {
+	c := New()
+	if c.HistoryEnabled {
+		t.Error("HistoryEnabled default = true, want false")
+	}
+	if c.HistoryKeep != 20 {
+		t.Errorf("HistoryKeep default = %d, want 20", c.HistoryKeep)
+	}
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterHistoryFlags(c, fs)
+	if err := fs.Parse([]string{"--no-history"}); err != nil {
+		t.Fatal(err)
+	}
+	if !c.NoHistory {
+		t.Error("NoHistory = false, want true")
+	}
+}
+
+func TestHistoryLocalOverridesGlobal(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	if err := os.MkdirAll(filepath.Join(configHome, "sift"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configHome, "sift", "config.toml"), []byte("[history]\nenabled = true\nkeep = 3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".sift.toml"), []byte("[history]\nkeep = 7\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := New()
+	c.RootDir = root
+	if err := ResolveConfig(c, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !c.HistoryEnabled || c.HistoryKeep != 7 {
+		t.Fatalf("history = enabled:%v keep:%d, want true/7", c.HistoryEnabled, c.HistoryKeep)
+	}
+}
+
+func TestResolveHistorySettings(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := os.WriteFile(filepath.Join(root, ".sift.toml"), []byte("[history]\nenabled = true\nkeep = 5\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := New()
+	c.RootDir = root
+	if err := ResolveConfig(c, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !c.HistoryEnabled || c.HistoryKeep != 5 {
+		t.Fatalf("history = enabled:%v keep:%d, want true/5", c.HistoryEnabled, c.HistoryKeep)
+	}
+}

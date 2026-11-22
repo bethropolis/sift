@@ -31,6 +31,9 @@ type Env struct {
 	RecordDump  func(rootDir string, files []format.FileEntry, ref string) error
 	RecordDelta func(rootDir, ref string, files, tokens int) error
 	CountTokens func(content []byte) int
+	// RecordHistory archives a successful pick or picker delta render. It is
+	// nil-safe only when history is disabled; the command layer always sets it.
+	RecordHistory func(command string, rendered []byte, metrics app.RenderMetrics)
 }
 
 // Result carries the picker workflow's outcome to the command layer.
@@ -284,8 +287,18 @@ func (s *service) run(ctx context.Context) (Result, error) {
 	files := snapshotFiles()
 	chosen := applySelection(application, files, selected)
 	chosen = app.ExpandChosenWithGraph(files, chosen, snapshotGraph(), s.cfg.RootDir, s.cfg.Budget, s.cfg.MaxDepth)
-	if err := application.RenderFinal(chosen, snapshotSkipped(), time.Since(start), nil); err != nil {
+	var metrics app.RenderMetrics
+	var rendered []byte
+	if s.cfg.HistoryEnabled && !s.cfg.NoHistory {
+		metrics, rendered, err = application.RenderFinalCaptured(chosen, snapshotSkipped(), time.Since(start), nil)
+	} else {
+		err = application.RenderFinal(chosen, snapshotSkipped(), time.Since(start), nil)
+	}
+	if err != nil {
 		return Result{}, err
+	}
+	if s.env.RecordHistory != nil {
+		s.env.RecordHistory("pick", rendered, metrics)
 	}
 
 	// Record the dump baseline so future delta dumps know what changed since

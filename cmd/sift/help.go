@@ -171,21 +171,22 @@ func getVisibleCommands(parent *cobra.Command) []commandItem {
 		"select":     3,
 		"diff":       4,
 		"delta":      5,
-		"follow":     6,
-		"clone":      7,
-		"copy":       8,
-		"watch":      9,
-		"serve":      10,
-		"mcp":        11,
-		"skill":      12,
-		"check":      13,
-		"stats":      14,
-		"init":       15,
-		"hook":       16,
-		"config":     17,
-		"desktop":    18,
-		"version":    19,
-		"completion": 20,
+		"history":    6,
+		"follow":     7,
+		"clone":      8,
+		"copy":       9,
+		"watch":      10,
+		"serve":      11,
+		"mcp":        12,
+		"skill":      13,
+		"check":      14,
+		"stats":      15,
+		"init":       16,
+		"hook":       17,
+		"config":     18,
+		"desktop":    19,
+		"version":    20,
+		"completion": 21,
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
@@ -560,7 +561,7 @@ func getFlagCategory(name string) string {
 	switch name {
 	case "output", "style", "format", "budget", "mode", "prompt", "clipboard",
 		"copy-on-generate", "secrets", "force-secrets", "json", "markdown",
-		"fallback-mode", "fallback-threshold", "include-graph":
+		"fallback-mode", "fallback-threshold", "include-graph", "no-history":
 		return "output"
 	case "ext", "ignore", "smart", "smart-max-tokens", "hidden", "git", "binary", "max-size", "max-depth", "no-cache", "collapse-tests":
 		return "filter"
@@ -749,6 +750,13 @@ func getCommandExamples(cmd *cobra.Command) []exampleItem {
 			{"sift stats --json", "Emit the repository statistics as JSON"},
 			{"sift stats --signatures", "Count signatures instead of full file bodies"},
 			{"sift stats --top 20", "Show the 20 heaviest files"},
+		}
+	case "history":
+		return []exampleItem{
+			{"sift history", "Show the 20 most recent recorded dumps"},
+			{"sift history --json", "Emit recent dumps as JSON"},
+			{"sift history --path", "Print the history file path"},
+			{"sift history clear", "Remove the history log and its archives"},
 		}
 	case "init":
 		return []exampleItem{

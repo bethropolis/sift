@@ -61,6 +61,11 @@ type App struct {
 	// patch is the unified diff prepended to the current render by
 	// diff --with-context. It also reserves budget before any file body.
 	patch string
+
+	// capture, when non-nil, receives a byte-for-byte copy of the document
+	// written to the configured destination. History archiving uses it so it
+	// never re-reads the user's output file. It is cleared after one render.
+	capture io.Writer
 }
 
 // NewContentCache returns a bounded in-memory cache for one process. Callers

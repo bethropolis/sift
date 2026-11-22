@@ -160,7 +160,7 @@ func (s *service) generateSelectionWithPrompt(files []format.FileEntry, graph ma
 	// content, etc.) never destroys the previous dump. Only after the document
 	// is complete do we replace the output file's contents.
 	renderStart := time.Now()
-	rendered, err := s.env.App.RenderFinalToBuffer(chosen, prompt)
+	rendered, metrics, err := s.env.App.RenderFinalToBufferWithMetrics(chosen, prompt)
 	s.env.App.LogDebug("picker render timing: %s bytes=%d", time.Since(renderStart).Round(time.Millisecond), len(rendered))
 	if err != nil {
 		return nil, fmt.Errorf("render output: %w", err)
@@ -175,6 +175,9 @@ func (s *service) generateSelectionWithPrompt(files []format.FileEntry, graph ma
 				return nil, fmt.Errorf("copy generated output to clipboard: %w", err)
 			}
 			s.env.App.LogDebug("picker clipboard timing: %s bytes=%d", time.Since(copyStart).Round(time.Millisecond), len(rendered))
+		}
+		if s.env.RecordHistory != nil {
+			s.env.RecordHistory("pick", rendered, metrics)
 		}
 		if err := s.env.RecordDump(s.cfg.RootDir, chosen, "HEAD"); err != nil {
 			return rendered, err
@@ -195,6 +198,10 @@ func (s *service) generateSelectionWithPrompt(files []format.FileEntry, graph ma
 			return nil, fmt.Errorf("copy generated output to clipboard: %w", err)
 		}
 		s.env.App.LogDebug("picker clipboard timing: %s bytes=%d", time.Since(copyStart).Round(time.Millisecond), len(rendered))
+	}
+
+	if s.env.RecordHistory != nil {
+		s.env.RecordHistory("pick", rendered, metrics)
 	}
 
 	// Update the baseline so a later delta dump knows what was just rendered.

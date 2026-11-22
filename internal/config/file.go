@@ -102,6 +102,13 @@ type Automation struct {
 	HookTargets   []string `toml:"hook_targets"`
 }
 
+// History holds the opt-in local dump history settings from [history].
+// A nil Enabled means "not set" so local config can override global config.
+type History struct {
+	Enabled *bool `toml:"enabled"`
+	Keep    int   `toml:"keep"`
+}
+
 // configFile is the full v2 TOML file shape.
 type configFile struct {
 	DefaultProfile string               `toml:"default_profile"`
@@ -111,5 +118,6 @@ type configFile struct {
 	Targets        []Target             `toml:"targets"`
 	Prompts        map[string]PromptRef `toml:"prompts"`
 	Automation     *Automation          `toml:"automation"`
+	History        *History             `toml:"history"`
 	Scoring        *Scoring             `toml:"scoring"`
 }

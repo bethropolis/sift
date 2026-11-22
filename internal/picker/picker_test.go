@@ -262,11 +262,13 @@ func TestGenerateStdoutDestinationSkipsWrite(t *testing.T) {
 	}
 
 	recorded := 0
+	historyRecorded := 0
 	s := &service{cfg: cfg, env: Env{
-		App:         application,
-		RecordDump:  func(string, []format.FileEntry, string) error { recorded++; return nil },
-		RecordDelta: func(string, string, int, int) error { return nil },
-		CountTokens: func([]byte) int { return 0 },
+		App:           application,
+		RecordDump:    func(string, []format.FileEntry, string) error { recorded++; return nil },
+		RecordDelta:   func(string, string, int, int) error { return nil },
+		CountTokens:   func([]byte) int { return 0 },
+		RecordHistory: func(string, []byte, app.RenderMetrics) { historyRecorded++ },
 	}}
 
 	entries := []format.FileEntry{{
@@ -304,6 +306,9 @@ func TestGenerateStdoutDestinationSkipsWrite(t *testing.T) {
 	}
 	if recorded != 1 {
 		t.Errorf("RecordDump called %d times, want 1", recorded)
+	}
+	if historyRecorded != 1 {
+		t.Errorf("RecordHistory called %d times, want 1", historyRecorded)
 	}
 }
 

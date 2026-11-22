@@ -353,6 +353,14 @@ func ResolveConfig(c *Config, fs *pflag.FlagSet, opts ...ResolveOption) error {
 	if merged.Automation != nil {
 		c.Automation = *merged.Automation
 	}
+	if merged.History != nil {
+		if merged.History.Enabled != nil {
+			c.HistoryEnabled = *merged.History.Enabled
+		}
+		if merged.History.Keep > 0 {
+			c.HistoryKeep = merged.History.Keep
+		}
+	}
 
 	// Expand profile extends chains.
 	if len(merged.Profiles) > 0 {
@@ -586,6 +594,7 @@ func mergeConfigFiles(global, local configFile) configFile {
 		Profiles:       map[string]Profile{},
 		Prompts:        map[string]PromptRef{},
 		Automation:     global.Automation,
+		History:        global.History,
 		Scoring:        global.Scoring,
 	}
 	// Copy global profiles/prompts/targets.
@@ -733,6 +742,20 @@ func mergeConfigFiles(global, local configFile) configFile {
 	out.Targets = append(out.Targets, local.Targets...)
 	if local.Automation != nil {
 		out.Automation = local.Automation
+	}
+	if local.History != nil {
+		if out.History == nil {
+			out.History = local.History
+		} else {
+			merged := *out.History
+			if local.History.Enabled != nil {
+				merged.Enabled = local.History.Enabled
+			}
+			if local.History.Keep > 0 {
+				merged.Keep = local.History.Keep
+			}
+			out.History = &merged
+		}
 	}
 	if local.Scoring != nil {
 		if out.Scoring == nil {

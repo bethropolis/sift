@@ -50,6 +50,7 @@ func newSelectCmd(cfg *config.Config) *cobra.Command {
 	cmd.Flags().IntVar(&opts.followDepth, "follow-depth", 2, "Follow walk depth in hops (-1 = unlimited, 0 = seed only)")
 	cmd.Flags().IntVar(&opts.followFullDepth, "follow-full-depth", 1, "Follow walk full-render depth (-1 = all full)")
 	config.RegisterFlags(cfg, cmd.Flags())
+	config.RegisterHistoryFlags(cfg, cmd.Flags())
 	return cmd
 }
 
@@ -208,9 +209,17 @@ func runSelect(cfg *config.Config, opts *selectOptions, cmd *cobra.Command, args
 	if len(result.Selected) == 0 {
 		return fmt.Errorf("sift select: no files selected after applying filters and token budget")
 	}
-	if err := application.RenderFinal(result.Selected, skipped, time.Since(start), nil); err != nil {
+	var metrics app.RenderMetrics
+	var rendered []byte
+	if historyEnabled(cfg) {
+		metrics, rendered, err = application.RenderFinalCaptured(result.Selected, skipped, time.Since(start), nil)
+	} else {
+		err = application.RenderFinal(result.Selected, skipped, time.Since(start), nil)
+	}
+	if err != nil {
 		return err
 	}
+	recordHistory(cfg, "select", rendered, metrics)
 	if err := recordDumpState(cfg.RootDir, result.Selected, "HEAD"); err != nil {
 		application.LogError("Failed to record dump state: %v", err)
 	}

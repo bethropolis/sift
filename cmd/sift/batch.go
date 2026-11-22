@@ -97,13 +97,21 @@ func renderTargetRuns(runs []*targetRun) error {
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("target %q: %w", run.name, err)
 		}
-		metrics, renderErr := run.app.RenderEntriesWithMetrics(files, skipped, time.Since(start), err)
+		var metrics app.RenderMetrics
+		var rendered []byte
+		var renderErr error
+		if historyEnabled(run.cfg) {
+			metrics, rendered, renderErr = run.app.RenderEntriesWithMetricsCaptured(files, skipped, time.Since(start), err)
+		} else {
+			metrics, renderErr = run.app.RenderEntriesWithMetrics(files, skipped, time.Since(start), err)
+		}
 		if renderErr != nil {
 			return fmt.Errorf("target %q: %w", run.name, renderErr)
 		}
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("target %q: %w", run.name, err)
 		}
+		recordHistory(run.cfg, "dump", rendered, metrics)
 		if recordErr := recordRenderMetrics(run.cfg.RootDir, metrics, "HEAD"); recordErr != nil {
 			run.app.LogError("Failed to record dump state: %v", recordErr)
 		}
@@ -212,9 +220,18 @@ func renderMultiRoot(cfg *config.Config, roots []string) error {
 	if cfg.IncludeGraph {
 		top.SetArchitectureGraph(mergeArchitectureEdges(archEdges))
 	}
-	if _, err := top.RenderEntriesWithMetrics(allFiles, allSkipped, time.Since(start), nil); err != nil {
-		return err
+	var metrics app.RenderMetrics
+	var rendered []byte
+	var renderErr error
+	if historyEnabled(&topCfg) {
+		metrics, rendered, renderErr = top.RenderEntriesWithMetricsCaptured(allFiles, allSkipped, time.Since(start), nil)
+	} else {
+		metrics, renderErr = top.RenderEntriesWithMetrics(allFiles, allSkipped, time.Since(start), nil)
 	}
+	if renderErr != nil {
+		return renderErr
+	}
+	recordHistory(&topCfg, "dump", rendered, metrics)
 	return nil
 }
 

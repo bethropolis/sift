@@ -54,7 +54,7 @@ func TestHelpOutputContainsSections(t *testing.T) {
 	}
 
 	// Verify key commands appear
-	for _, cmdName := range []string{"dump", "pick", "select", "diff", "serve", "stats", "init", "hook"} {
+	for _, cmdName := range []string{"dump", "pick", "select", "diff", "serve", "stats", "history", "init", "hook"} {
 		if !strings.Contains(out, cmdName) {
 			t.Errorf("root help output missing command %q", cmdName)
 		}

@@ -42,6 +42,7 @@ Use "sift dump" for a one-shot scan of the current directory.`,
 	// exactly like "sift pick --budget 60000". Subcommands register their own
 	// copies in their constructors.
 	config.RegisterFlags(cfg, root.Flags())
+	config.RegisterHistoryFlags(cfg, root.Flags())
 	root.PersistentFlags().BoolVar(&showAllFlags, "all", false, "Show all available flags and options in help")
 
 	root.AddCommand(
@@ -55,6 +56,7 @@ Use "sift dump" for a one-shot scan of the current directory.`,
 		newDiffCmd(cfg),
 		newDumpCmd(cfg),
 		newFollowCmd(cfg),
+		newHistoryCmd(cfg),
 		newHookCmd(cfg),
 		newInitCmd(cfg),
 		newMCPCmd(cfg),

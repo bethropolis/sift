@@ -388,6 +388,36 @@ git_hook = "post-commit"       # `sift hook install` reads this
 hook_targets = ["full", "sig"]
 ```
 
+## Dump history (`[history]`)
+
+History is opt-in and records successful `dump`, `pick`, `select`, `diff` and
+`delta` renders. The history log is user data; archived dumps are regenerable
+cache. `watch`, MCP and `sift serve` never write history.
+
+```toml
+[history]
+enabled = true
+keep = 20
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `false` | Record successful renders. |
+| `keep` | `20` | Entries retained after each record; older archives are pruned. |
+
+Use `--no-history` on a single run to skip recording even when history is
+enabled. Read or clear it with `sift history`, `sift history --json`,
+`sift history --path` and `sift history clear [-y]`.
+
+Paths follow XDG:
+
+- `${XDG_DATA_HOME:-~/.local/share}/sift/history.jsonl` (mode `0600`)
+- `${XDG_CACHE_HOME:-~/.cache}/sift/dumps/<name>-<YYYYMMDD-HHMMSS>.<ext>`
+  (mode `0600`)
+
+Archive errors are reported to stderr but never fail or alter a successful
+render.
+
 ## Precedence
 
 ```
@@ -620,3 +650,9 @@ Per-project dump state (used by `delta`) and interactive preferences are kept
 outside the scanned repository — by default under the application
 configuration directory (e.g. `~/.config/sift/`). Nothing is written into your
 project, so the context document and repo stay clean.
+
+Opt-in dump history uses the XDG data and cache directories instead: the log
+is `${XDG_DATA_HOME:-~/.local/share}/sift/history.jsonl` and archived dumps are
+under `${XDG_CACHE_HOME:-~/.cache}/sift/dumps/`. Only `sift history clear`
+removes those files; pruning deletes only archives referenced by the dropped
+history entries and only after resolving them inside the dumps directory.

@@ -72,6 +72,7 @@ import-graph neighbors of the changed files as signatures.`,
 			defer application.Close()
 			start := time.Now()
 			var metrics app.RenderMetrics
+			var rendered []byte
 			if withContext {
 				files, skipped, collectErr := application.CollectPicker()
 				if collectErr != nil && !errors.Is(collectErr, context.DeadlineExceeded) {
@@ -79,18 +80,27 @@ import-graph neighbors of the changed files as signatures.`,
 				}
 				neighbors := app.DiffNeighborFiles(cfg, files, changed, contextDepth)
 				patch := strings.TrimSpace(g.RawWorktreePatch(ref))
-				metrics, err = application.RenderPatchWithMetrics(neighbors, patch, skipped, time.Since(start), collectErr)
+				if historyEnabled(cfg) {
+					metrics, rendered, err = application.RenderPatchWithMetricsCaptured(neighbors, patch, skipped, time.Since(start), collectErr)
+				} else {
+					metrics, err = application.RenderPatchWithMetrics(neighbors, patch, skipped, time.Since(start), collectErr)
+				}
 			} else {
 				application.OnlyPaths = only
 				files, skipped, collectErr := application.Collect()
 				if collectErr != nil && !errors.Is(collectErr, context.DeadlineExceeded) {
 					return collectErr
 				}
-				metrics, err = application.RenderWithMetrics(files, skipped, time.Since(start), collectErr)
+				if historyEnabled(cfg) {
+					metrics, rendered, err = application.RenderWithMetricsCaptured(files, skipped, time.Since(start), collectErr)
+				} else {
+					metrics, err = application.RenderWithMetrics(files, skipped, time.Since(start), collectErr)
+				}
 			}
 			if err != nil {
 				return err
 			}
+			recordHistoryAt(cfg, absRootDir, "diff", rendered, metrics)
 
 			// Record the diffed ref as the dump baseline so a later delta resumes
 			// from exactly what this diff covered. Non-fatal on failure.
@@ -103,5 +113,6 @@ import-graph neighbors of the changed files as signatures.`,
 	cmd.Flags().BoolVar(&withContext, "with-context", withContext, "Emit the unified diff plus import-graph neighbors in signatures mode")
 	cmd.Flags().IntVar(&contextDepth, "context-depth", contextDepth, "Import hops to include around changed files when --with-context is set")
 	config.RegisterFlags(cfg, cmd.Flags())
+	config.RegisterHistoryFlags(cfg, cmd.Flags())
 	return cmd
 }

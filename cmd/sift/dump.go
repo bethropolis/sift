@@ -69,10 +69,17 @@ func newDumpCmd(cfg *config.Config) *cobra.Command {
 			if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 				return err
 			}
-			metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
+			var metrics app.RenderMetrics
+			var rendered []byte
+			if historyEnabled(cfg) {
+				metrics, rendered, err = application.RenderWithMetricsCaptured(files, skipped, time.Since(start), err)
+			} else {
+				metrics, err = application.RenderWithMetrics(files, skipped, time.Since(start), err)
+			}
 			if err != nil {
 				return err
 			}
+			recordHistory(cfg, "dump", rendered, metrics)
 
 			// Record the dump baseline so future delta dumps know what changed
 			// since this scan. Failure to record is non-fatal.
@@ -84,5 +91,6 @@ func newDumpCmd(cfg *config.Config) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&allTargets, "all-targets", allTargets, "Render every [[targets]] entry (rejects --target)")
 	config.RegisterFlags(cfg, cmd.Flags())
+	config.RegisterHistoryFlags(cfg, cmd.Flags())
 	return cmd
 }

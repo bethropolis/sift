@@ -25,6 +25,7 @@ func newPickCmd(cfg *config.Config) *cobra.Command {
 		},
 	}
 	config.RegisterFlags(cfg, cmd.Flags())
+	config.RegisterHistoryFlags(cfg, cmd.Flags())
 	return cmd
 }
 
@@ -72,6 +73,9 @@ func runPick(cfg *config.Config, cmd *cobra.Command, args []string) error {
 		RecordDump:  recordDumpState,
 		RecordDelta: recordDeltaState,
 		CountTokens: func(content []byte) int { return countTokensString(cfg, content) },
+		RecordHistory: func(command string, rendered []byte, metrics app.RenderMetrics) {
+			recordHistory(cfg, command, rendered, metrics)
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("sift pick: %w", err)

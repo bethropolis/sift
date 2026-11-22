@@ -94,6 +94,7 @@ diff, or delta for this project, or --since to override it.`,
 	cmd.Flags().StringVar(&deltaSince, "since", "", "Compare against a ref instead of the last recorded dump")
 	cmd.Flags().BoolVar(&deltaPatch, "patch", false, "Output a raw unified diff patch instead of full file contents")
 	config.RegisterFlags(cfg, cmd.Flags())
+	config.RegisterHistoryFlags(cfg, cmd.Flags())
 	return cmd
 }
 
@@ -116,10 +117,17 @@ func runDeltaFull(cfg *config.Config, absRootDir, from, to string, changed []str
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
-	metrics, err := application.RenderWithMetrics(files, skipped, time.Since(start), err)
+	var metrics app.RenderMetrics
+	var rendered []byte
+	if historyEnabled(cfg) {
+		metrics, rendered, err = application.RenderWithMetricsCaptured(files, skipped, time.Since(start), err)
+	} else {
+		metrics, err = application.RenderWithMetrics(files, skipped, time.Since(start), err)
+	}
 	if err != nil {
 		return err
 	}
+	recordHistoryAt(cfg, absRootDir, "delta", rendered, metrics)
 
 	if err := recordRenderMetrics(absRootDir, metrics, to); err != nil {
 		application.LogError("Failed to record dump state: %v", err)
@@ -153,6 +161,7 @@ func runDeltaPatch(cfg *config.Config, g *rank.Git, absRootDir, from, to string,
 	}
 
 	tokens := countTokensString(cfg, body)
+	recordHistoryAt(cfg, absRootDir, "delta", body, app.RenderMetrics{Files: len(changed), Tokens: tokens})
 	if err := recordDeltaState(absRootDir, to, len(changed), tokens); err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: failed to record dump state: %v\n", err)
 	}

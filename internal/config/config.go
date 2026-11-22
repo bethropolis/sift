@@ -120,6 +120,12 @@ type Config struct {
 	// Automation holds optional hook settings from [automation].
 	Automation Automation
 
+	// History holds opt-in local dump history settings. Disabled by default.
+	HistoryEnabled bool
+	HistoryKeep    int
+	// NoHistory is the per-run opt-out, set by --no-history.
+	NoHistory bool
+
 	// Version info
 	ShowVersion bool
 	Version     string
@@ -146,6 +152,8 @@ func New() *Config {
 		MaxDepth:          2,
 		FallbackThreshold: 1.0,
 		NoCache:           os.Getenv("SIFT_NO_CACHE") == "1",
+		// Opt-in history defaults to disabled with a 20-entry retention.
+		HistoryKeep: 20,
 	}
 }
 
@@ -248,4 +256,10 @@ func RegisterFlags(c *Config, fs *pflag.FlagSet) {
 	fs.BoolVar(&c.ForceSecrets, "force-secrets", c.ForceSecrets, "Include secrets in output instead of redacting")
 	fs.BoolVar(&c.Clipboard, "clipboard", c.Clipboard, "Copy the rendered output to the system clipboard")
 	fs.BoolVar(&c.CopyOnGenerate, "copy-on-generate", c.CopyOnGenerate, "Copy every generated context document to the clipboard")
+}
+
+// RegisterHistoryFlags adds the per-run history opt-out. Only commands that
+// can record history should call it.
+func RegisterHistoryFlags(c *Config, fs *pflag.FlagSet) {
+	fs.BoolVar(&c.NoHistory, "no-history", c.NoHistory, "Do not record this render in local dump history")
 }
