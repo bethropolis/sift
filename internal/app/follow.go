@@ -268,10 +268,15 @@ func ResolveSeed(rootDir, seed string) (string, error) {
 	}
 	abs = filepath.Clean(abs)
 	rel, err := filepath.Rel(absRoot, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if err != nil || !filepath.IsLocal(filepath.FromSlash(rel)) {
 		return "", fmt.Errorf("follow: seed %q is outside the project root %q", seed, absRoot)
 	}
-	info, err := os.Stat(abs)
+	root, err := os.OpenRoot(absRoot)
+	if err != nil {
+		return "", fmt.Errorf("follow: cannot open root %q: %w", absRoot, err)
+	}
+	defer root.Close()
+	info, err := root.Stat(filepath.FromSlash(rel))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", fmt.Errorf("follow: seed %q does not exist", seed)

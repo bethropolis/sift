@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -67,11 +68,15 @@ func globalConfigPath() string {
 	}
 	// Backward compatibility: older builds only looked at ~/.config/sift on
 	// macOS. Keep using that file when it exists and the native one does not.
-	if home, homeErr := os.UserHomeDir(); homeErr == nil {
-		legacy := filepath.Join(home, ".config", "sift", "config.toml")
-		if legacy != native {
-			if _, statErr := os.Stat(legacy); statErr == nil {
-				return legacy
+	// Other systems already use ~/.config through os.UserConfigDir, so an XDG
+	// override must not silently fall back to the real home directory.
+	if runtime.GOOS == "darwin" {
+		if home, homeErr := os.UserHomeDir(); homeErr == nil {
+			legacy := filepath.Join(home, ".config", "sift", "config.toml")
+			if legacy != native {
+				if _, statErr := os.Stat(legacy); statErr == nil {
+					return legacy
+				}
 			}
 		}
 	}

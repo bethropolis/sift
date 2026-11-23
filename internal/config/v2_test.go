@@ -171,6 +171,38 @@ extensions = ["md"]
 	}
 }
 
+func TestV2_TargetConfigCannotEscapeRoot(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "repo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "outside.toml"), []byte("[sift]\nstyle = \"xml\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(old); os.Setenv("XDG_CONFIG_HOME", "") })
+	os.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	if err := os.WriteFile(".sift.toml", []byte(`
+[[targets]]
+name = "api"
+config = "../outside.toml"
+output = "api.md"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := New()
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(c, fs)
+	if err := ResolveConfig(c, fs, WithTarget("api")); err == nil {
+		t.Fatal("target config outside the project root should fail")
+	}
+}
+
 func TestV2_ResolveSiftDefaults(t *testing.T) {
 	dir := t.TempDir()
 	old, _ := os.Getwd()

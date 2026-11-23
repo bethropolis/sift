@@ -49,6 +49,24 @@ func TestResolveImportsHonorsTSConfigAliases(t *testing.T) {
 	}
 }
 
+func TestTSConfigExtendsCannotEscapeRoot(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "repo")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTS(t, base, "outside.json", `{"compilerOptions":{"paths":{"@evil/*":["evil/*"]}}}`)
+	writeTS(t, root, "tsconfig.json", `{"extends":"../outside.json"}`)
+
+	cfg := loadTSConfig(root, "src/file.ts")
+	if cfg == nil {
+		t.Fatal("loadTSConfig returned nil for a valid local config")
+	}
+	if len(cfg.paths) != 0 {
+		t.Fatalf("parent config outside root was loaded: %v", cfg.paths)
+	}
+}
+
 func TestResolveImportsFollowsBarrelExports(t *testing.T) {
 	root := t.TempDir()
 	writeTS(t, root, "src/index.ts", "export * from './a';\nexport { b } from './b';\n")

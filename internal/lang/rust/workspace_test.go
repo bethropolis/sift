@@ -6,6 +6,33 @@ import (
 	"testing"
 )
 
+func TestWorkspaceMembersCannotEscapeRoot(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "repo")
+	outside := filepath.Join(base, "outside", "crate")
+	for _, dir := range []string{root, outside} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "Cargo.toml"), []byte(`[workspace]
+members = ["../outside/*"]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "Cargo.toml"), []byte(`[package]
+name = "escaped"
+version = "0.1.0"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	crates := workspaceCrates(root)
+	if _, ok := crates["escaped"]; ok {
+		t.Fatalf("workspace member outside root was loaded: %v", crates)
+	}
+}
+
 func TestWorkspaceCrateImportsResolve(t *testing.T) {
 	root := t.TempDir()
 	write := func(name, body string) {

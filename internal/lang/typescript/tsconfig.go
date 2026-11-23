@@ -28,6 +28,12 @@ var tsConfigCache sync.Map // absolute config path -> *tsConfig
 // flattens its baseUrl/paths into repo-relative patterns. Local "extends" are
 // merged so a shared base config still contributes aliases.
 func loadTSConfig(root, relPath string) *tsConfig {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil
+	}
+	defer r.Close()
+
 	dir := filepath.ToSlash(filepath.Dir(relPath))
 	for {
 		for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
@@ -35,9 +41,9 @@ func loadTSConfig(root, relPath string) *tsConfig {
 			if dir == "." {
 				rel = name
 			}
-			abs := filepath.Join(root, filepath.FromSlash(rel))
-			if info, err := os.Stat(abs); err == nil && !info.IsDir() {
-				return loadTSConfigFile(root, rel, abs, 0)
+			data, err := r.ReadFile(filepath.FromSlash(rel))
+			if err == nil {
+				return loadTSConfigFile(r, root, rel, data, 0)
 			}
 		}
 		if dir == "." || dir == "" {
@@ -47,15 +53,12 @@ func loadTSConfig(root, relPath string) *tsConfig {
 	}
 }
 
-func loadTSConfigFile(root, rel, abs string, depth int) *tsConfig {
+func loadTSConfigFile(r *os.Root, root, rel string, data []byte, depth int) *tsConfig {
+	abs := filepath.Join(root, filepath.FromSlash(rel))
 	if cached, ok := tsConfigCache.Load(abs); ok {
 		return cached.(*tsConfig)
 	}
 	if depth > 4 {
-		return nil
-	}
-	data, err := os.ReadFile(abs)
-	if err != nil {
 		return nil
 	}
 	var raw rawTSConfig
@@ -65,9 +68,8 @@ func loadTSConfigFile(root, rel, abs string, depth int) *tsConfig {
 	base := &tsConfig{}
 	if raw.Extends != "" && (strings.HasPrefix(raw.Extends, ".") || strings.HasPrefix(raw.Extends, "/")) {
 		parentRel := strings.TrimSuffix(filepath.ToSlash(filepath.Join(filepath.Dir(rel), raw.Extends)), ".json") + ".json"
-		parentAbs := filepath.Join(root, filepath.FromSlash(parentRel))
-		if _, err := os.Stat(parentAbs); err == nil {
-			base = loadTSConfigFile(root, parentRel, parentAbs, depth+1)
+		if parentData, err := r.ReadFile(filepath.FromSlash(parentRel)); err == nil {
+			base = loadTSConfigFile(r, root, parentRel, parentData, depth+1)
 		}
 	}
 	cfg := &tsConfig{baseURL: base.baseURL, paths: map[string][]string{}}

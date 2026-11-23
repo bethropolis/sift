@@ -303,16 +303,12 @@ func LocalBudget(path string) (int, error) {
 // when the caller scans a directory other than cwd (e.g. `sift dump /path`).
 func localConfigPathFor(c *Config) string {
 	if c.RootDir != "" && c.RootDir != "." {
-		p := filepath.Join(c.RootDir, ".sift.toml")
-		if _, err := os.Stat(p); err == nil {
-			return p
+		if localConfigFileExists(c.RootDir) {
+			return filepath.Join(c.RootDir, ".sift.toml")
 		}
 		// Also try absolute-resolved path (RootDir may be relative).
-		if abs, err := filepath.Abs(c.RootDir); err == nil {
-			p2 := filepath.Join(abs, ".sift.toml")
-			if _, err := os.Stat(p2); err == nil {
-				return p2
-			}
+		if abs, err := filepath.Abs(c.RootDir); err == nil && localConfigFileExists(abs) {
+			return filepath.Join(abs, ".sift.toml")
 		}
 		// An explicit root has no local config; never fall back to the
 		// caller's working directory (that would apply cwd's .sift.toml to a
@@ -320,6 +316,16 @@ func localConfigPathFor(c *Config) string {
 		return ""
 	}
 	return localConfigPath()
+}
+
+func localConfigFileExists(root string) bool {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return false
+	}
+	defer r.Close()
+	_, err = r.Stat(".sift.toml")
+	return err == nil
 }
 
 // ResolveConfig builds a resolved Config from global + local config files,
@@ -636,21 +642,36 @@ func readTargetConfig(t *Target, projectRoot string) (configFile, string, error)
 	if err != nil {
 		return empty, "", fmt.Errorf("target %q config %q: %w", t.Name, t.Config, err)
 	}
-	info, err := os.Stat(abs)
+	data, err := readTargetConfigBytes(projectRoot, abs)
 	if err != nil {
 		return empty, "", fmt.Errorf("target %q config %q: %w", t.Name, t.Config, err)
 	}
-	if info.IsDir() {
-		return empty, "", fmt.Errorf("target %q config %q is a directory", t.Name, t.Config)
-	}
-
-	cf, err := readConfigFile(abs)
+	cf, err := parseConfigBytes(data)
 	if err != nil {
 		return empty, "", fmt.Errorf("target %q config %q: %w", t.Name, t.Config, err)
 	}
 	cf.Targets = nil
 	resolveConfigPaths(&cf, filepath.Dir(abs))
 	return cf, filepath.Dir(abs), nil
+}
+
+// readTargetConfigBytes reads a target config without allowing it to escape
+// the project root. The target path may be declared in a config file located
+// in another subdirectory, so containment is checked against the resolved
+// project root rather than the declaring file's directory.
+func readTargetConfigBytes(projectRoot, abs string) ([]byte, error) {
+	if projectRoot == "" {
+		projectRoot = "."
+	}
+	rootAbs, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+	rel, err := filepath.Rel(rootAbs, abs)
+	if err != nil || !filepath.IsLocal(filepath.FromSlash(rel)) {
+		return nil, fmt.Errorf("escapes project root")
+	}
+	return fsx.ReadFile(rootAbs, rel)
 }
 
 // resolveConfigPaths makes paths declared by a target config absolute relative

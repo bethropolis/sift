@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/bethropolis/sift/internal/format"
+	"github.com/bethropolis/sift/internal/fsx"
 	"github.com/bethropolis/sift/internal/lang"
 	"github.com/bethropolis/sift/internal/rank"
 )
@@ -394,8 +395,12 @@ func findEnclosingModule(start string) (dir, module string) {
 		}
 		// A repository boundary is authoritative: do not inherit a go.mod or
 		// pubspec from above a nested non-Go/non-Dart repository.
-		if _, err := os.Stat(filepath.Join(cur, ".git")); err == nil {
-			return "", ""
+		if r, err := os.OpenRoot(cur); err == nil {
+			_, statErr := r.Stat(".git")
+			r.Close()
+			if statErr == nil {
+				return "", ""
+			}
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {
@@ -408,7 +413,7 @@ func findEnclosingModule(start string) (dir, module string) {
 var pubspecName = regexp.MustCompile(`(?m)^\s*name\s*:\s*['"]?([A-Za-z0-9_-]+)['"]?\s*(?:#.*)?$`)
 
 func parsePubspecName(path string) string {
-	data, err := os.ReadFile(path)
+	data, err := fsx.ReadFile(filepath.Dir(path), filepath.Base(path))
 	if err != nil {
 		return ""
 	}
@@ -424,7 +429,7 @@ func parsePubspecName(path string) string {
 // Single-line (`use ./services/auth`), block, and single-line block
 // (`use ( ./a ./b )`) forms are all handled.
 func parseGoWork(path string) []string {
-	data, err := os.ReadFile(path)
+	data, err := fsx.ReadFile(filepath.Dir(path), filepath.Base(path))
 	if err != nil {
 		return nil
 	}
@@ -478,7 +483,7 @@ func parseGoWork(path string) []string {
 }
 
 func parseGoMod(path string) string {
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := fsx.ReadFile(filepath.Dir(path), filepath.Base(path)); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 && fields[0] == "module" {

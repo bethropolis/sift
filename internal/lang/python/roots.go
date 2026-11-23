@@ -24,20 +24,26 @@ func pythonSourceRoots(root string) []string {
 	if cached, ok := pySourceRoots.Load(abs); ok {
 		return cached.([]string)
 	}
+	r, err := os.OpenRoot(abs)
+	if err != nil {
+		return nil
+	}
+	defer r.Close()
+
 	seen := map[string]bool{}
 	var roots []string
 	add := func(p string) {
-		p = strings.TrimPrefix(filepath.ToSlash(filepath.Clean(p)), "./")
-		if p == "." || p == "" || seen[p] {
+		p = strings.TrimPrefix(filepath.ToSlash(filepath.Clean(filepath.FromSlash(p))), "./")
+		if p == "." || p == "" || seen[p] || !filepath.IsLocal(filepath.FromSlash(p)) {
 			return
 		}
 		seen[p] = true
 		roots = append(roots, p)
 	}
-	if info, err := os.Stat(filepath.Join(abs, "src")); err == nil && info.IsDir() {
+	if info, err := r.Stat("src"); err == nil && info.IsDir() {
 		add("src")
 	}
-	if data, err := os.ReadFile(filepath.Join(abs, "pyproject.toml")); err == nil {
+	if data, err := r.ReadFile("pyproject.toml"); err == nil {
 		for _, m := range pyWhereRe.FindAllSubmatch(data, -1) {
 			for _, q := range pyQuotedRe.FindAllSubmatch(m[1], -1) {
 				value := string(q[1])

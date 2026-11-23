@@ -160,11 +160,12 @@ func checkParsedConfigAt(cf configFile, baseDir, root string, includeTargets boo
 		if abs, err := filepath.Abs(path); err == nil {
 			path = abs
 		}
-		if _, err := os.Stat(path); err != nil {
+		rel, err := filepath.Rel(root, path)
+		if err != nil || !filepath.IsLocal(filepath.FromSlash(rel)) {
 			issues = append(issues, "target "+t.Name+" config is unreadable")
 			continue
 		}
-		data, err := readConfigFileCapped(path)
+		data, err := fsx.ReadFile(root, rel)
 		if err != nil {
 			issues = append(issues, "target "+t.Name+" config is unreadable")
 			continue

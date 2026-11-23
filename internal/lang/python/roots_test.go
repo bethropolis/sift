@@ -6,6 +6,33 @@ import (
 	"testing"
 )
 
+func TestSourceRootsCannotEscapeRoot(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "repo")
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pyproject.toml"), []byte(`[tool.setuptools.packages.find]
+where = ["src", "../outside"]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "outside"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	roots := pythonSourceRoots(root)
+	want := map[string]bool{"src": true}
+	if len(roots) != len(want) {
+		t.Fatalf("source roots = %v, want %v", roots, want)
+	}
+	for _, got := range roots {
+		if !want[got] {
+			t.Fatalf("unexpected source root %q (all: %v)", got, roots)
+		}
+	}
+}
+
 func TestSrcLayoutAbsoluteImportResolves(t *testing.T) {
 	root := t.TempDir()
 	write := func(name, body string) {

@@ -1,6 +1,7 @@
 package langrs
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,30 +27,33 @@ func workspaceCrates(root string) map[string]string {
 	if cached, ok := cargoWorkspaceCache.Load(abs); ok {
 		return cached.(map[string]string)
 	}
+	r, err := os.OpenRoot(abs)
+	if err != nil {
+		return nil
+	}
+	defer r.Close()
+
 	crates := map[string]string{}
 	addCrate := func(dir string) {
-		name := cargoPackageName(filepath.Join(dir, "Cargo.toml"))
+		name := cargoPackageName(r, dir)
 		if name == "" {
 			return
 		}
-		rel, err := filepath.Rel(abs, dir)
-		if err != nil {
-			return
-		}
-		crates[name] = filepath.ToSlash(rel)
+		rel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(dir)))
+		crates[name] = rel
 		// Rust crate identifiers use underscores where Cargo package names
 		// use hyphens.
-		crates[strings.ReplaceAll(name, "-", "_")] = filepath.ToSlash(rel)
+		crates[strings.ReplaceAll(name, "-", "_")] = rel
 	}
-	addCrate(abs)
+	addCrate(".")
 
-	data, err := os.ReadFile(filepath.Join(abs, "Cargo.toml"))
+	data, err := r.ReadFile("Cargo.toml")
 	if err == nil {
 		if m := cargoMembersRe.FindSubmatch(data); m != nil {
 			for _, mm := range cargoMemberRe.FindAllSubmatch(m[1], -1) {
-				member := filepath.Join(abs, filepath.FromSlash(string(mm[1])))
-				if strings.ContainsAny(string(mm[1]), "*?[") {
-					matches, _ := filepath.Glob(member)
+				member := filepath.ToSlash(string(mm[1]))
+				if strings.ContainsAny(member, "*?[") {
+					matches, _ := fs.Glob(r.FS(), member)
 					for _, match := range matches {
 						addCrate(match)
 					}
@@ -63,8 +67,8 @@ func workspaceCrates(root string) map[string]string {
 	return crates
 }
 
-func cargoPackageName(path string) string {
-	data, err := os.ReadFile(path)
+func cargoPackageName(r *os.Root, dir string) string {
+	data, err := r.ReadFile(filepath.Join(filepath.FromSlash(dir), "Cargo.toml"))
 	if err != nil {
 		return ""
 	}

@@ -149,4 +149,15 @@ func TestResolveSeed(t *testing.T) {
 	if _, err := ResolveSeed(root, "sub"); err == nil {
 		t.Fatal("directory seed should fail")
 	}
+
+	outside := filepath.Join(t.TempDir(), "escaped.go")
+	if err := os.WriteFile(outside, []byte("package escaped\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "escaped.go")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := ResolveSeed(root, "escaped.go"); err == nil {
+		t.Fatal("symlink seed escaping the root should fail")
+	}
 }
