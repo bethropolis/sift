@@ -118,7 +118,12 @@ func ReadFile(rootDir, path string) ([]byte, error) {
 }
 
 func readCapped(path string) ([]byte, error) {
-	f, err := os.Open(path)
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	f, err := root.Open(filepath.Base(path))
 	if err != nil {
 		return nil, err
 	}
