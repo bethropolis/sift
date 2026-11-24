@@ -35,7 +35,7 @@ sift
 | `sift clone <repository>` | Temporarily shallow-clone a repository and dump it in the current directory |
 | `sift copy [file]` | Copy `codebase.md` (or another document) to the clipboard |
 | `sift diff [ref]` | Render only files changed relative to a Git ref (default `HEAD`) |
-| `sift history` | Show recent recorded dumps (`--json`, `--path`, `clear`) |
+| `sift history` | Show recent recorded dumps (`--json`, `--limit`, `--path`, `clear`) |
 | `sift stats [path]` | Show token totals by directory, language, role, and file |
 | `sift init [path]` | Generate a validated starting `.sift.toml` |
 | `sift delta [path]` | Render only changes since the last recorded dump |

@@ -46,7 +46,7 @@ History is disabled by default. Enable it with [history] enabled = true in
 			if err != nil {
 				return err
 			}
-			if jsonOutput {
+			if jsonOutput || cfg.JSONOutput {
 				return writeHistoryJSON(cmd.OutOrStdout(), entries)
 			}
 			return writeHistoryTable(cmd.OutOrStdout(), entries)
@@ -155,11 +155,22 @@ func historyEnabled(cfg *config.Config) bool {
 
 // recordHistory archives a successful render. Archive failures are reported
 // to stderr and never change the render's output or exit status.
-func recordHistory(cfg *config.Config, command string, rendered []byte, metrics app.RenderMetrics) {
-	recordHistoryAt(cfg, cfg.RootDir, command, rendered, metrics)
+func recordHistory(application *app.App, command string, rendered []byte, metrics app.RenderMetrics) {
+	if application == nil || application.Config() == nil {
+		return
+	}
+	cfg := application.Config()
+	recordHistoryAt(cfg, cfg.RootDir, historyOutputPath(application), command, rendered, metrics)
 }
 
-func recordHistoryAt(cfg *config.Config, root, command string, rendered []byte, metrics app.RenderMetrics) {
+func historyOutputPath(application *app.App) string {
+	if application == nil || application.Config() == nil || application.Config().Clipboard {
+		return ""
+	}
+	return application.OutputPath()
+}
+
+func recordHistoryAt(cfg *config.Config, root, output, command string, rendered []byte, metrics app.RenderMetrics) {
 	if !historyEnabled(cfg) || len(rendered) == 0 {
 		return
 	}
@@ -168,7 +179,7 @@ func recordHistoryAt(cfg *config.Config, root, command string, rendered []byte, 
 		fmt.Fprintf(os.Stderr, "sift: history: %v\n", err)
 		return
 	}
-	if _, err := store.Record(root, command, cfg.EffectiveStyle(), rendered, metrics.Tokens, metrics.Files); err != nil {
+	if _, err := store.Record(root, command, cfg.EffectiveStyle(), output, rendered, metrics.Tokens, metrics.Files); err != nil {
 		fmt.Fprintf(os.Stderr, "sift: history: %v\n", err)
 	}
 }

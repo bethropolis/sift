@@ -100,7 +100,7 @@ import-graph neighbors of the changed files as signatures.`,
 			if err != nil {
 				return err
 			}
-			recordHistoryAt(cfg, absRootDir, "diff", rendered, metrics)
+			recordHistoryAt(cfg, absRootDir, historyOutputPath(application), "diff", rendered, metrics)
 
 			// Record the diffed ref as the dump baseline so a later delta resumes
 			// from exactly what this diff covered. Non-fatal on failure.

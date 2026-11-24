@@ -123,7 +123,7 @@ func renderTargetRuns(runs []*targetRun) error {
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("target %q: %w", run.name, err)
 		}
-		recordHistory(run.cfg, "dump", rendered, metrics)
+		recordHistory(run.app, "dump", rendered, metrics)
 		if recordErr := recordRenderMetrics(run.cfg.RootDir, metrics, "HEAD"); recordErr != nil {
 			run.app.LogError("Failed to record dump state: %v", recordErr)
 		}
@@ -243,7 +243,7 @@ func renderMultiRoot(cfg *config.Config, roots []string) error {
 	if renderErr != nil {
 		return renderErr
 	}
-	recordHistory(&topCfg, "dump", rendered, metrics)
+	recordHistory(top, "dump", rendered, metrics)
 	return nil
 }
 

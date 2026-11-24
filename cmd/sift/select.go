@@ -219,7 +219,7 @@ func runSelect(cfg *config.Config, opts *selectOptions, cmd *cobra.Command, args
 	if err != nil {
 		return err
 	}
-	recordHistory(cfg, "select", rendered, metrics)
+	recordHistory(application, "select", rendered, metrics)
 	if err := recordDumpState(cfg.RootDir, result.Selected, "HEAD"); err != nil {
 		application.LogError("Failed to record dump state: %v", err)
 	}

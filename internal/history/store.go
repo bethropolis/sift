@@ -38,8 +38,9 @@ func (s *Store) HistoryPath() string {
 }
 
 // Record archives rendered, appends a history entry, and prunes to Keep.
+// Output records the original destination; File records the cache archive.
 // Archive files are written with mode 0600 and directories with mode 0700.
-func (s *Store) Record(root, cmd, style string, rendered []byte, tokens, files int) (Entry, error) {
+func (s *Store) Record(root, cmd, style, output string, rendered []byte, tokens, files int) (Entry, error) {
 	if s == nil {
 		return Entry{}, errors.New("history: nil store")
 	}
@@ -78,6 +79,7 @@ func (s *Store) Record(root, cmd, style string, rendered []byte, tokens, files i
 		Root:   absRoot,
 		Name:   name,
 		File:   archive,
+		Output: output,
 		Bytes:  int64(len(rendered)),
 		Tokens: tokens,
 		Files:  files,

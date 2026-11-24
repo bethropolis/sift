@@ -95,6 +95,9 @@ func TestDumpRecordsHistoryAndHistoryCommands(t *testing.T) {
 	if entry.Root != root {
 		t.Errorf("root = %q, want %q", entry.Root, root)
 	}
+	if want := filepath.Join(root, "codebase.md"); entry.Output != want {
+		t.Errorf("output = %q, want %q", entry.Output, want)
+	}
 	if entry.Bytes == 0 || entry.Tokens == 0 || entry.Files != 1 {
 		t.Errorf("unexpected metrics: %+v", entry)
 	}
@@ -136,6 +139,28 @@ func TestDumpRecordsHistoryAndHistoryCommands(t *testing.T) {
 	}
 	if envelope.V != 1 || len(envelope.Entries) != 1 || envelope.Entries[0].ID != entry.ID {
 		t.Fatalf("unexpected JSON envelope: %+v", envelope)
+	}
+	if envelope.Entries[0].File != entry.File || envelope.Entries[0].Output != entry.Output {
+		t.Fatalf("JSON paths = file %q output %q, want file %q output %q", envelope.Entries[0].File, envelope.Entries[0].Output, entry.File, entry.Output)
+	}
+
+	// The root --json flag should work before the subcommand too.
+	text, err = runSift(t, "--json", "history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootEnvelope struct {
+		V       int             `json:"v"`
+		Entries []history.Entry `json:"entries"`
+	}
+	if err := json.Unmarshal([]byte(text), &rootEnvelope); err != nil {
+		t.Fatalf("sift --json history: %v\n%s", err, text)
+	}
+	if rootEnvelope.V != 1 || len(rootEnvelope.Entries) != 1 || rootEnvelope.Entries[0].ID != entry.ID {
+		t.Fatalf("unexpected root JSON envelope: %+v", rootEnvelope)
+	}
+	if rootEnvelope.Entries[0].Output != entry.Output {
+		t.Fatalf("root JSON output = %q, want %q", rootEnvelope.Entries[0].Output, entry.Output)
 	}
 
 	text, err = runSift(t, "history", "--path")

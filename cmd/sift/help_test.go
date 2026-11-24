@@ -17,7 +17,7 @@ func helpFor(t *testing.T, name string, all bool) string {
 
 	target := root
 	if name != "" {
-		found, _, err := root.Find([]string{name})
+		found, _, err := root.Find(strings.Fields(name))
 		if err != nil || found == nil {
 			t.Fatalf("subcommand %q not found: %v", name, err)
 		}
@@ -134,6 +134,7 @@ func TestOperationalCommandsShowExamples(t *testing.T) {
 		ex  string
 	}{
 		{"stats", "sift stats --json"},
+		{"history", "sift history --json"},
 		{"init", "sift init --stdout"},
 		{"hook", "sift hook install"},
 	} {
@@ -141,6 +142,20 @@ func TestOperationalCommandsShowExamples(t *testing.T) {
 		if !strings.Contains(out, "EXAMPLES:") || !strings.Contains(out, tc.ex) {
 			t.Errorf("%s help missing example %q:\n%s", tc.cmd, tc.ex, out)
 		}
+	}
+}
+
+func TestHistoryHelpShowsOptions(t *testing.T) {
+	out := helpFor(t, "history", false)
+	for _, opt := range []string{"--json", "--limit", "--path"} {
+		if !strings.Contains(out, opt) {
+			t.Errorf("history help missing option %q:\n%s", opt, out)
+		}
+	}
+
+	clearOut := helpFor(t, "history clear", false)
+	if !strings.Contains(clearOut, "--yes") {
+		t.Errorf("history clear help missing --yes:\n%s", clearOut)
 	}
 }
 

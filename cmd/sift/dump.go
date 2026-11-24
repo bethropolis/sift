@@ -79,7 +79,7 @@ func newDumpCmd(cfg *config.Config) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			recordHistory(cfg, "dump", rendered, metrics)
+			recordHistory(application, "dump", rendered, metrics)
 
 			// Record the dump baseline so future delta dumps know what changed
 			// since this scan. Failure to record is non-fatal.

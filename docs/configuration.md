@@ -455,13 +455,18 @@ keep = 20
 
 Use `--no-history` on a single run to skip recording even when history is
 enabled. Read or clear it with `sift history`, `sift history --json`,
-`sift history --path` and `sift history clear [-y]`.
+`sift history --limit N`, `sift history --path` and `sift history clear [-y]`.
 
 Paths follow XDG:
 
 - `${XDG_DATA_HOME:-~/.local/share}/sift/history.jsonl` (mode `0600`)
 - `${XDG_CACHE_HOME:-~/.cache}/sift/dumps/<name>-<YYYYMMDD-HHMMSS>.<ext>`
   (mode `0600`)
+
+`history --json` records both locations for each render: `file` is the cached
+archive, and `output` is the absolute path of the original dump file. `output`
+is omitted for stdout and clipboard-only renders. Older entries without
+`output` remain readable.
 
 Archive errors are reported to stderr but never fail or alter a successful
 render.

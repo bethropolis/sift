@@ -42,7 +42,7 @@ Go, Rust, JavaScript/TypeScript (including TSX), Python, PHP, Java, Kotlin, C#, 
 | `copy`   | Re-copy the last output to the clipboard          |
 | `diff`   | Render files changed relative to a git ref        |
 | `delta`  | Render files changed since the last dump          |
-| `history`| Show, locate or clear recorded dump history       |
+| `history` | Show, locate or clear recorded dump history       |
 | `follow` | Render a file plus its import-graph neighbors     |
 | `watch`  | Re-render whenever files change                   |
 | `serve`  | Run sift from a browser                           |
@@ -84,9 +84,11 @@ sift delta --since main
 ## Dump history
 
 History is opt-in. Add `enabled = true` under `[history]` in `.sift.toml` or
-`~/.config/sift/config.toml`, then use `sift history` (or `--json`) to see
-recent successful renders. `sift history clear -y` removes the log and its
-archived dumps; `--no-history` skips a single run. See
+`~/.config/sift/config.toml`, then use `sift history` (or `--json`, `--limit N`)
+to see recent successful renders. `sift history --path` prints the log path;
+`sift history clear -y` removes the log and its archived dumps, and
+`--no-history` skips a single run. JSON entries include the cached `file` and
+the original dump `output` path. See
 [docs/configuration.md](docs/configuration.md#dump-history-history).
 
 ## Agent Skills

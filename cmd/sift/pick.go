@@ -74,7 +74,7 @@ func runPick(cfg *config.Config, cmd *cobra.Command, args []string) error {
 		RecordDelta: recordDeltaState,
 		CountTokens: func(content []byte) int { return countTokensString(cfg, content) },
 		RecordHistory: func(command string, rendered []byte, metrics app.RenderMetrics) {
-			recordHistory(cfg, command, rendered, metrics)
+			recordHistory(application, command, rendered, metrics)
 		},
 	})
 	if err != nil {

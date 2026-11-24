@@ -183,7 +183,7 @@ func fixedNow(when time.Time) func() time.Time {
 
 func mustRecord(t *testing.T, store *Store, root, cmd string, rendered []byte) Entry {
 	t.Helper()
-	entry, err := store.Record(root, cmd, "markdown", rendered, 12, 3)
+	entry, err := store.Record(root, cmd, "markdown", filepath.Join(root, "codebase.md"), rendered, 12, 3)
 	if err != nil {
 		t.Fatalf("Record: %v", err)
 	}
@@ -214,6 +214,9 @@ func TestRecordCreatesArchiveAndHistory(t *testing.T) {
 	}
 	if entry.Bytes != int64(len(rendered)) || entry.Tokens != 12 || entry.Files != 3 {
 		t.Fatalf("unexpected metrics: %+v", entry)
+	}
+	if want := filepath.Join(root, "codebase.md"); entry.Output != want {
+		t.Fatalf("output = %q, want %q", entry.Output, want)
 	}
 	if !strings.HasPrefix(filepath.Base(entry.File), "my-project-20261122-143212.md") {
 		t.Fatalf("archive name = %q", entry.File)
@@ -455,7 +458,7 @@ func TestRecordConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, err := store.Record(root, "dump", "markdown", []byte("data"), i, 1)
+			_, err := store.Record(root, "dump", "markdown", filepath.Join(root, "codebase.md"), []byte("data"), i, 1)
 			errs <- err
 		}(i)
 	}

@@ -127,7 +127,7 @@ func runDeltaFull(cfg *config.Config, absRootDir, from, to string, changed []str
 	if err != nil {
 		return err
 	}
-	recordHistoryAt(cfg, absRootDir, "delta", rendered, metrics)
+	recordHistoryAt(cfg, absRootDir, historyOutputPath(application), "delta", rendered, metrics)
 
 	if err := recordRenderMetrics(absRootDir, metrics, to); err != nil {
 		application.LogError("Failed to record dump state: %v", err)
@@ -144,6 +144,7 @@ func runDeltaPatch(cfg *config.Config, g *rank.Git, absRootDir, from, to string,
 	}
 
 	body := []byte(format.RenderContextUpdate(from, to, patch))
+	output := ""
 
 	if cfg.Clipboard {
 		if err := clipboard.Copy(body); err != nil {
@@ -158,10 +159,11 @@ func runDeltaPatch(cfg *config.Config, g *rank.Git, absRootDir, from, to string,
 		if err := application.WriteOutput(body); err != nil {
 			return fmt.Errorf("sift delta: %w", err)
 		}
+		output = historyOutputPath(application)
 	}
 
 	tokens := countTokensString(cfg, body)
-	recordHistoryAt(cfg, absRootDir, "delta", body, app.RenderMetrics{Files: len(changed), Tokens: tokens})
+	recordHistoryAt(cfg, absRootDir, output, "delta", body, app.RenderMetrics{Files: len(changed), Tokens: tokens})
 	if err := recordDeltaState(absRootDir, to, len(changed), tokens); err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: failed to record dump state: %v\n", err)
 	}

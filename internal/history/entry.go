@@ -36,6 +36,7 @@ type Entry struct {
 	Root   string `json:"root"`
 	Name   string `json:"name"`
 	File   string `json:"file"`
+	Output string `json:"output,omitempty"`
 	Bytes  int64  `json:"bytes"`
 	Tokens int    `json:"tokens"`
 	Files  int    `json:"files"`
